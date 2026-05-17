@@ -343,7 +343,7 @@ export function SummaryCards() {
 
           <Button
             className='justify-between'
-            render={<Link to='/wallet' />}
+            render={<Link to='/my-wallet' />}
           >
             <span>{t('Wallet')}</span>
             <ArrowRight data-icon='inline-end' />
