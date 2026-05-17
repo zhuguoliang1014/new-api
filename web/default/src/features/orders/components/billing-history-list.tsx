@@ -145,7 +145,7 @@ export function BillingHistoryList({
                     </div>
                     <div className='space-y-1'>
                       <Label className='text-muted-foreground text-xs'>
-                        {t('Amount')}
+                        {t('Quota')}
                       </Label>
                       <div className='text-sm font-semibold'>
                         {formatCurrencyFromUSD(record.amount, {

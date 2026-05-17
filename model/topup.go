@@ -31,7 +31,7 @@ type TopUp struct {
 type TopUpRecord struct {
 	Id              int     `json:"id"`
 	UserId          int     `json:"user_id"`
-	Amount          int64   `json:"amount"`
+	Amount          float64 `json:"amount"`
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no"`
 	OpenOrderId     string  `json:"open_order_id"`
@@ -80,7 +80,7 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 		records = append(records, TopUpRecord{
 			Id:              topUp.Id,
 			UserId:          topUp.UserId,
-			Amount:          topUp.Amount,
+			Amount:          normalizeTopUpRecordAmount(topUp),
 			Money:           topUp.Money,
 			TradeNo:         topUp.TradeNo,
 			OpenOrderId:     topUp.OpenOrderId,
@@ -152,6 +152,24 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 	}
 
 	return records
+}
+
+func normalizeTopUpRecordAmount(topUp *TopUp) float64 {
+	if topUp == nil {
+		return 0
+	}
+
+	switch topUp.PaymentProvider {
+	case PaymentProviderHupijiao:
+		return decimal.NewFromInt(topUp.Amount).Div(decimal.NewFromInt(100)).InexactFloat64()
+	case PaymentProviderCreem:
+		if common.QuotaPerUnit <= 0 {
+			return 0
+		}
+		return decimal.NewFromInt(topUp.Amount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64()
+	default:
+		return float64(topUp.Amount)
+	}
 }
 
 func inferPaymentCurrency(paymentMethod string, paymentProvider string) string {
