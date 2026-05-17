@@ -180,6 +180,18 @@ export async function updateSubscriptionPriorities(
   return res.data
 }
 
+export async function getSubscriptionHistory(
+  page: number,
+  pageSize: number
+): Promise<
+  ApiResponse<{ page: number; page_size: number; total: number; items: UserSubscriptionRecord[] }>
+> {
+  const res = await api.get(
+    `/api/subscription/self/history?p=${page}&page_size=${pageSize}`
+  )
+  return res.data
+}
+
 export async function getGroups(): Promise<ApiResponse<string[]>> {
   const res = await api.get('/api/group')
   return res.data

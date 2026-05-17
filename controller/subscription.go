@@ -150,6 +150,21 @@ func GetSubscriptionSelf(c *gin.Context) {
 	})
 }
 
+func GetSubscriptionHistory(c *gin.Context) {
+	userId := c.GetInt("id")
+	pageInfo := common.GetPageQuery(c)
+
+	summaries, total, err := model.GetInactiveUserSubscriptionsPaginated(userId, pageInfo)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	pageInfo.SetTotal(int(total))
+	pageInfo.SetItems(summaries)
+	common.ApiSuccess(c, pageInfo)
+}
+
 func UpdateSubscriptionPreference(c *gin.Context) {
 	userId := c.GetInt("id")
 	var req BillingPreferenceRequest

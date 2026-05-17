@@ -820,6 +820,35 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 	return result
 }
 
+// GetInactiveUserSubscriptionsPaginated returns paginated expired/cancelled subscriptions for a user.
+func GetInactiveUserSubscriptionsPaginated(userId int, pageInfo *common.PageInfo) ([]SubscriptionSummary, int64, error) {
+	if userId <= 0 {
+		return nil, 0, errors.New("invalid userId")
+	}
+	now := common.GetTimestamp()
+	query := DB.Model(&UserSubscription{}).
+		Where("user_id = ? AND (status != ? OR end_time <= ?)", userId, "active", now)
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []SubscriptionSummary{}, 0, nil
+	}
+
+	var subs []UserSubscription
+	err := DB.Where("user_id = ? AND (status != ? OR end_time <= ?)", userId, "active", now).
+		Order("end_time desc, id desc").
+		Offset(pageInfo.GetStartIdx()).
+		Limit(pageInfo.GetPageSize()).
+		Find(&subs).Error
+	if err != nil {
+		return nil, 0, err
+	}
+	return buildSubscriptionSummaries(subs), total, nil
+}
+
 // AdminInvalidateUserSubscription marks a user subscription as cancelled and ends it immediately.
 func AdminInvalidateUserSubscription(userSubscriptionId int) (string, error) {
 	if userSubscriptionId <= 0 {

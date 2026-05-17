@@ -21,6 +21,7 @@ import {
   CalendarClock,
   CreditCard,
   GripVertical,
+  History,
   Layers,
   RefreshCw,
 } from 'lucide-react'
@@ -51,6 +52,7 @@ import type {
   PlanRecord,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { SubscriptionHistoryDialog } from './subscription-history-dialog'
 
 type BillingPreference =
   | 'subscription_first'
@@ -245,6 +247,7 @@ export function MySubscriptionsCard({
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
   const initialOrderRef = useRef<number[]>([])
 
@@ -416,7 +419,7 @@ export function MySubscriptionsCard({
       description={
         draggable
           ? t('Drag subscriptions to set deduction order')
-          : t('Active and historical subscriptions')
+          : undefined
       }
       icon={<Layers className='h-4 w-4' />}
       action={
@@ -516,25 +519,28 @@ export function MySubscriptionsCard({
               ))}
             </SortableContext>
           </DndContext>
-          {inactive.map((record) => (
-            <SubscriptionRow
-              key={record.subscription.id}
-              record={record}
-              planTitle={
-                record.plan_title ||
-                planTitleMap.get(record.subscription.plan_id) ||
-                ''
-              }
-              draggable={false}
-              nowSec={nowSec}
-            />
-          ))}
+          {inactiveCount > 0 && (
+            <Button
+              variant='outline'
+              size='sm'
+              className='w-full'
+              onClick={() => setHistoryDialogOpen(true)}
+            >
+              <History className='h-4 w-4' />
+              {t('Subscription History')} ({inactiveCount})
+            </Button>
+          )}
         </div>
       ) : (
         <div className='text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm'>
           {t('No subscription records')}
         </div>
       )}
+
+      <SubscriptionHistoryDialog
+        open={historyDialogOpen}
+        onOpenChange={setHistoryDialogOpen}
+      />
     </TitledCard>
   )
 }
