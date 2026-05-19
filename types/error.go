@@ -90,17 +90,14 @@ const (
 	ErrorCodeEndpointNotSupportedByChannel ErrorCode = "endpoint_not_supported_by_channel"
 )
 
-// NewEndpointNotSupportedError 构造"当前渠道协议不支持该 API 端点"的友好错误。
-// channelProto: 当前渠道使用的协议名（例如 "Claude (Anthropic)"、"Gemini"）
+// NewEndpointNotSupportedError 构造"当前 API key 所在分组协议不支持该端点"的友好错误。
+// channelProto: 当前 API key 所在分组的协议名（例如 "Claude (Anthropic)"、"Gemini"）
 // requestedEndpoint: 用户请求的端点（例如 "/v1/responses"）
-// recommendedEndpoint: 建议改用的端点（例如 "/v1/messages"）
-func NewEndpointNotSupportedError(channelProto, requestedEndpoint, recommendedEndpoint string) *NewAPIError {
+// requiredProto: 该端点所属的协议名（例如 "OpenAI"）
+func NewEndpointNotSupportedError(channelProto, requestedEndpoint, requiredProto string) *NewAPIError {
 	msg := fmt.Sprintf(
-		"当前渠道使用 %s 协议，不支持 %s 端点。请将客户端请求改为 %s，或在该模型分组下配置 OpenAI 协议的渠道。 "+
-			"(Channel uses %s protocol and does not support %s. Please switch the client to %s, "+
-			"or configure an OpenAI-protocol channel for this model group.)",
-		channelProto, requestedEndpoint, recommendedEndpoint,
-		channelProto, requestedEndpoint, recommendedEndpoint,
+		"当前 API key 所在分组为 %s 协议，不支持 %s 端点，请使用 %s 协议分组的 API key。",
+		channelProto, requestedEndpoint, requiredProto,
 	)
 	return NewErrorWithStatusCode(
 		errors.New(msg),
