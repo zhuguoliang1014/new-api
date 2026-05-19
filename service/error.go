@@ -83,6 +83,24 @@ func ClaudeErrorWrapperLocal(err error, code string, statusCode int) *dto.Claude
 	return claudeErr
 }
 
+// rewriteUpstreamErrorMessage 将晦涩的上游错误文案改写成对终端用户更友好的中英文提示。
+// 当前覆盖的场景：
+//   - 上游号池未开通图片生成能力（image_generation tool / 图片专用模型）
+//
+// 后续遇到其他用户难以理解的上游错误，按同样模式追加 case 即可。
+func rewriteUpstreamErrorMessage(message string) string {
+	if message == "" {
+		return message
+	}
+	if strings.Contains(message, "Image generation is not enabled") {
+		return "当前渠道未开通图片生成(image_generation)能力。" +
+			"请使用画图专用分组的 API key，或确认请求 tools 中不包含 image_generation。 " +
+			"(Channel does not have image_generation enabled. " +
+			"Please use an API key from an image-capable group, or remove image_generation from the request tools.)"
+	}
+	return message
+}
+
 func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFail bool) (newApiErr *types.NewAPIError) {
 	newApiErr = types.InitOpenAIError(types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 
@@ -114,6 +132,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
+			oaiError.Message = rewriteUpstreamErrorMessage(oaiError.Message)
 			newApiErr = types.WithOpenAIError(*oaiError, resp.StatusCode)
 			if showBodyWhenFail {
 				newApiErr.Err = buildErrWithBody(newApiErr.Error())
@@ -121,7 +140,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 			return
 		}
 	}
-	newApiErr = types.NewOpenAIError(errors.New(errResponse.ToMessage()), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
+	newApiErr = types.NewOpenAIError(errors.New(rewriteUpstreamErrorMessage(errResponse.ToMessage())), types.ErrorCodeBadResponseStatusCode, resp.StatusCode)
 	if showBodyWhenFail {
 		newApiErr.Err = buildErrWithBody(newApiErr.Error())
 	}
