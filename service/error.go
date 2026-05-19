@@ -93,10 +93,7 @@ func rewriteUpstreamErrorMessage(message string) string {
 		return message
 	}
 	if strings.Contains(message, "Image generation is not enabled") {
-		return "当前渠道未开通图片生成(image_generation)能力。" +
-			"请使用画图专用分组的 API key，或确认请求 tools 中不包含 image_generation。 " +
-			"(Channel does not have image_generation enabled. " +
-			"Please use an API key from an image-capable group, or remove image_generation from the request tools.)"
+		return "当前 API key 所在分组不支持画图，请使用画图专用分组的 API key。"
 	}
 	return message
 }
