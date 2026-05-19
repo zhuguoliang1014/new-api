@@ -85,7 +85,30 @@ const (
 	// quota error
 	ErrorCodeInsufficientUserQuota      ErrorCode = "insufficient_user_quota"
 	ErrorCodePreConsumeTokenQuotaFailed ErrorCode = "pre_consume_token_quota_failed"
+
+	// endpoint compatibility
+	ErrorCodeEndpointNotSupportedByChannel ErrorCode = "endpoint_not_supported_by_channel"
 )
+
+// NewEndpointNotSupportedError 构造"当前渠道协议不支持该 API 端点"的友好错误。
+// channelProto: 当前渠道使用的协议名（例如 "Claude (Anthropic)"、"Gemini"）
+// requestedEndpoint: 用户请求的端点（例如 "/v1/responses"）
+// recommendedEndpoint: 建议改用的端点（例如 "/v1/messages"）
+func NewEndpointNotSupportedError(channelProto, requestedEndpoint, recommendedEndpoint string) *NewAPIError {
+	msg := fmt.Sprintf(
+		"当前渠道使用 %s 协议，不支持 %s 端点。请将客户端请求改为 %s，或在该模型分组下配置 OpenAI 协议的渠道。 "+
+			"(Channel uses %s protocol and does not support %s. Please switch the client to %s, "+
+			"or configure an OpenAI-protocol channel for this model group.)",
+		channelProto, requestedEndpoint, recommendedEndpoint,
+		channelProto, requestedEndpoint, recommendedEndpoint,
+	)
+	return NewErrorWithStatusCode(
+		errors.New(msg),
+		ErrorCodeEndpointNotSupportedByChannel,
+		http.StatusNotImplemented,
+		ErrOptionWithSkipRetry(),
+	)
+}
 
 type NewAPIError struct {
 	Err            error
