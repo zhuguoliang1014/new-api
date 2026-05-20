@@ -372,6 +372,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"quota_reset_custom_seconds": req.Plan.QuotaResetCustomSeconds,
 			"starts_at":                  req.Plan.StartsAt,
 			"expires_at":                 req.Plan.ExpiresAt,
+			"display_sold_count":         req.Plan.DisplaySoldCount,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
