@@ -230,9 +230,8 @@ func GetTodayActivities() ([]*LuckyBagActivity, error) {
 // 抽奖权重参数
 const (
 	luckyBagTicketFloor    = 10  // 每人基础票数
-	luckyBagTicketMeritCap = 40  // 活跃度加成上限
-	luckyBagMeritBonus     = 5.0 // log₂ 系数
-
+	luckyBagTicketMeritCap = 90  // 活跃度加成上限（最大 weight=100）
+	luckyBagMeritBonus     = 5.0 // score 线性系数
 )
 
 // calcUserScore 汇总用户活跃度得分
@@ -289,9 +288,9 @@ func calcUserScore(userId int) float64 {
 		Where("user_id = ?", userId).
 		Count(&checkinCount)
 
-	// 得分公式：log 压缩防止巨鲸碾压，系数体现优先级梯度
-	score := 1.00*math.Log2(1+float64(totalQuotaRow.Total)/10000) + // 累计消耗（最高权重）
-		0.30*math.Log2(1+float64(weekQuotaRow.Total)/10000) + // 近7天消耗（激励近期活跃）
+	// 得分公式：log 压缩拉开活跃梯度，基数 500000 避免高用量用户进入饱和区
+	score := 1.00*math.Log2(1+float64(totalQuotaRow.Total)/500000) + // 累计消耗（最高权重）
+		0.30*math.Log2(1+float64(weekQuotaRow.Total)/500000) + // 近7天消耗（激励近期活跃）
 		0.15*math.Log2(1+float64(totalRecharge)/10000) + // 充值总额（小额付费加成）
 		0.40*math.Log2(1+float64(inviteCount)*5) + // 推荐注册
 		0.25*math.Log2(1+float64(luckyBagEntries)) + // 参与福袋次数
@@ -309,7 +308,7 @@ func calcUserWeight(userId int) int {
 	ctx := context.Background()
 
 	score := calcUserScore(userId)
-	merit := luckyBagMeritBonus * math.Log2(1+score)
+	merit := luckyBagMeritBonus * score
 	if merit < 0 {
 		merit = 0
 	}
