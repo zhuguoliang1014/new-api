@@ -187,6 +187,9 @@ type SubscriptionPlan struct {
 	StartsAt  int64 `json:"starts_at"  gorm:"type:bigint;not null;default:0"`
 	ExpiresAt int64 `json:"expires_at" gorm:"type:bigint;not null;default:0"`
 
+	// Fake display sold count shown to users (0 = use real count only)
+	DisplaySoldCount int64 `json:"display_sold_count" gorm:"type:bigint;not null;default:0"`
+
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }

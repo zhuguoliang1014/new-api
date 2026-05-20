@@ -1226,6 +1226,8 @@
     "Disk Threshold (%)": "磁盘阈值 (%)",
     "Display in Currency": "以货币显示",
     "Display Mode": "显示模式",
+    "Display Sold Count": "展示销量",
+    "Minimum sold count shown to users. Real count is used when higher.": "展示给用户的最低销量数字，实际销量更高时自动取实际值。",
     "Display name": "显示名称",
     "Display Name": "显示名称",
     "Display name and email used in outgoing messages": "用于发送消息的显示名称和电子邮件",

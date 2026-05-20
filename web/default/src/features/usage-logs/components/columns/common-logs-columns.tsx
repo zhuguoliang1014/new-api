@@ -461,15 +461,15 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       let group = log.group
       if (!group) group = other?.group || ''
 
-      const metaParts: string[] = []
       const groupRatioText = getGroupRatioText(other)
-      if (group) {
-        metaParts.push(sensitiveVisible ? group : '••••')
-      }
-      if (groupRatioText) metaParts.push(groupRatioText)
+      const groupDisplay = group
+        ? sensitiveVisible
+          ? group
+          : '••••'
+        : null
 
       return (
-        <div className='flex max-w-[150px] flex-col gap-0.5'>
+        <div className='flex max-w-[180px] flex-col gap-0.5'>
           <StatusBadge
             label={displayName}
             icon={KeyRound}
@@ -478,16 +478,26 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             showDot={false}
             className='border-border/60 bg-muted/30 text-foreground max-w-full overflow-hidden rounded-md border px-1.5 py-0.5 font-mono'
           />
-          {metaParts.length > 0 && (
-            <span className='text-muted-foreground/60 truncate text-[11px]'>
-              {metaParts.join(' · ')}
-            </span>
+          {(groupDisplay || groupRatioText) && (
+            <div className='text-muted-foreground/60 flex min-w-0 items-center gap-1 text-[11px]'>
+              {groupDisplay && (
+                <span className='min-w-0 truncate'>{groupDisplay}</span>
+              )}
+              {groupDisplay && groupRatioText && (
+                <span className='shrink-0'>·</span>
+              )}
+              {groupRatioText && (
+                <span className='shrink-0 font-mono tabular-nums'>
+                  {groupRatioText}
+                </span>
+              )}
+            </div>
           )}
         </div>
       )
     },
     meta: { label: t('Token') },
-    size: 130,
+    size: 160,
   })
 
   columns.push(

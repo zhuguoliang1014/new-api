@@ -385,6 +385,30 @@ export function SubscriptionCreateDrawer({
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name='display_sold_count'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Display Sold Count')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          onChange={(e) =>
+                            field.onChange(parseInt(e.target.value, 10) || 0)
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t('Minimum sold count shown to users. Real count is used when higher.')}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <div className='bg-muted/40 rounded-md border border-dashed p-3 text-xs'>

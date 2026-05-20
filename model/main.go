@@ -427,6 +427,7 @@ func ensureSubscriptionPlanTableSQLite() error {
 ` + "`quota_reset_custom_seconds`" + ` bigint DEFAULT 0,
 ` + "`starts_at`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`expires_at`" + ` bigint NOT NULL DEFAULT 0,
+` + "`display_sold_count`" + ` bigint NOT NULL DEFAULT 0,
 ` + "`created_at`" + ` bigint,
 ` + "`updated_at`" + ` bigint,
 PRIMARY KEY (` + "`id`" + `)
@@ -463,6 +464,7 @@ PRIMARY KEY (` + "`id`" + `)
 		{Name: "quota_reset_custom_seconds", DDL: "`quota_reset_custom_seconds` bigint DEFAULT 0"},
 		{Name: "starts_at", DDL: "`starts_at` bigint NOT NULL DEFAULT 0"},
 		{Name: "expires_at", DDL: "`expires_at` bigint NOT NULL DEFAULT 0"},
+		{Name: "display_sold_count", DDL: "`display_sold_count` bigint NOT NULL DEFAULT 0"},
 		{Name: "created_at", DDL: "`created_at` bigint"},
 		{Name: "updated_at", DDL: "`updated_at` bigint"},
 	}

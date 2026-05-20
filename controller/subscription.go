@@ -42,10 +42,14 @@ func newSubscriptionPlanDTO(plan model.SubscriptionPlan, soldCount int64) Subscr
 	if plan.TotalAmount > 0 && common.QuotaPerUnit > 0 {
 		totalAmountUSD = float64(plan.TotalAmount) / common.QuotaPerUnit
 	}
+	displayCount := soldCount
+	if plan.DisplaySoldCount > displayCount {
+		displayCount = plan.DisplaySoldCount
+	}
 	return SubscriptionPlanDTO{
 		Plan:           plan,
 		TotalAmountUSD: totalAmountUSD,
-		SoldCount:      soldCount,
+		SoldCount:      displayCount,
 	}
 }
 

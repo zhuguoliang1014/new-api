@@ -1226,6 +1226,8 @@
     "Disk Threshold (%)": "Disk Threshold (%)",
     "Display in Currency": "Display in Currency",
     "Display Mode": "Display Mode",
+    "Display Sold Count": "Display Sold Count",
+    "Minimum sold count shown to users. Real count is used when higher.": "Minimum sold count shown to users. Real count is used when higher.",
     "Display name": "Display name",
     "Display Name": "Display Name",
     "Display name and email used in outgoing messages": "Display name and email used in outgoing messages",
