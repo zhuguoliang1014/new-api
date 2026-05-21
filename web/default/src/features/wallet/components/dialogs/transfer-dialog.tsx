@@ -36,7 +36,8 @@ import { QUOTA_PER_DOLLAR } from '../../constants'
 interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: (amount: number) => Promise<boolean>
+  /** Receives the transfer amount in USD (matches the server contract). */
+  onConfirm: (amountUsd: number) => Promise<boolean>
   availableQuota: number
   transferring: boolean
 }
@@ -59,7 +60,8 @@ export function TransferDialog({
   }, [open])
 
   const handleConfirm = async () => {
-    const success = await onConfirm(amount)
+    const amountUsd = amount / QUOTA_PER_DOLLAR
+    const success = await onConfirm(amountUsd)
     if (success) {
       onOpenChange(false)
     }

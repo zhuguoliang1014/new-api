@@ -721,8 +721,10 @@ const TopUp = () => {
       showError(t('划转金额最低为') + ' ' + renderQuota(getQuotaPerUnit()));
       return;
     }
+    const perUnit = getQuotaPerUnit();
+    const amountUsd = perUnit > 0 ? transferAmount / perUnit : transferAmount;
     const res = await API.post(`/api/user/aff_transfer`, {
-      quota: transferAmount,
+      amount: amountUsd,
     });
     const { success, message } = res.data;
     if (success) {
