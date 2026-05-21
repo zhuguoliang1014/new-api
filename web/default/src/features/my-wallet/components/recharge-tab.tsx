@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Gift, Loader2, Receipt, WalletCards } from 'lucide-react'
+import { Gift, Loader2, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -31,7 +31,6 @@ interface RechargeTabProps {
   redeeming: boolean
   redemptionEnabled: boolean
   loading?: boolean
-  onOpenBilling: () => void
 }
 
 function formatUsd(value: number): string {
@@ -66,7 +65,6 @@ export function RechargeTab({
   redeeming,
   redemptionEnabled,
   loading,
-  onOpenBilling,
 }: RechargeTabProps) {
   const { t } = useTranslation()
   const [localAmount, setLocalAmount] = useState(topupAmount.toString())
@@ -91,17 +89,6 @@ export function RechargeTab({
           title={t('Add Funds')}
           description={t('Pay in CNY (¥), receive USD ($) credit')}
           icon={<WalletCards className='h-4 w-4' />}
-          action={
-            <Button
-              variant='outline'
-              size='sm'
-              onClick={onOpenBilling}
-              className='w-full gap-2 sm:w-auto'
-            >
-              <Receipt className='h-4 w-4' />
-              {t('Order History')}
-            </Button>
-          }
           contentClassName='space-y-4 sm:space-y-5'
         >
           {loading ? (

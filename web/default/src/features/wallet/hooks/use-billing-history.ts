@@ -37,11 +37,22 @@ interface UseBillingHistoryOptions {
   initialPage?: number
   /** Initial page size */
   initialPageSize?: number
+  /**
+   * Force the hook to only fetch the current user's orders, even when the
+   * caller is an admin. Use this on user-facing pages like "My Orders" so
+   * admins don't accidentally see every user's orders there.
+   */
+  userOnly?: boolean
 }
 
 export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
-  const { initialPage = 1, initialPageSize = 10 } = options
+  const {
+    initialPage = 1,
+    initialPageSize = 10,
+    userOnly = false,
+  } = options
   const isAdmin = useIsAdmin()
+  const fetchAsAdmin = isAdmin && !userOnly
 
   const [records, setRecords] = useState<TopupRecord[]>([])
   const [total, setTotal] = useState(0)
@@ -57,7 +68,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
   const fetchBillingHistory = useCallback(async () => {
     setLoading(true)
     try {
-      const response = isAdmin
+      const response = fetchAsAdmin
         ? await getAllBillingHistory(page, pageSize, keyword)
         : await getUserBillingHistory(page, pageSize, keyword)
 
@@ -80,7 +91,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     } finally {
       setLoading(false)
     }
-  }, [isAdmin, page, pageSize, keyword])
+  }, [fetchAsAdmin, page, pageSize, keyword])
 
   /**
    * Complete a pending order (admin only)
@@ -152,7 +163,7 @@ export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
     keyword,
     loading,
     completing,
-    isAdmin,
+    isAdmin: fetchAsAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,

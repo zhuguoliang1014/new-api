@@ -90,7 +90,10 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 			CompleteTime:    topUp.CompleteTime,
 			Status:          topUp.Status,
 			OrderType:       "topup",
-			OrderTitle:      "Top-up",
+			// Leave OrderTitle empty so the frontend can localize it as
+			// "充值" / "Quota Top-up" based on order_type. Subscription rows
+			// override OrderTitle below with the plan title.
+			OrderTitle:      "",
 			PaymentCurrency: inferPaymentCurrency(topUp.PaymentMethod, topUp.PaymentProvider),
 		})
 		tradeNos = append(tradeNos, topUp.TradeNo)
@@ -138,9 +141,19 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 			continue
 		}
 		records[i].OrderType = "subscription"
-		records[i].OrderTitle = "Subscription"
-		if plan, ok := plansById[order.PlanId]; ok && strings.TrimSpace(plan.Title) != "" {
-			records[i].OrderTitle = plan.Title
+		// Default to empty so frontend can localize when the plan has no title;
+		// override with the plan title below when available.
+		records[i].OrderTitle = ""
+		if plan, ok := plansById[order.PlanId]; ok {
+			if strings.TrimSpace(plan.Title) != "" {
+				records[i].OrderTitle = plan.Title
+			}
+			// Subscription TopUp.Amount is typically 0 because the quota comes
+			// from the plan's TotalAmount field. Convert plan total quota to
+			// USD dollars to match the Amount semantics used for other order types.
+			if records[i].Amount == 0 && plan.TotalAmount > 0 && common.QuotaPerUnit > 0 {
+				records[i].Amount = decimal.NewFromInt(plan.TotalAmount).Div(decimal.NewFromFloat(common.QuotaPerUnit)).InexactFloat64()
+			}
 		}
 		if records[i].PaymentMethod == "" {
 			records[i].PaymentMethod = order.PaymentMethod

@@ -8,7 +8,6 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs'
-import { BillingHistoryDialog } from '@/features/wallet/components/dialogs/billing-history-dialog'
 import { PaymentConfirmDialog } from '@/features/wallet/components/dialogs/payment-confirm-dialog'
 import { TransferDialog } from '@/features/wallet/components/dialogs/transfer-dialog'
 import { PAYMENT_TYPES } from '@/features/wallet/constants'
@@ -18,13 +17,9 @@ import { RechargeTab } from './components/recharge-tab'
 import { SubscriptionTab } from './components/subscription-tab'
 import { useMyWallet } from './hooks/use-my-wallet'
 
-interface MyWalletProps {
-  initialShowHistory?: boolean
-}
-
-export function MyWallet({ initialShowHistory }: MyWalletProps) {
+export function MyWallet() {
   const { t } = useTranslation()
-  const wallet = useMyWallet(initialShowHistory)
+  const wallet = useMyWallet()
 
   const alipayMethod = useMemo(
     () => ({
@@ -100,7 +95,6 @@ export function MyWallet({ initialShowHistory }: MyWalletProps) {
                   redeeming={wallet.redeeming}
                   redemptionEnabled={wallet.redemptionEnabled}
                   loading={wallet.topupLoading}
-                  onOpenBilling={() => wallet.setBillingDialogOpen(true)}
                 />
               </TabsContent>
 
@@ -137,11 +131,6 @@ export function MyWallet({ initialShowHistory }: MyWalletProps) {
         onConfirm={wallet.handleTransfer}
         availableQuota={wallet.user?.aff_quota ?? 0}
         transferring={wallet.transferring}
-      />
-
-      <BillingHistoryDialog
-        open={wallet.billingDialogOpen}
-        onOpenChange={wallet.setBillingDialogOpen}
       />
 
       <HupijiaoPaymentDialog

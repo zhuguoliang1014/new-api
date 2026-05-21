@@ -36,6 +36,7 @@ import {
   Settings,
   Gift,
   ImagePlay,
+  ScrollText,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { WORKSPACE_IDS } from '@/components/layout/lib/workspace-registry'
@@ -142,6 +143,11 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: t('Order History'),
+            url: '/all-orders',
+            icon: ScrollText,
           },
           {
             title: t('Models'),

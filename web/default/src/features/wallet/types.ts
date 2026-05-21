@@ -266,6 +266,12 @@ export interface TopupRecord {
   complete_time?: number
   /** Payment status */
   status: TopupStatus
+  /** Order type: 'topup' (quota top-up) or 'subscription' */
+  order_type?: 'topup' | 'subscription' | string
+  /** Order title (e.g. plan title for subscription orders) */
+  order_title?: string
+  /** Payment currency code (e.g. 'CNY', 'USD') */
+  payment_currency?: string
 }
 
 /**

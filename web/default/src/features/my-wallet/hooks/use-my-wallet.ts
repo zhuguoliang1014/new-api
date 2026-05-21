@@ -65,7 +65,7 @@ function getHupijiaoPresets(
   return mergePresetAmounts(amounts, discounts)
 }
 
-export function useMyWallet(initialShowHistory?: boolean) {
+export function useMyWallet() {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<WalletTab>('subscription')
   const [user, setUser] = useState<UserWalletData | null>(null)
@@ -77,7 +77,6 @@ export function useMyWallet(initialShowHistory?: boolean) {
   const [paymentLoading, setPaymentLoading] = useState<string | null>(null)
   const [confirmDialogOpen, setConfirmDialogOpen] = useState(false)
   const [transferDialogOpen, setTransferDialogOpen] = useState(false)
-  const [billingDialogOpen, setBillingDialogOpen] = useState(false)
   const [redemptionCode, setRedemptionCode] = useState('')
   const [hupijiaoDialogOpen, setHupijiaoDialogOpen] = useState(false)
   const [hupijiaoPayment, setHupijiaoPayment] =
@@ -142,12 +141,6 @@ export function useMyWallet(initialShowHistory?: boolean) {
     fetchUser()
   }, [fetchUser])
 
-  useEffect(() => {
-    if (initialShowHistory) {
-      setBillingDialogOpen(true)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [initialShowHistory])
 
   // Initialize default amount once topupInfo arrives
   useEffect(() => {
@@ -286,8 +279,6 @@ export function useMyWallet(initialShowHistory?: boolean) {
     setConfirmDialogOpen,
     transferDialogOpen,
     setTransferDialogOpen,
-    billingDialogOpen,
-    setBillingDialogOpen,
     hupijiaoDialogOpen,
     setHupijiaoDialogOpen,
     hupijiaoPayment,
