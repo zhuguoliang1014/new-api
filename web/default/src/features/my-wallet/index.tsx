@@ -9,12 +9,12 @@ import {
   TabsTrigger,
 } from '@/components/ui/tabs'
 import { PaymentConfirmDialog } from '@/features/wallet/components/dialogs/payment-confirm-dialog'
-import { TransferDialog } from '@/features/wallet/components/dialogs/transfer-dialog'
 import { PAYMENT_TYPES } from '@/features/wallet/constants'
 import { AffiliateTab } from './components/affiliate-tab'
 import { BalanceStatsCard } from './components/balance-stats-card'
 import { RechargeTab } from './components/recharge-tab'
 import { SubscriptionTab } from './components/subscription-tab'
+import { TransferDialog } from './components/transfer-dialog'
 import { useMyWallet } from './hooks/use-my-wallet'
 
 export function MyWallet() {

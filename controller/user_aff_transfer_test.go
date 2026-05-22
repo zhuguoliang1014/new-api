@@ -29,16 +29,16 @@ func TestParseTransferAffQuotaRequestUsesUSDAmount(t *testing.T) {
 	withQuotaPerUnit(t, 500000)
 
 	amount, quota, err := parseTransferAffQuotaRequest(mustMarshalTransferPayload(t, map[string]any{
-		"amount": 60,
+		"amount": 6.5,
 	}))
 	if err != nil {
 		t.Fatalf("parseTransferAffQuotaRequest returned error: %v", err)
 	}
-	if amount != 60 {
-		t.Fatalf("amount = %v, want 60", amount)
+	if amount != 6.5 {
+		t.Fatalf("amount = %v, want 6.5", amount)
 	}
-	if quota != 30000000 {
-		t.Fatalf("quota = %d, want 30000000", quota)
+	if quota != 3250000 {
+		t.Fatalf("quota = %d, want 3250000", quota)
 	}
 }
 
@@ -70,11 +70,28 @@ func TestParseTransferAffQuotaRequestFloorsToVisibleCents(t *testing.T) {
 	}
 }
 
-func TestParseTransferAffQuotaRequestRejectsBelowOneDollar(t *testing.T) {
+func TestParseTransferAffQuotaRequestAcceptsOneCent(t *testing.T) {
+	withQuotaPerUnit(t, 500000)
+
+	amount, quota, err := parseTransferAffQuotaRequest(mustMarshalTransferPayload(t, map[string]any{
+		"amount": 0.01,
+	}))
+	if err != nil {
+		t.Fatalf("parseTransferAffQuotaRequest returned error: %v", err)
+	}
+	if amount != 0.01 {
+		t.Fatalf("amount = %v, want 0.01", amount)
+	}
+	if quota != 5000 {
+		t.Fatalf("quota = %d, want 5000", quota)
+	}
+}
+
+func TestParseTransferAffQuotaRequestRejectsBelowOneCent(t *testing.T) {
 	withQuotaPerUnit(t, 500000)
 
 	_, _, err := parseTransferAffQuotaRequest(mustMarshalTransferPayload(t, map[string]any{
-		"amount": 0.99,
+		"amount": 0.009,
 	}))
 	if !errors.Is(err, errTransferAmountMinimum) {
 		t.Fatalf("err = %v, want errTransferAmountMinimum", err)

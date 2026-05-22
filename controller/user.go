@@ -358,12 +358,20 @@ var (
 	errTransferAmountMinimum        = errors.New("transfer amount minimum")
 )
 
+func minTransferAffQuota() int {
+	minQuota := int(common.QuotaPerUnit / 100)
+	if minQuota < 1 {
+		return 1
+	}
+	return minQuota
+}
+
 func calculateTransferQuotaFromUSD(amount float64) (float64, int, error) {
 	if math.IsNaN(amount) || math.IsInf(amount, 0) || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
 		return 0, 0, errTransferAmountInvalid
 	}
 	cents := math.Floor(amount*100 + 1e-9)
-	if cents < 100 {
+	if cents < 1 {
 		return 0, 0, errTransferAmountMinimum
 	}
 	normalizedAmount := cents / 100
@@ -373,7 +381,7 @@ func calculateTransferQuotaFromUSD(amount float64) (float64, int, error) {
 		return 0, 0, errTransferAmountInvalid
 	}
 	quota := int(quotaFloat)
-	if float64(quota) < common.QuotaPerUnit {
+	if quota < minTransferAffQuota() {
 		return 0, 0, errTransferAmountMinimum
 	}
 	return normalizedAmount, quota, nil
@@ -416,7 +424,7 @@ func TransferAffQuota(c *gin.Context) {
 		case errors.Is(err, errTransferQuotaFieldDeprecated):
 			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountFieldRequired)
 		case errors.Is(err, errTransferAmountMinimum):
-			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountMinimum, map[string]any{"Min": "$1.00"})
+			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountMinimum, map[string]any{"Min": "$0.01"})
 		case errors.Is(err, errTransferAmountInvalid):
 			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		default:
