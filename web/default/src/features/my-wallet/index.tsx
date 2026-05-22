@@ -49,18 +49,18 @@ export function MyWallet() {
               onValueChange={(value) =>
                 wallet.setActiveTab(
                   (value as 'recharge' | 'subscription' | 'affiliate') ||
-                    'subscription'
+                    'recharge'
                 )
               }
               className='gap-4'
             >
               <div className='overflow-x-auto pb-1'>
                 <TabsList className='h-10 min-w-max'>
-                  <TabsTrigger value='subscription' className='px-4'>
-                    {t('Subscription')}
-                  </TabsTrigger>
                   <TabsTrigger value='recharge' className='px-4'>
                     {t('Recharge')}
+                  </TabsTrigger>
+                  <TabsTrigger value='subscription' className='px-4'>
+                    {t('Subscription')}
                   </TabsTrigger>
                   <TabsTrigger value='affiliate' className='px-4'>
                     {t('Referral Program')}
