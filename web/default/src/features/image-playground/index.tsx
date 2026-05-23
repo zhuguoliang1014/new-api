@@ -16,8 +16,8 @@ import type { ApiKey } from '@/features/keys/types'
 import { useImagePlaygroundStore } from './store'
 
 const STORAGE_KEY = 'image_playground_selected_key_id'
-const IMAGE_PLAYGROUND_BASE = 'https://aiproxy.chydocx.cn/image/'
-const API_URL = 'https://aiproxy.chydocx.cn/v1'
+const IMAGE_PLAYGROUND_BASE = 'https://aicloudroute.com/image/'
+const API_URL = 'https://aicloudroute.com/v1'
 const MODEL = 'gpt-image-2'
 
 function isKeyUsable(key: ApiKey) {
