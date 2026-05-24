@@ -4618,6 +4618,8 @@
     "Sold {{count}}": "{{count}}件販売済み",
     "Starts in": "販売開始まで",
     "Subscription History": "Subscription History",
+    "Subscriptions": "サブスクリプション",
+    "Show expired subscriptions": "期限切れのサブスクリプションを表示",
     "Unlimited purchases": "Unlimited purchases",
     "{{quota}} quota": "{{quota}} quota",
     "{{duration}} validity": "{{duration}} validity",

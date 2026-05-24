@@ -4659,6 +4659,8 @@
     "Sold {{count}}": "已售 {{count}} 份",
     "Starts in": "距开售",
     "Subscription History": "历史订阅",
+    "Subscriptions": "订阅",
+    "Show expired subscriptions": "展开已过期订阅",
     "Unlimited purchases": "不限购买次数",
     "{{quota}} quota": "{{quota}} 额度",
     "{{duration}} validity": "{{duration}}有效期",
