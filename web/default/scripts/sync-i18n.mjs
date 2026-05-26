@@ -216,6 +216,9 @@ async function main() {
   const entries = await fs.readdir(LOCALES_DIR, { withFileTypes: true })
   const localeFiles = entries
     .filter((e) => e.isFile() && e.name.endsWith('.json'))
+    // Local fork: local-{lang}.json holds fork-only keys in a separate
+    // i18next namespace; they are not aligned to the upstream base.
+    .filter((e) => !e.name.startsWith('local-'))
     .map((e) => e.name)
     .sort((a, b) => a.localeCompare(b))
 

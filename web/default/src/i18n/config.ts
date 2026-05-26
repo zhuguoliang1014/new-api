@@ -25,14 +25,24 @@ import ja from './locales/ja.json'
 import ru from './locales/ru.json'
 import vi from './locales/vi.json'
 import zh from './locales/zh.json'
+import enLocal from './locales/local-en.json'
+import frLocal from './locales/local-fr.json'
+import jaLocal from './locales/local-ja.json'
+import ruLocal from './locales/local-ru.json'
+import viLocal from './locales/local-vi.json'
+import zhLocal from './locales/local-zh.json'
 
+// Local fork: keys in `translation` come from upstream {lang}.json; keys in
+// `local` come from local-{lang}.json. fallbackNS makes `t('foo')` look in
+// `translation` first, then transparently fall through to `local`, so call
+// sites stay unchanged.
 export const resources = {
-  en,
-  zh,
-  fr,
-  ru,
-  ja,
-  vi,
+  en: { ...en, ...enLocal },
+  zh: { ...zh, ...zhLocal },
+  fr: { ...fr, ...frLocal },
+  ru: { ...ru, ...ruLocal },
+  ja: { ...ja, ...jaLocal },
+  vi: { ...vi, ...viLocal },
 } as const
 
 i18n
@@ -44,6 +54,9 @@ i18n
     supportedLngs: ['en', 'zh', 'fr', 'ru', 'ja', 'vi'],
     load: 'languageOnly', // Convert zh-CN -> zh
     nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
+    defaultNS: 'translation',
+    fallbackNS: 'local',
+    ns: ['translation', 'local'],
     debug: import.meta.env.DEV,
     interpolation: {
       escapeValue: false, // not needed for react as it escapes by default
