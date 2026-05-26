@@ -24,6 +24,7 @@ import { useTranslation } from 'react-i18next'
 import { useAuthStore } from '@/stores/auth-store'
 import { getCurrencyLabel, isCurrencyDisplayEnabled } from '@/lib/currency'
 import { formatNumber, formatQuota } from '@/lib/format'
+import { LOCAL_CONFIG } from '@/lib/local-config'
 import { computeTimeRange } from '@/lib/time'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
@@ -337,7 +338,7 @@ export function SummaryCards() {
 
           <Button
             className='justify-between'
-            render={<Link to='/my-wallet' />}
+            render={<Link to={LOCAL_CONFIG.walletRoute} />}
           >
             <span>{t('Wallet')}</span>
             <ArrowRight data-icon='inline-end' />
