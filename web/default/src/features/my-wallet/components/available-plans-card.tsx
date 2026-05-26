@@ -15,7 +15,7 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
-import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
 import {
   formatDuration,
   formatResetPeriod,
@@ -373,7 +373,7 @@ export function AvailablePlansCard({
         </div>
       </TitledCard>
 
-      <SubscriptionPurchaseDialog
+      <LocalSubscriptionPurchaseDialog
         open={purchaseOpen}
         onOpenChange={(open) => {
           setPurchaseOpen(open)
