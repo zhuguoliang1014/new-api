@@ -112,17 +112,7 @@ func InitOptionMap() {
 	common.OptionMap["WaffoPancakeReturnURL"] = setting.WaffoPancakeReturnURL
 	common.OptionMap["WaffoPancakeUnitPrice"] = strconv.FormatFloat(setting.WaffoPancakeUnitPrice, 'f', -1, 64)
 	common.OptionMap["WaffoPancakeMinTopUp"] = strconv.Itoa(setting.WaffoPancakeMinTopUp)
-	common.OptionMap["HupijiaoEnabled"] = strconv.FormatBool(setting.HupijiaoEnabled)
-	common.OptionMap["HupijiaoAppId"] = setting.HupijiaoAppId
-	common.OptionMap["HupijiaoAppSecret"] = setting.HupijiaoAppSecret
-	common.OptionMap["HupijiaoApiUrl"] = setting.HupijiaoApiUrl
-	common.OptionMap["HupijiaoNotifyUrl"] = setting.HupijiaoNotifyUrl
-	common.OptionMap["HupijiaoReturnUrl"] = setting.HupijiaoReturnUrl
-	common.OptionMap["HupijiaoMinTopUp"] = strconv.Itoa(setting.HupijiaoMinTopUp)
-	common.OptionMap["HupijiaoPrice"] = strconv.FormatFloat(setting.HupijiaoPrice, 'f', -1, 64)
-	common.OptionMap["HupijiaoAmountOptions"] = setting.HupijiaoAmountOptions
-	common.OptionMap["HupijiaoAmountDiscount"] = setting.HupijiaoAmountDiscount
-	common.OptionMap["HupijiaoInviteRewardRatio"] = strconv.FormatFloat(setting.HupijiaoInviteRewardRatio, 'f', -1, 64)
+	SeedHupijiaoOptions()
 	common.OptionMap["TopupUpgradeGroup"] = setting.TopupUpgradeGroup
 	common.OptionMap["WaffoPancakeStoreID"] = setting.WaffoPancakeStoreID
 	common.OptionMap["WaffoPancakeProductID"] = setting.WaffoPancakeProductID
@@ -222,8 +212,7 @@ func loadOptionsFromDatabase() {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
-	migrateHupijiaoPricingFromLegacyIfNeeded(loadedKeys)
-	migrateHupijiaoTopupAmountToUsdCentsIfNeeded(loadedKeys)
+	RunHupijiaoMigrations(loadedKeys)
 }
 
 func SyncOptions(frequency int) {
@@ -291,6 +280,11 @@ func updateOptionMap(key string, value string) (err error) {
 	// 检查是否是模型配置 - 使用更规范的方式处理
 	if handleConfigUpdate(key, value) {
 		return nil // 已由配置系统处理
+	}
+
+	// 本地魔改：Hupijiao 选项委托给独立文件处理
+	if UpdateHupijiaoOption(key, value) {
+		return nil
 	}
 
 	// 处理传统配置项...
@@ -494,28 +488,6 @@ func updateOptionMap(key string, value string) (err error) {
 		setting.WaffoPancakeUnitPrice, _ = strconv.ParseFloat(value, 64)
 	case "WaffoPancakeMinTopUp":
 		setting.WaffoPancakeMinTopUp, _ = strconv.Atoi(value)
-	case "HupijiaoEnabled":
-		setting.HupijiaoEnabled = value == "true"
-	case "HupijiaoAppId":
-		setting.HupijiaoAppId = value
-	case "HupijiaoAppSecret":
-		setting.HupijiaoAppSecret = value
-	case "HupijiaoApiUrl":
-		setting.HupijiaoApiUrl = value
-	case "HupijiaoNotifyUrl":
-		setting.HupijiaoNotifyUrl = value
-	case "HupijiaoReturnUrl":
-		setting.HupijiaoReturnUrl = value
-	case "HupijiaoMinTopUp":
-		setting.HupijiaoMinTopUp, _ = strconv.Atoi(value)
-	case "HupijiaoPrice":
-		setting.HupijiaoPrice, _ = strconv.ParseFloat(value, 64)
-	case "HupijiaoAmountOptions":
-		setting.HupijiaoAmountOptions = value
-	case "HupijiaoAmountDiscount":
-		setting.HupijiaoAmountDiscount = value
-	case "HupijiaoInviteRewardRatio":
-		setting.HupijiaoInviteRewardRatio, _ = strconv.ParseFloat(value, 64)
 	case "TopupUpgradeGroup":
 		setting.TopupUpgradeGroup = strings.TrimSpace(value)
 	case "TopupGroupRatio":

@@ -56,8 +56,6 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)
-		apiRouter.POST("/hupijiao/webhook", controller.HupijiaoWebhook)
-		apiRouter.POST("/hupijiao/subscription/webhook", controller.HupijiaoSubscriptionWebhook)
 		// :env separates test vs prod URLs so the operator can register each
 		// in Pancake's matching webhook slot; handler enforces env match.
 		apiRouter.POST("/waffo-pancake/webhook/:env", controller.WaffoPancakeWebhook)
@@ -106,8 +104,6 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.POST("/waffo/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPay)
 				selfRoute.POST("/waffo-pancake/amount", controller.RequestWaffoPancakeAmount)
 				selfRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.RequestWaffoPancakePay)
-				selfRoute.POST("/hupijiao/amount", controller.RequestHupijiaoAmount)
-				selfRoute.POST("/hupijiao/pay", middleware.CriticalRateLimit(), controller.RequestHupijiaoPay)
 				selfRoute.GET("/topup/:trade_no/status", controller.GetTopUpOrderStatus)
 				selfRoute.POST("/topup/:trade_no/repay", middleware.CriticalRateLimit(), controller.RepayTopUpOrder)
 				selfRoute.DELETE("/topup/:trade_no", controller.CancelTopUpOrder)
@@ -128,6 +124,9 @@ func SetApiRouter(router *gin.Engine) {
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
+
+				// Local-only self-scoped routes — see router/api-router-local.go
+				RegisterLocalSelfRoutes(selfRoute)
 			}
 
 			adminRoute := userRoute.Group("/")
@@ -166,7 +165,6 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionRoute.POST("/epay/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestEpay)
 			subscriptionRoute.POST("/stripe/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestStripePay)
 			subscriptionRoute.POST("/creem/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestCreemPay)
-			subscriptionRoute.POST("/hupijiao/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestHupijiao)
 			subscriptionRoute.GET("/order/:trade_no/status", controller.GetSubscriptionOrderStatus)
 			subscriptionRoute.POST("/waffo-pancake/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestWaffoPancakePay)
 		}
@@ -186,23 +184,8 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
 
-		// Lucky Bag
-		luckyBagRoute := apiRouter.Group("/lucky-bag")
-		luckyBagRoute.Use(middleware.UserAuth())
-		{
-			luckyBagRoute.GET("/status", controller.LuckyBagStatus)
-			luckyBagRoute.POST("/enter", controller.EnterLuckyBag)
-			luckyBagRoute.GET("/history", controller.LuckyBagHistory)
-			luckyBagRoute.POST("/viewed", controller.MarkLuckyBagViewed)
-		}
-		luckyBagAdminRoute := apiRouter.Group("/admin/lucky-bag")
-		luckyBagAdminRoute.Use(middleware.AdminAuth())
-		{
-			luckyBagAdminRoute.GET("", controller.AdminGetLuckyBagConfig)
-			luckyBagAdminRoute.PUT("", controller.AdminUpdateLuckyBagConfig)
-			luckyBagAdminRoute.POST("/draw", controller.AdminDrawLuckyBag)
-			luckyBagAdminRoute.POST("/notify-test", controller.AdminSendWechatTest)
-		}
+		// Local-only routes (Hupijiao webhooks/subscription, Lucky Bag) — see router/api-router-local.go
+		RegisterLocalRoutes(apiRouter, subscriptionRoute)
 
 		// Subscription payment callbacks (no auth)
 		apiRouter.POST("/subscription/epay/notify", controller.SubscriptionEpayNotify)
