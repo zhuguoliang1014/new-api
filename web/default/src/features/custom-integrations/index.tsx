@@ -2,6 +2,7 @@ import { SettingsPage } from '@/features/system-settings/components/settings-pag
 import {
   CUSTOM_INTEGRATIONS_DEFAULT_SECTION,
   getCustomIntegrationsSectionContent,
+  getCustomIntegrationsSectionMeta,
 } from './section-registry'
 import type { CustomIntegrationSettings } from './types'
 
@@ -35,6 +36,7 @@ export function CustomIntegrationsSettings() {
       defaultSettings={defaultSettings}
       defaultSection={CUSTOM_INTEGRATIONS_DEFAULT_SECTION}
       getSectionContent={getCustomIntegrationsSectionContent}
+      getSectionMeta={getCustomIntegrationsSectionMeta}
     />
   )
 }

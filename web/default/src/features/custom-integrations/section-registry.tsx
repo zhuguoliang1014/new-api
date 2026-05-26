@@ -97,3 +97,4 @@ export const getCustomIntegrationsSectionNavItems = (t: TFunction) =>
   registry.getSectionNavItems(t)
 export const getCustomIntegrationsSectionContent =
   registry.getSectionContent
+export const getCustomIntegrationsSectionMeta = registry.getSectionMeta

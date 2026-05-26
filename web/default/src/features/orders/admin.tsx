@@ -7,9 +7,6 @@ export function AdminOrders() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>{t('Order History')}</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        {t('Browse all top-up and subscription orders across the platform.')}
-      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className='bg-background rounded-lg border p-4'>
           <BillingHistoryList scrollAreaClassName='h-[calc(100vh-250px)] min-h-[420px] pr-4' />

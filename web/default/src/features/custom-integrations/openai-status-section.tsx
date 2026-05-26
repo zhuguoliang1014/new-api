@@ -64,12 +64,7 @@ export function OpenAIStatusMonitorSection({ defaultValues }: Props) {
   }
 
   return (
-    <SettingsSection
-      title={t('OpenAI Status Monitor')}
-      description={t(
-        'Poll OpenAI status RSS every 5 minutes and push incidents to the configured WeChat groups.'
-      )}
-    >
+    <SettingsSection title={t('OpenAI Status Monitor')}>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
           <FormField

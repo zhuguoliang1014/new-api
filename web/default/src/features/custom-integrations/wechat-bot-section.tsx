@@ -91,12 +91,7 @@ export function WechatBotSection({ defaultValues }: Props) {
   }
 
   return (
-    <SettingsSection
-      title={t('WeChat Group Notifications')}
-      description={t(
-        'Send lucky bag draw reminders to WeChat groups 1 hour before each draw'
-      )}
-    >
+    <SettingsSection title={t('WeChat Group Notifications')}>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className='space-y-6'>
           <FormField

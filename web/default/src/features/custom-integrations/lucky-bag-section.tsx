@@ -149,10 +149,7 @@ export function LuckyBagSection({ defaultValues }: Props) {
   }
 
   return (
-    <SettingsSection
-      title={t('Lucky Bag Draw Times')}
-      description={t('Configure when lucky bag draws run each day')}
-    >
+    <SettingsSection title={t('Lucky Bag Draw Times')}>
       <div className='space-y-4'>
         <Label>{t('Draw times')}</Label>
         <p className='text-muted-foreground -mt-2 text-xs'>

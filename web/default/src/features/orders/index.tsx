@@ -5,9 +5,6 @@ export function Orders() {
   return (
     <SectionPageLayout>
       <SectionPageLayout.Title>我的订单</SectionPageLayout.Title>
-      <SectionPageLayout.Description>
-        查看充值和订阅订单记录
-      </SectionPageLayout.Description>
       <SectionPageLayout.Content>
         <div className='bg-background rounded-lg border p-4'>
           <BillingHistoryList

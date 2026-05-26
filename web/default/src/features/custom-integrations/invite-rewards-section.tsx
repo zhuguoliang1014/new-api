@@ -58,12 +58,7 @@ export function InviteRewardsSection({ defaultValues }: Props) {
   }
 
   return (
-    <SettingsSection
-      title={t('Invitation Rewards')}
-      description={t(
-        'Configure rewards for invited users who pay through Hupijiao'
-      )}
-    >
+    <SettingsSection title={t('Invitation Rewards')}>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className='space-y-6'>
           <FormField

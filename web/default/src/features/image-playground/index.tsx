@@ -69,7 +69,8 @@ export function ImagePlaygroundPanel() {
       .finally(() => setLoadingKey(false))
   }, [selectedId])
 
-  const handleSelect = (val: string) => {
+  const handleSelect = (val: string | null) => {
+    if (val === null) return
     resolvedIdRef.current = null
     setSelectedId(Number(val))
   }
@@ -115,9 +116,7 @@ export function ImagePlaygroundPanel() {
           <p className='text-muted-foreground text-sm'>
             {t('You need an API Key to use Image Playground')}
           </p>
-          <Button asChild>
-            <Link to='/keys'>{t('Create API Key')}</Link>
-          </Button>
+          <Button render={<Link to='/keys' />}>{t('Create API Key')}</Button>
         </div>
       ) : iframeUrl ? (
         <iframe

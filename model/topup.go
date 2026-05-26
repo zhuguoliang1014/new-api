@@ -53,6 +53,7 @@ const (
 	PaymentMethodWaffo        = "waffo"
 	PaymentMethodWaffoPancake = "waffo_pancake"
 	PaymentMethodHupijiao     = "hupijiao"
+	PaymentMethodBalance      = "balance"
 )
 
 const (
@@ -62,6 +63,7 @@ const (
 	PaymentProviderWaffo        = "waffo"
 	PaymentProviderWaffoPancake = "waffo_pancake"
 	PaymentProviderHupijiao     = "hupijiao"
+	PaymentProviderBalance      = "balance"
 )
 
 var (

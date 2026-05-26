@@ -305,12 +305,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
   }
 
   return (
-    <SettingsSection
-      title={t('Hupijiao Gateway')}
-      description={t(
-        'Hupijiao Alipay in CNY; credentials and dedicated top-up pricing (independent from Payment Gateway)'
-      )}
-    >
+    <SettingsSection title={t('Hupijiao Gateway')}>
       <Form {...form}>
         <form
           className='space-y-8'

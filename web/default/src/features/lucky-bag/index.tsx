@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -134,6 +134,14 @@ function buildDebugActivity(overrides: Partial<LuckyBagActivity> = {}): LuckyBag
     winner_name: '',
     winner_quota: 0,
     winner_code: '',
+    winner2_user_id: 0,
+    winner2_name: '',
+    winner2_quota: 0,
+    winner2_code: '',
+    winner3_user_id: 0,
+    winner3_name: '',
+    winner3_quota: 0,
+    winner3_code: '',
     drawn_at: 0,
     created_at: timestamp,
     ...overrides,
@@ -601,7 +609,7 @@ function ActivityCard({
             y: entering ? [0, -4, 0] : [0, -8, 0],
           }
 
-  const bagTransition =
+  const bagTransition: Record<string, unknown> =
     drawAnimationPhase === 'shaking'
       ? { duration: 0.8, ease: 'easeInOut' }
       : drawAnimationPhase === 'opening'
@@ -2108,6 +2116,7 @@ export function LuckyBag() {
           drawn_at: Math.floor(Date.now() / 1000),
         }),
         is_winner: isWinner,
+        winner_rank: isWinner ? 1 : 0,
         winner_viewed: false,
       }
     },
@@ -2179,6 +2188,7 @@ export function LuckyBag() {
               {
                 activity: activities[1],
                 is_winner: true,
+                winner_rank: 1,
                 winner_viewed: false,
               },
             ]
