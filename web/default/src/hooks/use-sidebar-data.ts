@@ -22,23 +22,20 @@ import {
   CreditCard,
   FileText,
   FlaskConical,
-  Gift,
   ImagePlay,
   Key,
   LayoutDashboard,
   ListTodo,
   MessageSquare,
   Radio,
-  Receipt,
-  ScrollText,
   Settings,
   Ticket,
   User,
   Users,
-  Wallet,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { type SidebarData } from '@/components/layout/types'
+import { injectLocalNavItems } from './use-local-nav-items'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -49,7 +46,7 @@ import { type SidebarData } from '@/components/layout/types'
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
 
-  return {
+  const base: SidebarData = {
     navGroups: [
       {
         id: 'chat',
@@ -110,21 +107,6 @@ export function useSidebarData(): SidebarData {
         title: t('Personal'),
         items: [
           {
-            title: t('Wallet'),
-            url: '/my-wallet',
-            icon: Wallet,
-          },
-          {
-            title: t('Lucky Bag'),
-            url: '/lucky-bag',
-            icon: Gift,
-          },
-          {
-            title: '我的订单',
-            url: '/orders',
-            icon: Receipt,
-          },
-          {
             title: t('Profile'),
             url: '/profile',
             icon: User,
@@ -139,11 +121,6 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
-          },
-          {
-            title: t('Order History'),
-            url: '/all-orders',
-            icon: ScrollText,
           },
           {
             title: t('Models'),
@@ -175,4 +152,6 @@ export function useSidebarData(): SidebarData {
       },
     ],
   }
+
+  return injectLocalNavItems(base, t)
 }
