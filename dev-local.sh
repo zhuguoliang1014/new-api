@@ -59,10 +59,28 @@ fi
 [ -x "${AIR_BIN}" ] || die "air 安装失败，请手动检查"
 [ -f "${ROOT_DIR}/.air.toml" ] || die "缺少 ${ROOT_DIR}/.air.toml，无法启动后端热重载"
 
-if [ ! -d "${FRONTEND_DIR}/node_modules" ]; then
-  log "前端 node_modules 缺失，执行 bun install ..."
+if [ ! -x "${FRONTEND_DIR}/node_modules/.bin/rsbuild" ]; then
+  log "前端依赖缺失或不完整，执行 bun install ..."
   ( cd "${FRONTEND_DIR}" && bun install )
 fi
+
+# Go embed requires the frontend dist directories and index files to exist at
+# compile time. In local dev the real frontend is served by Rsbuild, so use
+# ignored placeholders when production assets have not been built yet.
+prepare_embed_placeholders() {
+  created=0
+  for dist_dir in "${ROOT_DIR}/web/default/dist" "${ROOT_DIR}/web/classic/dist"; do
+    if [ ! -f "${dist_dir}/index.html" ]; then
+      mkdir -p "${dist_dir}"
+      printf '%s\n' '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body></html>' > "${dist_dir}/index.html"
+      created=1
+    fi
+  done
+  if [ "${created}" -eq 1 ]; then
+    log "已准备 Go embed 占位前端产物"
+  fi
+}
+prepare_embed_placeholders
 
 # ---- 端口占用警告 ----
 check_port() {
