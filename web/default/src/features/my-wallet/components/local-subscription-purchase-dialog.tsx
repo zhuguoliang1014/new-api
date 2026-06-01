@@ -1,30 +1,51 @@
-// Local fork wrapper around SubscriptionPurchaseDialog.
-// Adds the Hupijiao (Alipay) payment flow on top of the upstream dialog by
-// passing render-prop slots (extraPaymentMethods, priceDisplayOverride). All
-// Hupijiao state, handlers, and the QR-code dialog live here; the upstream
-// dialog stays free of fork-specific code.
+// Local fork subscription purchase dialog. Independent of new-api's upstream
+// SubscriptionPurchaseDialog — only the Hupijiao (Alipay) payment flow is
+// supported here. Do NOT delegate to upstream dialog; upstream has hardcoded
+// balance-payment UI we don't want.
 
-import { useState, type ComponentProps } from 'react'
+import { useState } from 'react'
+import { Crown, CalendarClock, Package } from 'lucide-react'
 import { SiAlipay } from 'react-icons/si'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Separator } from '@/components/ui/separator'
+import { GroupBadge } from '@/components/group-badge'
 import { HupijiaoPaymentDialog } from '@/components/payment/hupijiao-payment-dialog'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 import { paySubscriptionHupijiao } from '@/features/subscriptions/api'
-import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import {
+  formatDuration,
+  formatResetPeriod,
+} from '@/features/subscriptions/lib'
+import type { PlanRecord } from '@/features/subscriptions/types'
 
-type BaseProps = ComponentProps<typeof SubscriptionPurchaseDialog>
-
-interface Props extends BaseProps {
+interface Props {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  plan: PlanRecord | null
   enableHupijiao?: boolean
   hupijiaoPaymentMethodName?: string
+  purchaseLimit?: number
+  purchaseCount?: number
 }
 
 export function LocalSubscriptionPurchaseDialog({
+  open,
+  onOpenChange,
+  plan: planRecord,
   enableHupijiao,
   hupijiaoPaymentMethodName,
-  ...rest
+  purchaseLimit,
+  purchaseCount,
 }: Props) {
   const { t } = useTranslation()
   const [paying, setPaying] = useState(false)
@@ -37,20 +58,22 @@ export function LocalSubscriptionPurchaseDialog({
     create_time?: number
   } | null>(null)
 
-  const plan = rest.plan?.plan
-  const priceCNY = Number(plan?.price_cny || 0)
-  const hasHupijiao = !!enableHupijiao && priceCNY > 0
+  const plan = planRecord?.plan
+  if (!plan) return null
 
-  // Mirror the upstream dialog's "any non-Hupijiao payment available" check
-  // so we know whether to show the hybrid CNY/USD label.
-  const hasNonHupijiaoPayment =
-    !!(rest.enableStripe && plan?.stripe_price_id) ||
-    !!(rest.enableCreem && plan?.creem_product_id) ||
-    !!(rest.enableWaffoPancake && plan?.waffo_pancake_product_id) ||
-    (!!rest.enableOnlineTopUp && (rest.epayMethods || []).length > 0)
+  const priceCNY = Number(plan.price_cny || 0)
+  const totalAmount = Number(plan.total_amount || 0)
+  const hasHupijiao = !!enableHupijiao && priceCNY > 0
+  const limitReached =
+    (purchaseLimit || 0) > 0 && (purchaseCount || 0) >= (purchaseLimit || 0)
+
+  const displayPriceCNY = formatCnyCurrencyAmount(priceCNY, {
+    digitsLarge: 2,
+    digitsSmall: 2,
+    abbreviate: false,
+  })
 
   const handlePayHupijiao = async () => {
-    if (!plan) return
     setPaying(true)
     try {
       const res = await paySubscriptionHupijiao({ plan_id: plan.id })
@@ -78,50 +101,108 @@ export function LocalSubscriptionPurchaseDialog({
     }
   }
 
-  const limitReached =
-    (rest.purchaseLimit || 0) > 0 &&
-    (rest.purchaseCount || 0) >= (rest.purchaseLimit || 0)
-
-  const extraPaymentMethods = hasHupijiao ? (
-    <Button
-      variant='outline'
-      className='flex-1 gap-2'
-      onClick={handlePayHupijiao}
-      disabled={paying || limitReached}
-    >
-      <SiAlipay className='h-4 w-4' style={{ color: '#1677FF' }} />
-      {hupijiaoPaymentMethodName || t('Alipay')}
-    </Button>
-  ) : null
-
-  let priceDisplayOverride: string | null = null
-  if (hasHupijiao) {
-    const displayPriceCNY = formatCnyCurrencyAmount(priceCNY, {
-      digitsLarge: 2,
-      digitsSmall: 2,
-      abbreviate: false,
-    })
-    const usd = Number(plan?.price_amount || 0).toFixed(2)
-    priceDisplayOverride = hasNonHupijiaoPayment
-      ? `支付宝 ${displayPriceCNY} / 其他 $${usd}`
-      : displayPriceCNY
-  }
-
   return (
     <>
-      <SubscriptionPurchaseDialog
-        {...rest}
-        extraPaymentMethods={extraPaymentMethods}
-        priceDisplayOverride={priceDisplayOverride}
-        hasExtraPayment={hasHupijiao}
-      />
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className='max-sm:w-[calc(100vw-1.5rem)] sm:max-w-md'>
+          <DialogHeader>
+            <DialogTitle className='flex items-center gap-2'>
+              <Crown className='h-5 w-5' />
+              {t('Purchase Subscription')}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className='space-y-3 sm:space-y-4'>
+            <div className='bg-muted/50 space-y-2.5 rounded-lg border p-3 sm:space-y-3 sm:p-4'>
+              <div className='flex justify-between'>
+                <span className='text-muted-foreground text-sm'>
+                  {t('Plan Name')}
+                </span>
+                <span className='max-w-[200px] truncate text-sm font-medium'>
+                  {plan.title}
+                </span>
+              </div>
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-sm'>
+                  {t('Validity Period')}
+                </span>
+                <span className='flex items-center gap-1 text-sm'>
+                  <CalendarClock className='h-3.5 w-3.5' />
+                  {formatDuration(plan, t)}
+                </span>
+              </div>
+              {formatResetPeriod(plan, t) !== t('No Reset') && (
+                <div className='flex justify-between'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('Reset Period')}
+                  </span>
+                  <span className='text-sm'>{formatResetPeriod(plan, t)}</span>
+                </div>
+              )}
+              <div className='flex items-center justify-between'>
+                <span className='text-muted-foreground text-sm'>
+                  {t('Received amount')}
+                </span>
+                <span className='flex items-center gap-1 text-sm'>
+                  <Package className='h-3.5 w-3.5' />
+                  {totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')}
+                </span>
+              </div>
+              {plan.upgrade_group && (
+                <div className='flex items-center justify-between'>
+                  <span className='text-muted-foreground text-sm'>
+                    {t('Upgrade Group')}
+                  </span>
+                  <GroupBadge group={plan.upgrade_group} />
+                </div>
+              )}
+              <Separator />
+              <div className='flex items-center justify-between'>
+                <span className='text-sm font-medium'>{t('Amount Due')}</span>
+                <span className='text-primary text-lg font-bold'>
+                  {displayPriceCNY}
+                </span>
+              </div>
+            </div>
+
+            {limitReached && (
+              <Alert variant='destructive'>
+                <AlertDescription>
+                  {t('Purchase limit reached')} ({purchaseCount}/{purchaseLimit}
+                  )
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {hasHupijiao ? (
+              <Button
+                variant='outline'
+                className='w-full gap-2'
+                onClick={handlePayHupijiao}
+                disabled={paying || limitReached}
+              >
+                <SiAlipay className='h-4 w-4' style={{ color: '#1677FF' }} />
+                {hupijiaoPaymentMethodName || t('Alipay')}
+              </Button>
+            ) : (
+              <Alert>
+                <AlertDescription>
+                  {t(
+                    'Online payment is not enabled. Please contact the administrator.'
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <HupijiaoPaymentDialog
         open={hupijiaoPaymentOpen}
-        onOpenChange={(open) => {
-          setHupijiaoPaymentOpen(open)
-          if (!open) {
-            rest.onOpenChange(false)
+        onOpenChange={(o) => {
+          setHupijiaoPaymentOpen(o)
+          if (!o) {
+            onOpenChange(false)
           }
         }}
         payment={hupijiaoPayment}
