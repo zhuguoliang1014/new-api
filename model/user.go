@@ -231,6 +231,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	var total int64
 	var err error
 
+	// 去除前端可能传入的引号包裹
+	keyword = strings.Trim(keyword, `"`)
+
 	// 开始事务
 	tx := DB.Begin()
 	if tx.Error != nil {
