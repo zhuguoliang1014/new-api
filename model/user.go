@@ -252,9 +252,9 @@ func SearchUsers(keyword string, group string, role *int, status *int, startIdx 
 	// 尝试将关键字转换为整数ID
 	keywordInt, err := strconv.Atoi(keyword)
 	if err == nil {
-		// 如果是数字，同时搜索ID和其他字段
-		likeCondition = "id = ? OR " + likeCondition
-		likeArgs = append([]interface{}{keywordInt}, likeArgs...)
+		// 如果是数字，同时搜索ID、邀请人ID和其他字段
+		likeCondition = "id = ? OR inviter_id = ? OR " + likeCondition
+		likeArgs = append([]interface{}{keywordInt, keywordInt}, likeArgs...)
 	}
 
 	query = query.Where("("+likeCondition+")", likeArgs...)

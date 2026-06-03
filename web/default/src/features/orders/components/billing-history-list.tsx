@@ -1,19 +1,8 @@
-import { useState } from 'react'
 import { Search, RefreshCw, Copy, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { formatCurrencyFromUSD } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -57,26 +46,14 @@ export function BillingHistoryList({
     pageSize,
     keyword,
     loading,
-    completing,
     isAdmin,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
-    handleCompleteOrder,
     refresh,
   } = useBillingHistory({ userOnly })
   const totalPages = Math.ceil(total / pageSize)
-  const [confirmTradeNo, setConfirmTradeNo] = useState<string | null>(null)
   const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
-
-  const handleConfirmComplete = async () => {
-    if (confirmTradeNo) {
-      const success = await handleCompleteOrder(confirmTradeNo)
-      if (success) {
-        setConfirmTradeNo(null)
-      }
-    }
-  }
 
   return (
     <>
@@ -187,7 +164,7 @@ export function BillingHistoryList({
                           />
                           {isAdmin && record.user_id != null && (
                             <StatusBadge
-                              label={`${t('User ID')}: ${record.user_id}`}
+                              label={`${t('User ID')}: ${record.user_id}${record.username ? ` (${record.username})` : ''}`}
                               variant='neutral'
                               size='sm'
                               copyText={String(record.user_id)}
@@ -251,18 +228,6 @@ export function BillingHistoryList({
                       </div>
                     </div>
 
-                    {isAdmin && record.status === 'pending' && (
-                      <div className='mt-4 flex justify-end'>
-                        <Button
-                          size='sm'
-                          variant='outline'
-                          onClick={() => setConfirmTradeNo(record.trade_no)}
-                          disabled={completing}
-                        >
-                          {t('Complete Order')}
-                        </Button>
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -297,32 +262,6 @@ export function BillingHistoryList({
         ) : null}
       </div>
 
-      <AlertDialog
-        open={!!confirmTradeNo}
-        onOpenChange={(open) => !open && setConfirmTradeNo(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('Complete Order')}</AlertDialogTitle>
-            <AlertDialogDescription>
-              {t(
-                'Are you sure you want to manually complete this order? The user will be credited with the corresponding quota.'
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={completing}>
-              {t('Cancel')}
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmComplete}
-              disabled={completing}
-            >
-              {completing ? t('Processing...') : t('Confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }

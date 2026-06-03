@@ -30,6 +30,7 @@ type TopUp struct {
 type TopUpRecord struct {
 	Id              int     `json:"id"`
 	UserId          int     `json:"user_id"`
+	Username        string  `json:"username"`
 	Amount          float64 `json:"amount"`
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no"`
@@ -100,6 +101,28 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 
 	if len(tradeNos) == 0 {
 		return records
+	}
+
+	// 批量查用户名
+	userIds := make([]int, 0, len(records))
+	seenUserIds := map[int]bool{}
+	for _, r := range records {
+		if r.UserId > 0 && !seenUserIds[r.UserId] {
+			seenUserIds[r.UserId] = true
+			userIds = append(userIds, r.UserId)
+		}
+	}
+	if len(userIds) > 0 {
+		var users []User
+		if err := DB.Select("id, username").Where("id IN ?", userIds).Find(&users).Error; err == nil {
+			usernameById := make(map[int]string, len(users))
+			for _, u := range users {
+				usernameById[u.Id] = u.Username
+			}
+			for i := range records {
+				records[i].Username = usernameById[records[i].UserId]
+			}
+		}
 	}
 
 	var orders []SubscriptionOrder

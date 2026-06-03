@@ -257,6 +257,8 @@ export interface TopupRecord {
   id: number
   /** User ID */
   user_id: number
+  /** Username */
+  username?: string
   /** Credited amount in system USD units */
   amount: number
   /** Payment amount (actual money paid) */
