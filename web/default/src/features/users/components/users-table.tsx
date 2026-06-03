@@ -161,21 +161,7 @@ export function UsersTable() {
     onRowSelectionChange: setRowSelection,
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
-    globalFilterFn: (row, _columnId, filterValue) => {
-      const searchValue = String(filterValue).toLowerCase()
-      const fields = [
-        row.original.id,
-        row.getValue('username'),
-        row.original.display_name,
-        row.original.email,
-        row.original.inviter_id,
-      ]
-      return fields.some((field) =>
-        String(field || '')
-          .toLowerCase()
-          .includes(searchValue)
-      )
-    },
+    globalFilterFn: () => true,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
