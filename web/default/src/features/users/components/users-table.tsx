@@ -168,6 +168,7 @@ export function UsersTable() {
         row.getValue('username'),
         row.original.display_name,
         row.original.email,
+        row.original.inviter_id,
       ]
       return fields.some((field) =>
         String(field || '')
