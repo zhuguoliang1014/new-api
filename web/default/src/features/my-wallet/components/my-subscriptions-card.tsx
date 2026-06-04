@@ -207,7 +207,7 @@ function SubscriptionRow({
                 </span>
                 <span className='tabular-nums'>{usagePercent}%</span>
               </div>
-              <Progress value={usagePercent} className='h-1.5' />
+              <Progress key={usagePercent} value={usagePercent} className='h-1.5' />
               {isActive ? (
                 <div className='text-muted-foreground/60 mt-1 text-[11px]'>
                   {t('Remaining')} {formatQuota(remainingAmount)}
