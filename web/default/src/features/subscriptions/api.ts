@@ -198,7 +198,7 @@ export async function getSelfSubscriptions(): Promise<
 export async function getSelfSubscriptionFull(): Promise<
   ApiResponse<SelfSubscriptionData>
 > {
-  const res = await api.get('/api/subscription/self')
+  const res = await api.get('/api/subscription/self', { disableDuplicate: true })
   return res.data
 }
 
