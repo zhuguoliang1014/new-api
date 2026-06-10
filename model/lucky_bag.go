@@ -243,19 +243,19 @@ func calcUserScore(userId int) float64 {
 
 	type sumRow struct{ Total int64 }
 
-	// 1. 累计消耗 token（all-time，type=2 为 relay 消费）
-	var totalQuotaRow sumRow
+	// 1. 累计消耗 token 数（all-time，type=2 为 relay 消费）
+	var totalTokensRow sumRow
 	DB.Model(&Log{}).
-		Select("COALESCE(SUM(quota), 0) AS total").
+		Select("COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total").
 		Where("user_id = ? AND type = 2", userId).
-		Scan(&totalQuotaRow)
+		Scan(&totalTokensRow)
 
-	// 2. 近7天消耗 token
-	var weekQuotaRow sumRow
+	// 2. 近7天消耗 token 数
+	var weekTokensRow sumRow
 	DB.Model(&Log{}).
-		Select("COALESCE(SUM(quota), 0) AS total").
+		Select("COALESCE(SUM(prompt_tokens + completion_tokens), 0) AS total").
 		Where("user_id = ? AND created_at >= ? AND type = 2", userId, weekAgoTs).
-		Scan(&weekQuotaRow)
+		Scan(&weekTokensRow)
 
 	// 3. 充值总额（top_ups success + subscription_orders success）
 	var topUpRow sumRow
@@ -288,9 +288,9 @@ func calcUserScore(userId int) float64 {
 		Where("user_id = ?", userId).
 		Count(&checkinCount)
 
-	// 得分公式：log 压缩拉开活跃梯度，基数 500000 避免高用量用户进入饱和区
-	score := 1.00*math.Log2(1+float64(totalQuotaRow.Total)/500000) + // 累计消耗（最高权重）
-		0.30*math.Log2(1+float64(weekQuotaRow.Total)/500000) + // 近7天消耗（激励近期活跃）
+	// 得分公式：log 压缩拉开活跃梯度，基数 100000 token ≈ 中等模型 $1 消耗
+	score := 1.00*math.Log2(1+float64(totalTokensRow.Total)/100000) + // 累计消耗 token 数（最高权重）
+		0.30*math.Log2(1+float64(weekTokensRow.Total)/100000) + // 近7天消耗 token 数（激励近期活跃）
 		0.15*math.Log2(1+float64(totalRecharge)/10000) + // 充值总额（小额付费加成）
 		0.40*math.Log2(1+float64(inviteCount)*5) + // 推荐注册
 		0.25*math.Log2(1+float64(luckyBagEntries)) + // 参与福袋次数
