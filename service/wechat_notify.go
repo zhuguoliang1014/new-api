@@ -15,7 +15,7 @@ import (
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
-const wechatGroupMessageAPI = "https://www.chydocx.cn/api/wechat/group-message/send"
+const wechatGroupMessageAPI = "http://8.141.100.180/api/wechat/group-message/send"
 
 // SendWechatGroupReminder 向配置的群发送福袋开奖提醒（多群随机延迟）
 func SendWechatGroupReminder(slotHour, slotMinute int) error {
