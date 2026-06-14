@@ -33,16 +33,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { StatusBadge } from '@/components/status-badge'
+import { Dialog } from '@/components/dialog'
 import { getUserSubscriptions } from '@/features/subscriptions/api'
 import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
 import { getUserInfo } from '../../api'
@@ -240,158 +234,157 @@ export function UserInfoDialog({
   )
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='flex max-h-[85vh] flex-col sm:max-w-lg'>
-        <DialogHeader>
-          <DialogTitle>{t('User Information')}</DialogTitle>
-          <DialogDescription>
-            {t(
-              'View detailed information about this user including balance, usage statistics, and invitation details.'
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t('User Information')}
+      description={t(
+        'View detailed information about this user including balance, usage statistics, and invitation details.'
+      )}
+      contentClassName='sm:max-w-lg'
+      contentHeight='auto'
+      bodyClassName='space-y-4'
+    >
+      {isLoading ? (
+        <div className='flex items-center justify-center py-8'>
+          <Loader2 className='text-muted-foreground size-6 animate-spin' />
+        </div>
+      ) : userInfo ? (
+        <div className='-mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto py-1 pr-2'>
+          {/* Basic Info */}
+          <div className='grid grid-cols-2 gap-4'>
+            <InfoItem label={t('Username')} value={userInfo.username} />
+            {userInfo.display_name && (
+              <InfoItem
+                label={t('Display Name')}
+                value={userInfo.display_name}
+              />
             )}
-          </DialogDescription>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className='flex items-center justify-center py-8'>
-            <Loader2 className='text-muted-foreground size-6 animate-spin' />
           </div>
-        ) : userInfo ? (
-          <div className='-mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto py-1 pr-2'>
-            {/* Basic Info */}
-            <div className='grid grid-cols-2 gap-4'>
-              <InfoItem label={t('Username')} value={userInfo.username} />
-              {userInfo.display_name && (
-                <InfoItem
-                  label={t('Display Name')}
-                  value={userInfo.display_name}
-                />
-              )}
-            </div>
 
-            {/* Balance Info */}
-            <div className='grid grid-cols-2 gap-4'>
-              <InfoItem
-                label={t('Balance')}
-                value={formatQuota(userInfo.quota)}
-              />
-              <InfoItem
-                label={t('Used Quota')}
-                value={formatQuota(userInfo.used_quota)}
-              />
-            </div>
+          {/* Balance Info */}
+          <div className='grid grid-cols-2 gap-4'>
+            <InfoItem
+              label={t('Balance')}
+              value={formatQuota(userInfo.quota)}
+            />
+            <InfoItem
+              label={t('Used Quota')}
+              value={formatQuota(userInfo.used_quota)}
+            />
+          </div>
 
-            {/* Statistics */}
-            <div className='grid grid-cols-2 gap-4'>
-              <InfoItem
-                label={t('Request Count')}
-                value={formatCompactNumber(userInfo.request_count)}
-              />
-              {userInfo.group && (
-                <InfoItem label={t('User Group')} value={userInfo.group} />
-              )}
-            </div>
+          {/* Statistics */}
+          <div className='grid grid-cols-2 gap-4'>
+            <InfoItem
+              label={t('Request Count')}
+              value={formatCompactNumber(userInfo.request_count)}
+            />
+            {userInfo.group && (
+              <InfoItem label={t('User Group')} value={userInfo.group} />
+            )}
+          </div>
 
-            {/* Invitation Info */}
-            {(userInfo.aff_code ||
-              userInfo.aff_count !== undefined ||
-              (userInfo.aff_quota !== undefined && userInfo.aff_quota > 0)) && (
-              <>
-                <div className='grid grid-cols-2 gap-4'>
-                  {userInfo.aff_code && (
-                    <InfoItem
-                      label={t('Invitation Code')}
-                      value={userInfo.aff_code}
-                    />
-                  )}
-                  {userInfo.aff_count !== undefined && (
-                    <InfoItem
-                      label={t('Invited Users')}
-                      value={formatCompactNumber(userInfo.aff_count)}
-                    />
-                  )}
-                </div>
-
-                {userInfo.aff_quota !== undefined && userInfo.aff_quota > 0 && (
+          {/* Invitation Info */}
+          {(userInfo.aff_code ||
+            userInfo.aff_count !== undefined ||
+            (userInfo.aff_quota !== undefined && userInfo.aff_quota > 0)) && (
+            <>
+              <div className='grid grid-cols-2 gap-4'>
+                {userInfo.aff_code && (
                   <InfoItem
-                    label={t('Invitation Quota')}
-                    value={formatQuota(userInfo.aff_quota)}
+                    label={t('Invitation Code')}
+                    value={userInfo.aff_code}
                   />
                 )}
-              </>
-            )}
-
-            {/* Remark */}
-            {userInfo.remark && (
-              <div className='space-y-1.5'>
-                <Label className='text-muted-foreground text-xs'>
-                  {t('Remark')}
-                </Label>
-                <div className='text-sm leading-relaxed font-semibold break-words'>
-                  {userInfo.remark}
-                </div>
-              </div>
-            )}
-
-            {/* Subscriptions */}
-            {subscriptions.length > 0 && (
-              <div className='space-y-2'>
-                <div className='flex items-center gap-2'>
-                  <Layers className='text-muted-foreground size-4' />
-                  <Label className='text-muted-foreground text-xs'>
-                    {t('Subscriptions')}
-                  </Label>
-                  {active.length > 0 && (
-                    <StatusBadge
-                      copyable={false}
-                      variant='success'
-                      label={`${active.length} ${t('active')}`}
-                    />
-                  )}
-                  {inactive.length > 0 && (
-                    <span className='text-muted-foreground text-[11px]'>
-                      · {inactive.length} {t('expired')}
-                    </span>
-                  )}
-                </div>
-
-                <div className='space-y-2'>
-                  {active.map((record) => (
-                    <SubscriptionCard
-                      key={record.subscription.id}
-                      record={record}
-                      nowSec={nowSec}
-                    />
-                  ))}
-                </div>
-
-                {inactive.length > 0 && (
-                  <Collapsible key={userId ?? 'none'}>
-                    <CollapsibleTrigger className='hover:bg-muted/50 group flex w-full cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-1.5 text-xs'>
-                      <span className='text-muted-foreground'>
-                        {t('Show expired subscriptions')} ({inactive.length})
-                      </span>
-                      <ChevronDown className='text-muted-foreground size-3.5 transition-transform group-data-[panel-open]:rotate-180' />
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className='mt-2 space-y-2'>
-                      {inactive.map((record) => (
-                        <SubscriptionCard
-                          key={record.subscription.id}
-                          record={record}
-                          nowSec={nowSec}
-                        />
-                      ))}
-                    </CollapsibleContent>
-                  </Collapsible>
+                {userInfo.aff_count !== undefined && (
+                  <InfoItem
+                    label={t('Invited Users')}
+                    value={formatCompactNumber(userInfo.aff_count)}
+                  />
                 )}
               </div>
-            )}
-          </div>
-        ) : (
-          <div className='text-muted-foreground py-8 text-center text-sm'>
-            {t('No user information available')}
-          </div>
-        )}
-      </DialogContent>
+
+              {userInfo.aff_quota !== undefined && userInfo.aff_quota > 0 && (
+                <InfoItem
+                  label={t('Invitation Quota')}
+                  value={formatQuota(userInfo.aff_quota)}
+                />
+              )}
+            </>
+          )}
+
+          {/* Remark */}
+          {userInfo.remark && (
+            <div className='space-y-1.5'>
+              <Label className='text-muted-foreground text-xs'>
+                {t('Remark')}
+              </Label>
+              <div className='text-sm leading-relaxed font-semibold break-words'>
+                {userInfo.remark}
+              </div>
+            </div>
+          )}
+
+          {/* Subscriptions */}
+          {subscriptions.length > 0 && (
+            <div className='space-y-2'>
+              <div className='flex items-center gap-2'>
+                <Layers className='text-muted-foreground size-4' />
+                <Label className='text-muted-foreground text-xs'>
+                  {t('Subscriptions')}
+                </Label>
+                {active.length > 0 && (
+                  <StatusBadge
+                    copyable={false}
+                    variant='success'
+                    label={`${active.length} ${t('active')}`}
+                  />
+                )}
+                {inactive.length > 0 && (
+                  <span className='text-muted-foreground text-[11px]'>
+                    · {inactive.length} {t('expired')}
+                  </span>
+                )}
+              </div>
+
+              <div className='space-y-2'>
+                {active.map((record) => (
+                  <SubscriptionCard
+                    key={record.subscription.id}
+                    record={record}
+                    nowSec={nowSec}
+                  />
+                ))}
+              </div>
+
+              {inactive.length > 0 && (
+                <Collapsible key={userId ?? 'none'}>
+                  <CollapsibleTrigger className='hover:bg-muted/50 group flex w-full cursor-pointer items-center justify-between rounded-md border border-dashed px-3 py-1.5 text-xs'>
+                    <span className='text-muted-foreground'>
+                      {t('Show expired subscriptions')} ({inactive.length})
+                    </span>
+                    <ChevronDown className='text-muted-foreground size-3.5 transition-transform group-data-[panel-open]:rotate-180' />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className='mt-2 space-y-2'>
+                    {inactive.map((record) => (
+                      <SubscriptionCard
+                        key={record.subscription.id}
+                        record={record}
+                        nowSec={nowSec}
+                      />
+                    ))}
+                  </CollapsibleContent>
+                </Collapsible>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className='text-muted-foreground py-8 text-center text-sm'>
+          {t('No user information available')}
+        </div>
+      )}
     </Dialog>
   )
 }

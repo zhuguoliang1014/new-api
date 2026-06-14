@@ -122,6 +122,9 @@ func GetSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	for i := range plans {
+		plans[i].NormalizeDefaults()
+	}
 	result, err := buildSubscriptionPlanDTOs(plans)
 	if err != nil {
 		common.ApiError(c, err)
@@ -220,6 +223,9 @@ func AdminListSubscriptionPlans(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	for i := range plans {
+		plans[i].NormalizeDefaults()
+	}
 	result, err := buildSubscriptionPlanDTOs(plans)
 	if err != nil {
 		common.ApiError(c, err)
@@ -267,6 +273,9 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		req.Plan.Currency = "USD"
 	}
 	req.Plan.Currency = "USD"
+	if req.Plan.AllowBalancePay == nil {
+		req.Plan.AllowBalancePay = common.GetPointer(true)
+	}
 	if req.Plan.DurationUnit == "" {
 		req.Plan.DurationUnit = model.SubscriptionDurationMonth
 	}
@@ -394,6 +403,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"expires_at":                 req.Plan.ExpiresAt,
 			"display_sold_count":         req.Plan.DisplaySoldCount,
 			"updated_at":                 common.GetTimestamp(),
+		}
+		if req.Plan.AllowBalancePay != nil {
+			updateMap["allow_balance_pay"] = *req.Plan.AllowBalancePay
 		}
 		if err := tx.Model(&model.SubscriptionPlan{}).Where("id = ?", id).Updates(updateMap).Error; err != nil {
 			return err
