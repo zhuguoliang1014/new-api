@@ -30,6 +30,7 @@ export function MyWallet() {
     [t]
   )
 
+
   return (
     <>
       <SectionPageLayout>
@@ -52,15 +53,39 @@ export function MyWallet() {
               className='gap-4'
             >
               <div className='overflow-x-auto pb-1'>
-                <TabsList className='h-10 min-w-max'>
-                  <TabsTrigger value='recharge' className='px-4'>
-                    {t('Recharge')}
+                <TabsList className='group-data-horizontal/tabs:h-auto min-w-max p-1'>
+                  <TabsTrigger
+                    value='recharge'
+                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                  >
+                    <span className='text-base font-semibold leading-none'>
+                      {t('Recharge')}
+                    </span>
+                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                      {t('Flexible pay-as-you-go')}
+                    </span>
                   </TabsTrigger>
-                  <TabsTrigger value='subscription' className='px-4'>
-                    {t('Subscription')}
+                  <TabsTrigger
+                    value='subscription'
+                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                  >
+                    <span className='text-base font-semibold leading-none'>
+                      {t('Subscription')}
+                    </span>
+                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                      {t('Lower unit price')}
+                    </span>
                   </TabsTrigger>
-                  <TabsTrigger value='affiliate' className='px-4'>
-                    {t('Referral Program')}
+                  <TabsTrigger
+                    value='affiliate'
+                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                  >
+                    <span className='text-base font-semibold leading-none'>
+                      {t('Referral Program')}
+                    </span>
+                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                      {t('Invite to earn rewards')}
+                    </span>
                   </TabsTrigger>
                 </TabsList>
               </div>
