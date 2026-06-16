@@ -52,6 +52,15 @@ export interface LuckyBagResultCard {
   winner_viewed: boolean
 }
 
+export interface EligibilityInfo {
+  yesterday_spend_quota: number // quota 单位，500000 = $1
+  eligible_slots: number        // 今日可参与场次数 (0/1/2/3/5)
+  used_slots: number            // 今日已报名场次数
+  remaining_slots: number       // 剩余可参与次数
+  today_won_quota: number       // 今日已中奖 quota 总和
+  daily_limit_reached: boolean  // 是否已达每日 $10 上限
+}
+
 export interface LuckyBagStatusResponse {
   today_activities: LuckyBagActivity[]
   next_activity: LuckyBagActivity | null
@@ -61,6 +70,7 @@ export interface LuckyBagStatusResponse {
   result_cards: LuckyBagResultCard[] | null
   draw_slots: DrawSlot[]
   today_finished: boolean
+  eligibility: EligibilityInfo | null
 }
 
 export interface LuckyBagHistoryResponse {

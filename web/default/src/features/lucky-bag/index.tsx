@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { getLuckyBagStatus, enterLuckyBag, getLuckyBagHistory, markLuckyBagViewed } from './api'
 import { useNextDrawCountdown } from './hooks'
-import type { LuckyBagActivity, LuckyBagResultCard, LuckyBagStatusResponse } from './types'
+import type { EligibilityInfo, LuckyBagActivity, LuckyBagResultCard, LuckyBagStatusResponse } from './types'
 
 type DrawAnimationPhase = 'idle' | 'shaking' | 'opening'
 
@@ -142,6 +142,7 @@ function HeroCta({
   todayFinished,
   isNextDrawn,
   drawBusy,
+  eligibility,
   onEnter,
 }: {
   entered: boolean
@@ -149,6 +150,7 @@ function HeroCta({
   todayFinished: boolean
   isNextDrawn: boolean
   drawBusy: boolean
+  eligibility: EligibilityInfo | null
   onEnter: () => void
 }) {
   const { t } = useTranslation()
@@ -170,6 +172,36 @@ function HeroCta({
       <div className={mutedShell}>
         <Clock className='size-4' />
         {t("Today's draws finished")}
+      </div>
+    )
+  }
+
+  // 无资格：昨日消费不足
+  if (eligibility && eligibility.eligible_slots === 0) {
+    return (
+      <div className={mutedShell}>
+        <Clock className='size-4' />
+        {t('Insufficient spend yesterday')}
+      </div>
+    )
+  }
+
+  // 每日上限已达
+  if (eligibility && eligibility.daily_limit_reached) {
+    return (
+      <div className={mutedShell}>
+        <Check className='size-4' />
+        {t("Today's limit reached")}
+      </div>
+    )
+  }
+
+  // 今日次数用完
+  if (eligibility && eligibility.remaining_slots === 0 && eligibility.eligible_slots > 0) {
+    return (
+      <div className={mutedShell}>
+        <Clock className='size-4' />
+        {t("Today's chances used up")}
       </div>
     )
   }
@@ -223,6 +255,209 @@ function HeroCta({
     >
       {t('Enter Lucky Bag Draw')}
     </button>
+  )
+}
+
+// ─── EligibilityPanel — 参与资格面板（对应截图右侧三条资格条目）────────────
+const SPEND_TIERS = [
+  { minUsd: 99.9, slots: 5 },
+  { minUsd: 59.9, slots: 3 },
+  { minUsd: 29.9, slots: 2 },
+  { minUsd: 9.9, slots: 1 },
+]
+
+function EligibilityPanel({ eligibility }: { eligibility: EligibilityInfo | null }) {
+  const { t } = useTranslation()
+
+  const spendUsd = eligibility ? eligibility.yesterday_spend_quota / 500000 : 0
+  const eligibleSlots = eligibility?.eligible_slots ?? 0
+  const usedSlots = eligibility?.used_slots ?? 0
+  const remainingSlots = eligibility?.remaining_slots ?? 0
+  const dailyLimitReached = eligibility?.daily_limit_reached ?? false
+  const todayWonUsd = eligibility ? eligibility.today_won_quota / 500000 : 0
+
+  const spendMet = eligibleSlots > 0
+  // 距离下一档还差多少
+  const nextTier = SPEND_TIERS.slice().reverse().find((tier) => spendUsd < tier.minUsd && tier.minUsd > 9.9)
+  const gapToNext = nextTier ? nextTier.minUsd - spendUsd : 0
+
+  // 当前档位
+  const currentTier = SPEND_TIERS.find((tier) => spendUsd >= tier.minUsd)
+
+  type RowStatus = 'met' | 'limited' | 'unmet'
+  function EligibilityRow({
+    status,
+    main,
+    sub,
+    badge,
+  }: {
+    status: RowStatus
+    main: React.ReactNode
+    sub: React.ReactNode
+    badge: React.ReactNode
+  }) {
+    return (
+      <div
+        className='flex min-w-0 items-start justify-between gap-3 rounded-2xl border p-3.5'
+        style={
+          status === 'met'
+            ? { borderColor: 'rgba(52,199,89,0.25)', background: 'rgba(52,199,89,0.05)' }
+            : status === 'limited'
+              ? { borderColor: 'rgba(255,149,0,0.25)', background: 'rgba(255,149,0,0.05)' }
+              : { borderColor: HAIRLINE, background: 'rgba(255,255,255,0.5)' }
+        }
+      >
+        <div className='flex min-w-0 flex-1 items-start gap-2.5'>
+          <span
+            className='mt-0.5 flex size-4.5 shrink-0 items-center justify-center rounded-full'
+            style={
+              status === 'met'
+                ? { background: '#34c759' }
+                : status === 'limited'
+                  ? { background: '#ff9500' }
+                  : { background: '#aeaeb2' }
+            }
+          >
+            <Check className='size-2.5 text-white' strokeWidth={3} />
+          </span>
+          <div className='min-w-0'>
+            <p className='text-[14px] font-medium leading-snug' style={{ color: INK }}>
+              {main}
+            </p>
+            <p className='mt-0.5 text-[12px] leading-snug' style={{ color: FAINT }}>
+              {sub}
+            </p>
+          </div>
+        </div>
+        <span
+          className='shrink-0 text-[13px] font-medium tabular-nums'
+          style={{
+            color:
+              status === 'met' ? '#34c759' : status === 'limited' ? '#ff9500' : '#aeaeb2',
+          }}
+        >
+          {badge}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <section className={cn(CARD, 'p-5 sm:p-6')}>
+      <div
+        aria-hidden
+        className='pointer-events-none absolute inset-x-0 top-0 h-20'
+        style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.7), transparent)' }}
+      />
+      <div className='relative mb-4 flex items-baseline justify-between gap-3'>
+        <h2 className='text-[16px] font-semibold' style={{ color: INK }}>
+          {t('Eligibility')}
+        </h2>
+        <span
+          className='rounded-full px-2 py-0.5 text-[12px] font-medium'
+          style={
+            spendMet
+              ? { background: 'rgba(52,199,89,0.1)', color: '#34c759' }
+              : { background: 'rgba(142,142,147,0.1)', color: '#8e8e93' }
+          }
+        >
+          {spendMet ? t('Eligible') : t('Not eligible')}
+        </span>
+      </div>
+
+      <div className='relative space-y-2.5'>
+        {/* 1. 消费门槛 */}
+        <EligibilityRow
+          status={spendMet ? 'met' : 'unmet'}
+          main={t('Yesterday spend ${{amount}}', { amount: spendUsd.toFixed(2) })}
+          sub={t('API billing only, excludes gifted credits and manual top-ups')}
+          badge={
+            spendMet
+              ? t('Qualified')
+              : gapToNext > 0
+                ? t('-${{gap}}', { gap: gapToNext.toFixed(2) })
+                : t('Not qualified')
+          }
+        />
+
+        {/* 2. 今日机会 */}
+        <EligibilityRow
+          status={spendMet && remainingSlots > 0 ? 'met' : 'unmet'}
+          main={
+            spendMet
+              ? t('Today {{used}}/{{total}} chances used, {{remaining}} left', {
+                  used: usedSlots,
+                  total: eligibleSlots,
+                  remaining: remainingSlots,
+                })
+              : t('No chances today')
+          }
+          sub={t('More spend = more chances, up to 5 per day')}
+          badge={spendMet ? `${remainingSlots} ${t('left')}` : `0 ${t('left')}`}
+        />
+
+        {/* 3. 每日上限 */}
+        <EligibilityRow
+          status={dailyLimitReached ? 'limited' : spendMet ? 'met' : 'unmet'}
+          main={t('Daily cap $10 per person')}
+          sub={t('Prevents excessive claiming, controls activity cost')}
+          badge={
+            dailyLimitReached
+              ? t('Capped')
+              : spendMet
+                ? `$${todayWonUsd.toFixed(2)} / $10`
+                : '-'
+          }
+        />
+      </div>
+
+      {/* 档位进度卡片 */}
+      <div
+        className='relative mt-4 grid grid-cols-4 gap-1.5 rounded-2xl border p-3'
+        style={{ borderColor: HAIRLINE, background: 'rgba(255,255,255,0.5)' }}
+      >
+        {SPEND_TIERS.slice().reverse().map((tier) => {
+          const isCurrent = currentTier?.slots === tier.slots
+          const isPast = spendUsd >= tier.minUsd
+          return (
+            <div
+              key={tier.minUsd}
+              className='flex flex-col items-center gap-1 rounded-xl py-2'
+              style={
+                isCurrent
+                  ? { background: BLUE, boxShadow: '0 6px 18px rgba(0,113,227,0.22)' }
+                  : isPast
+                    ? { background: 'rgba(52,199,89,0.08)' }
+                    : { background: 'transparent' }
+              }
+            >
+              <span
+                className='text-[13px] font-semibold tabular-nums'
+                style={{ color: isCurrent ? '#fff' : isPast ? '#34c759' : FAINT }}
+              >
+                ${tier.minUsd}+
+              </span>
+              <span
+                className='text-[11px] tabular-nums'
+                style={{ color: isCurrent ? 'rgba(255,255,255,0.8)' : FAINT }}
+              >
+                {tier.slots} {t('chances')}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 距下一档提示 */}
+      {spendMet && gapToNext > 0 && (
+        <p className='mt-3 text-center text-[12px]' style={{ color: FAINT }}>
+          {t('Spend ${{gap}} more today to unlock {{slots}} chances tomorrow', {
+            gap: gapToNext.toFixed(2),
+            slots: nextTier?.slots,
+          })}
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -370,6 +605,7 @@ function HeroSection({
   onEnter,
   drawAnimationPhase,
   onDrawTime,
+  eligibility,
 }: {
   statusData: LuckyBagStatusResponse | null
   entered: boolean
@@ -377,6 +613,7 @@ function HeroSection({
   onEnter: () => void
   drawAnimationPhase: DrawAnimationPhase
   onDrawTime: () => void
+  eligibility?: EligibilityInfo | null
 }) {
   const { t } = useTranslation()
   const {
@@ -438,6 +675,7 @@ function HeroSection({
             todayFinished={todayFinished}
             isNextDrawn={isNextDrawn}
             drawBusy={drawBusy}
+            eligibility={eligibility ?? null}
             onEnter={onEnter}
           />
           <p className='text-[13px] leading-5' style={{ color: FAINT }}>
@@ -1801,7 +2039,7 @@ export function LuckyBag() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-          className='relative mx-auto w-full max-w-[920px] px-5 pb-14 pt-14 sm:px-8 sm:pt-20'
+          className='relative mx-auto w-full max-w-[1200px] px-5 pb-14 pt-14 sm:px-8 sm:pt-20'
         >
           {statusLoading ? (
             <div className='flex flex-col items-center gap-8'>
@@ -1812,14 +2050,24 @@ export function LuckyBag() {
               <Skeleton className='mt-10 h-40 w-full rounded-[20px] bg-black/[0.05]' />
             </div>
           ) : (
-            <HeroSection
-              statusData={statusData}
-              entered={entered}
-              entering={entering}
-              onEnter={handleEnter}
-              drawAnimationPhase={drawAnimationPhase}
-              onDrawTime={handleDrawTime}
-            />
+            <div className='grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px] lg:items-start'>
+              {/* 左侧：倒计时 Hero + 场次进度 */}
+              <div>
+                <HeroSection
+                  statusData={statusData}
+                  entered={entered}
+                  entering={entering}
+                  onEnter={handleEnter}
+                  drawAnimationPhase={drawAnimationPhase}
+                  onDrawTime={handleDrawTime}
+                  eligibility={statusData?.eligibility ?? null}
+                />
+              </div>
+              {/* 右侧：参与资格面板 */}
+              <div className='lg:sticky lg:top-6'>
+                <EligibilityPanel eligibility={statusData?.eligibility ?? null} />
+              </div>
+            </div>
           )}
 
           <div className='mt-6'>

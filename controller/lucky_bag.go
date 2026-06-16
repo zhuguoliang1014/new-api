@@ -131,6 +131,17 @@ func LuckyBagStatus(c *gin.Context) {
 	logger.LogInfo(ctx, fmt.Sprintf("[LuckyBag] LuckyBagStatus userId=%d: entered=%v weight=%d participants=%d nextActivityId=%d slot=%s status=%s resultCards=%d todayFinished=%v",
 		userId, entered, weight, participantCount, nextId, nextSlot, nextStatus, len(resultCards), todayFinished))
 
+	// 资格信息
+	eligibleSlots := model.GetUserDailyEligibility(userId)
+	usedSlots := model.GetUserTodayUsedSlots(userId)
+	remainingSlots := eligibleSlots - usedSlots
+	if remainingSlots < 0 {
+		remainingSlots = 0
+	}
+	yesterdaySpend := model.GetUserYesterdaySpendQuota(userId)
+	todayWonQuota := model.GetUserTodayWonQuota(userId)
+	dailyLimitReached := todayWonQuota >= model.LuckyBagDailyWonLimit
+
 	common.ApiSuccess(c, gin.H{
 		"today_activities":  todayActivities,
 		"next_activity":     nextActivity,
@@ -140,6 +151,14 @@ func LuckyBagStatus(c *gin.Context) {
 		"result_cards":      resultCards,
 		"draw_slots":        model.GetDrawSlots(),
 		"today_finished":    todayFinished,
+		"eligibility": gin.H{
+			"yesterday_spend_quota": yesterdaySpend,
+			"eligible_slots":        eligibleSlots,
+			"used_slots":            usedSlots,
+			"remaining_slots":       remainingSlots,
+			"today_won_quota":       todayWonQuota,
+			"daily_limit_reached":   dailyLimitReached,
+		},
 	})
 }
 

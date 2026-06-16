@@ -25,7 +25,7 @@ type DrawSlot struct {
 func (s DrawSlot) Key() int { return s.Hour*60 + s.Minute }
 
 // defaultDrawSlots 默认开奖时刻（管理员可通过 OptionMap["LuckyBagDrawHours"] 覆盖）
-var defaultDrawSlots = []DrawSlot{{9, 0}, {12, 0}, {17, 0}}
+var defaultDrawSlots = []DrawSlot{{8, 0}, {11, 0}, {14, 0}, {17, 0}, {20, 0}}
 
 // parseSingleSlot 解析单个时刻，如 "9"、"09"、"17:52"、" 8:05 "
 func parseSingleSlot(raw string) (DrawSlot, bool) {
@@ -227,6 +227,99 @@ func GetTodayActivities() ([]*LuckyBagActivity, error) {
 	return result, nil
 }
 
+// 参与资格档位（昨日 API 扣费 quota，500000 = $1）
+// 对应 USD：$9.9 / $29.9 / $59.9 / $99.9
+var eligibilityTiers = []struct {
+	minQuota int64 // 昨日消费最低 quota（含）
+	slots    int   // 当日可参与场次
+}{
+	{49500000, 5}, // ≥ $99.9
+	{29950000, 3}, // ≥ $59.9
+	{14950000, 2}, // ≥ $29.9
+	{4950000, 1},  // ≥ $9.9
+}
+
+// LuckyBagDailyWonLimit 每人每日中奖 quota 上限 ($10)
+const LuckyBagDailyWonLimit = 5000000
+
+// GetUserYesterdaySpendQuota 返回用户昨日（UTC+8 自然日）type=2 的 quota 扣费总和
+func GetUserYesterdaySpendQuota(userId int) int64 {
+	loc := time.FixedZone("CST", 8*3600)
+	now := time.Now().In(loc)
+	// 昨日 00:00:00 ~ 23:59:59 CST
+	yesterday := now.AddDate(0, 0, -1)
+	yStart := time.Date(yesterday.Year(), yesterday.Month(), yesterday.Day(), 0, 0, 0, 0, loc)
+	yEnd := yStart.AddDate(0, 0, 1) // 今日 00:00:00 CST
+
+	type sumRow struct{ Total int64 }
+	var row sumRow
+	DB.Model(&Log{}).
+		Select("COALESCE(SUM(quota), 0) AS total").
+		Where("user_id = ? AND type = 2 AND created_at >= ? AND created_at < ?",
+			userId, yStart.Unix(), yEnd.Unix()).
+		Scan(&row)
+	return row.Total
+}
+
+// GetUserDailyEligibility 返回用户今日可参与场次数（0/1/2/3/5）
+// 基于昨日 type=2 扣费 quota
+func GetUserDailyEligibility(userId int) int {
+	spend := GetUserYesterdaySpendQuota(userId)
+	for _, tier := range eligibilityTiers {
+		if spend >= tier.minQuota {
+			return tier.slots
+		}
+	}
+	return 0
+}
+
+// GetUserTodayUsedSlots 返回用户今日已报名的场次数
+func GetUserTodayUsedSlots(userId int) int {
+	today := time.Now().Format("2006-01-02")
+	// 获取今日所有活动 ID
+	var activityIds []int
+	DB.Model(&LuckyBagActivity{}).
+		Select("id").
+		Where("draw_date = ?", today).
+		Pluck("id", &activityIds)
+	if len(activityIds) == 0 {
+		return 0
+	}
+	var count int64
+	DB.Model(&LuckyBagEntry{}).
+		Where("user_id = ? AND activity_id IN ?", userId, activityIds).
+		Count(&count)
+	return int(count)
+}
+
+// GetUserTodayWonQuota 返回用户今日已中奖的 quota 总和（仅统计已开奖场次）
+func GetUserTodayWonQuota(userId int) int64 {
+	today := time.Now().Format("2006-01-02")
+	var total int64
+	// 第1名
+	var r1 struct{ Total int64 }
+	DB.Model(&LuckyBagActivity{}).
+		Select("COALESCE(SUM(winner_quota), 0) AS total").
+		Where("draw_date = ? AND status = ? AND winner_user_id = ?", today, LuckyBagStatusDrawn, userId).
+		Scan(&r1)
+	total += r1.Total
+	// 第2名
+	var r2 struct{ Total int64 }
+	DB.Model(&LuckyBagActivity{}).
+		Select("COALESCE(SUM(winner2_quota), 0) AS total").
+		Where("draw_date = ? AND status = ? AND winner2_user_id = ?", today, LuckyBagStatusDrawn, userId).
+		Scan(&r2)
+	total += r2.Total
+	// 第3名
+	var r3 struct{ Total int64 }
+	DB.Model(&LuckyBagActivity{}).
+		Select("COALESCE(SUM(winner3_quota), 0) AS total").
+		Where("draw_date = ? AND status = ? AND winner3_user_id = ?", today, LuckyBagStatusDrawn, userId).
+		Scan(&r3)
+	total += r3.Total
+	return total
+}
+
 // 抽奖权重参数
 const (
 	luckyBagTicketFloor    = 10  // 每人基础票数
@@ -330,6 +423,28 @@ func calcUserWeight(userId int) int {
 // 仅接受"今日"的场次报名；今日全部场次已结束则拒绝，不允许预约明天
 func EnterLuckyBag(userId int) (*LuckyBagEntry, error) {
 	ctx := context.Background()
+
+	// ── 资格层1：昨日消费门槛 ─────────────────────────────────────────
+	eligibleSlots := GetUserDailyEligibility(userId)
+	logger.LogInfo(ctx, fmt.Sprintf("[LuckyBag] EnterLuckyBag userId=%d eligibleSlots=%d", userId, eligibleSlots))
+	if eligibleSlots == 0 {
+		return nil, errors.New("昨日真实消费不足 $9.9，暂无参与资格")
+	}
+
+	// ── 资格层2：今日场次次数上限 ─────────────────────────────────────
+	usedSlots := GetUserTodayUsedSlots(userId)
+	logger.LogInfo(ctx, fmt.Sprintf("[LuckyBag] EnterLuckyBag userId=%d usedSlots=%d eligibleSlots=%d", userId, usedSlots, eligibleSlots))
+	if usedSlots >= eligibleSlots {
+		return nil, errors.New("今日参与次数已用完")
+	}
+
+	// ── 资格层3：每日中奖上限 $10 ─────────────────────────────────────
+	wonQuota := GetUserTodayWonQuota(userId)
+	logger.LogInfo(ctx, fmt.Sprintf("[LuckyBag] EnterLuckyBag userId=%d todayWonQuota=%d limit=%d", userId, wonQuota, LuckyBagDailyWonLimit))
+	if wonQuota >= LuckyBagDailyWonLimit {
+		return nil, errors.New("今日已达领奖上限 $10")
+	}
+
 	activity, err := GetNextActivity()
 	if err != nil {
 		logger.LogWarn(ctx, fmt.Sprintf("[LuckyBag] EnterLuckyBag userId=%d: GetNextActivity failed: %v", userId, err))
