@@ -1,5 +1,9 @@
 import { api } from '@/lib/api'
-import type { LuckyBagStatusResponse, LuckyBagHistoryResponse } from './types'
+import type {
+  LuckyBagStatusResponse,
+  LuckyBagHistoryResponse,
+  OpenResult,
+} from './types'
 
 interface ApiResponse<T> {
   success: boolean
@@ -12,20 +16,15 @@ export async function getLuckyBagStatus(): Promise<ApiResponse<LuckyBagStatusRes
   return res.data
 }
 
-export async function enterLuckyBag(): Promise<ApiResponse<{ entry: unknown }>> {
-  const res = await api.post('/api/lucky-bag/enter')
+export async function openLuckyBag(): Promise<ApiResponse<OpenResult>> {
+  const res = await api.post('/api/lucky-bag/open')
   return res.data
 }
 
 export async function getLuckyBagHistory(
   page = 1,
-  size = 10
+  size = 30,
 ): Promise<ApiResponse<LuckyBagHistoryResponse>> {
   const res = await api.get('/api/lucky-bag/history', { params: { page, size } })
-  return res.data
-}
-
-export async function markLuckyBagViewed(activityId: number): Promise<ApiResponse<null>> {
-  const res = await api.post('/api/lucky-bag/viewed', { activity_id: activityId })
   return res.data
 }

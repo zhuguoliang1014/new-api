@@ -247,17 +247,17 @@ func InitLogDB() (err error) {
 	return err
 }
 
-// dropLuckyBagStaleIndex 如果 lucky_bag_activities 表存在但缺少新的 slot_minute 列，
-// 直接删除整个 lucky_bag 相关表让 GORM 重建（脏数据全部清理）。
-func dropLuckyBagStaleIndex() {
-	if !DB.Migrator().HasTable(&LuckyBagActivity{}) {
-		return
+// dropLegacyLuckyBagTables 删除旧的福袋抽奖表（v1：定时开奖 + 三名中奖者 + 兑换码模型）
+// v2 已切换为「手动开盒」模式，旧数据无意义，直接 DROP。
+func dropLegacyLuckyBagTables() {
+	if DB.Migrator().HasTable("lucky_bag_entries") {
+		common.SysLog("dropping legacy table: lucky_bag_entries")
+		_ = DB.Migrator().DropTable("lucky_bag_entries")
 	}
-	if DB.Migrator().HasColumn(&LuckyBagActivity{}, "slot_minute") {
-		return
+	if DB.Migrator().HasTable("lucky_bag_activities") {
+		common.SysLog("dropping legacy table: lucky_bag_activities")
+		_ = DB.Migrator().DropTable("lucky_bag_activities")
 	}
-	common.SysLog("lucky_bag schema changed: dropping stale tables for recreate")
-	_ = DB.Migrator().DropTable(&LuckyBagEntry{}, &LuckyBagActivity{})
 }
 
 func migrateDB() error {
@@ -267,9 +267,8 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	// Drop stale single-column unique index on lucky_bag_activities.draw_date
-	// so GORM can create the correct composite (draw_date, slot_hour) index.
-	dropLuckyBagStaleIndex()
+	// Drop legacy lucky_bag_* tables (v1 model is fully retired in favor of v2)
+	dropLegacyLuckyBagTables()
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -297,8 +296,7 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
-		&LuckyBagActivity{},
-		&LuckyBagEntry{},
+		&LuckyBagOpen{},
 	)
 	if err != nil {
 		return err
@@ -316,6 +314,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+
+	// Drop legacy lucky_bag_* tables (v1 model is fully retired in favor of v2)
+	dropLegacyLuckyBagTables()
 
 	var wg sync.WaitGroup
 
@@ -348,8 +349,7 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
-		{&LuckyBagActivity{}, "LuckyBagActivity"},
-		{&LuckyBagEntry{}, "LuckyBagEntry"},
+		{&LuckyBagOpen{}, "LuckyBagOpen"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

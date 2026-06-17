@@ -39,17 +39,7 @@ func registerLuckyBagRoutes(apiRouter *gin.RouterGroup) {
 	luckyBagRoute.Use(middleware.UserAuth())
 	{
 		luckyBagRoute.GET("/status", controller.LuckyBagStatus)
-		luckyBagRoute.POST("/enter", controller.EnterLuckyBag)
+		luckyBagRoute.POST("/open", controller.OpenLuckyBag)
 		luckyBagRoute.GET("/history", controller.LuckyBagHistory)
-		luckyBagRoute.POST("/viewed", controller.MarkLuckyBagViewed)
-	}
-
-	luckyBagAdminRoute := apiRouter.Group("/admin/lucky-bag")
-	luckyBagAdminRoute.Use(middleware.AdminAuth())
-	{
-		luckyBagAdminRoute.GET("", controller.AdminGetLuckyBagConfig)
-		luckyBagAdminRoute.PUT("", controller.AdminUpdateLuckyBagConfig)
-		luckyBagAdminRoute.POST("/draw", controller.AdminDrawLuckyBag)
-		luckyBagAdminRoute.POST("/notify-test", controller.AdminSendWechatTest)
 	}
 }

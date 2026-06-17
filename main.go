@@ -119,9 +119,6 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
-	// Lucky bag auto-draw task (fires at 12:00 daily)
-	service.StartLuckyBagDrawTask()
-
 	// OpenAI status RSS monitor — notifies WeChat group on upstream incidents
 	service.StartOpenAIStatusMonitor()
 
