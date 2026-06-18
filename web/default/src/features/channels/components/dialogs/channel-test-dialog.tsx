@@ -276,9 +276,16 @@ export function ChannelTestDialog({
     setPagination((prev) => ({ ...prev, pageIndex: 0 }))
   }, [searchTerm, modelsValue])
 
+  // testResults and testingModels are intentionally included even though they
+  // aren't used in the mapping: DataTableRow is memoized by row object identity,
+  // and TanStack Table's core row model is cached by data reference. Without
+  // these deps, a changed test state updates the column cell closures but
+  // returns the same cached row objects, so DataTableRow skips re-render and
+  // the status column appears frozen.
   const tableData = useMemo<ModelRow[]>(
     () => filteredModels.map((model) => ({ model })),
-    [filteredModels]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filteredModels, testResults, testingModels]
   )
 
   const markModelTesting = useCallback((key: string, isTesting: boolean) => {
