@@ -21,6 +21,7 @@ import { type ColumnDef } from '@tanstack/react-table'
 import { useTranslation } from 'react-i18next'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
+import { BadgeCell } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
@@ -49,7 +50,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) => {
           const plan = row.original.plan
           return (
-            <div className='max-w-[200px]'>
+            <div className='max-w-full min-w-0'>
               <div className='truncate font-medium'>{plan.title}</div>
               {plan.subtitle && (
                 <div className='text-muted-foreground truncate text-xs'>
@@ -153,7 +154,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) => {
           const plan = row.original.plan
           return (
-            <div className='flex gap-1'>
+            <BadgeCell>
               {plan.stripe_price_id && (
                 <StatusBadge
                   label='Stripe'
@@ -171,14 +172,14 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
                   copyable={false}
                 />
               )}
-            </div>
+            </BadgeCell>
           )
         },
         size: 140,
       },
       {
         id: 'total_amount',
-        header: t('Received amount'),
+        header: t('Plan Quota'),
         meta: { mobileHidden: true },
         cell: ({ row }) => {
           const total = Number(row.original.plan.total_amount || 0)
@@ -201,7 +202,11 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
               <span className='text-muted-foreground'>{t('No Upgrade')}</span>
             )
           }
-          return <GroupBadge group={group} />
+          return (
+            <BadgeCell>
+              <GroupBadge group={group} />
+            </BadgeCell>
+          )
         },
         size: 120,
       },
