@@ -20,4 +20,5 @@ export type CustomIntegrationSettings = {
   HupijiaoMinTopUp: number
   HupijiaoInviteRewardRatio: number
   OpenAIStatusMonitorEnabled: boolean
+  LuckyBagLLMApiKey: string
 }

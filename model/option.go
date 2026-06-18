@@ -196,6 +196,9 @@ func InitOptionMap() {
 	common.OptionMap["LuckyBagMinUsd"] = "0.3"
 	common.OptionMap["LuckyBagMaxUsd"] = "2"
 
+	// 福袋资格通知 LLM API Key（用于生成祝福话术）
+	common.OptionMap["LuckyBagLLMApiKey"] = ""
+
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()
 }

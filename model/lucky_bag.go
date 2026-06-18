@@ -96,6 +96,22 @@ func yesterdayCalendarWindow(now time.Time) (start, end int64) {
 	return yesterdayStart.Unix(), todayStart.Unix()
 }
 
+// GetUserTodaySpendQuota 返回用户今日（CST 自然日）type=2 的 quota 扣费总和
+func GetUserTodaySpendQuota(userId int) int64 {
+	loc := cstLocation()
+	t := time.Now().In(loc)
+	todayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	tomorrowStart := todayStart.AddDate(0, 0, 1)
+	type sumRow struct{ Total int64 }
+	var row sumRow
+	DB.Model(&Log{}).
+		Select("COALESCE(SUM(quota), 0) AS total").
+		Where("user_id = ? AND type = 2 AND created_at >= ? AND created_at < ?",
+			userId, todayStart.Unix(), tomorrowStart.Unix()).
+		Scan(&row)
+	return row.Total
+}
+
 // GetUserYesterdaySpendQuota 返回用户昨日（CST 自然日）type=2 的 quota 扣费总和
 func GetUserYesterdaySpendQuota(userId int) int64 {
 	yStart, yEnd := yesterdayCalendarWindow(time.Now())

@@ -17,6 +17,10 @@ import (
 	"gorm.io/gorm"
 )
 
+// OnConsumeLogHook 消费日志写入后的钩子，由 service 包在启动时注入，避免循环依赖。
+// 参数：userId, quota（本次消费 quota）
+var OnConsumeLogHook func(userId int, quota int)
+
 func applyExplicitLogTextFilter(tx *gorm.DB, column string, value string) (*gorm.DB, error) {
 	if value == "" {
 		return tx, nil
@@ -340,6 +344,10 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		gopool.Go(func() {
 			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
 		})
+	}
+	if OnConsumeLogHook != nil && params.Quota > 0 {
+		quotaCopy := params.Quota
+		gopool.Go(func() { OnConsumeLogHook(userId, quotaCopy) })
 	}
 }
 

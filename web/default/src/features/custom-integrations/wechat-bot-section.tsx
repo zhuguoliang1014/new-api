@@ -29,6 +29,7 @@ const schema = z.object({
   WechatBotGroupIds: z.string(),
   WechatBotReminderContent: z.string(),
   WechatBotResultContent: z.string(),
+  LuckyBagLLMApiKey: z.string(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -51,6 +52,7 @@ export function WechatBotSection({ defaultValues }: Props) {
       WechatBotGroupIds: defaultValues.WechatBotGroupIds ?? '',
       WechatBotReminderContent: defaultValues.WechatBotReminderContent ?? '',
       WechatBotResultContent: defaultValues.WechatBotResultContent ?? '',
+      LuckyBagLLMApiKey: defaultValues.LuckyBagLLMApiKey ?? '',
     }),
     [defaultValues]
   )
@@ -198,6 +200,29 @@ export function WechatBotSection({ defaultValues }: Props) {
                 <FormDescription>
                   {t(
                     'Sent after each draw. Placeholders: {winner} {quota} {code} {date} {hour}'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='LuckyBagLLMApiKey'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Lucky Bag LLM API Key')}</FormLabel>
+                <FormControl>
+                  <Input
+                    type='password'
+                    placeholder='sk-...'
+                    {...field}
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'API key for generating personalized blessing messages when users become eligible for lucky bag draws. Leave empty to use default messages.'
                   )}
                 </FormDescription>
                 <FormMessage />
