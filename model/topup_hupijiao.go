@@ -166,7 +166,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 	}
 
 	if quotaToAdd > 0 {
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("虎皮椒充值成功，充值额度: %v，支付金额: %.2f", logger.FormatQuota(quotaToAdd), topUp.Money), "", topUp.PaymentMethod, PaymentMethodHupijiao)
+		RecordTopupLog(topUp.UserId, fmt.Sprintf("支付宝充值 %.2f 元", topUp.Money), "", topUp.PaymentMethod, PaymentMethodHupijiao)
 		if inviterId > 0 && inviteRewardQuota > 0 {
 			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("虎皮椒邀请奖励，来自用户 %d，待转移奖励额度: %v，支付金额: %.2f", topUp.UserId, logger.FormatQuota(inviteRewardQuota), amount))
 		}
