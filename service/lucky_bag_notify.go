@@ -124,8 +124,24 @@ func sendLuckyBagEligibleNotify(ctx context.Context, username string, spendUSD f
 		return nil
 	}
 
-	opening := generateOpening(ctx)
-	blessing := generateBlessing(ctx, username, spendUSD, slots)
+	// 给 LLM 调用单独设 90s 超时。已在 asyncSafe goroutine 里，等多久不阻塞主流程。
+	llmCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+
+	// 并行调用两个 LLM，总耗时 = max(opening, blessing)，而非串行相加
+	type stringResult struct{ val string }
+	openingCh := make(chan stringResult, 1)
+	blessingCh := make(chan stringResult, 1)
+
+	go func() {
+		openingCh <- stringResult{generateOpening(llmCtx)}
+	}()
+	go func() {
+		blessingCh <- stringResult{generateBlessing(llmCtx, username, spendUSD, slots)}
+	}()
+
+	opening := (<-openingCh).val
+	blessing := (<-blessingCh).val
 
 	msg := fmt.Sprintf("%s\n\n用户：%s\n今日消费：$%.2f\n明日抽奖次数：%d 次\n\n%s\n\n请于明日 08:00 后登录平台前往抽奖页面领取～",
 		opening, username, spendUSD, slots, blessing)
@@ -204,7 +220,7 @@ func callLLMWithSystem(ctx context.Context, systemPrompt, userPrompt string, max
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
