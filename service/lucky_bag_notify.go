@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	luckyBagLLMEndpoint = "https://aicloudroute.com/v1/chat/completions"
-	luckyBagLLMModel    = "gpt-5.5"
-	luckyBagMinUsd      = 9.9 // 最低档位（与 model.EligibilityTiers 兜底一致）
+	luckyBagLLMEndpoint     = "https://aicloudroute.com/v1/chat/completions"
+	luckyBagLLMModel        = "gpt-5.5"
+	luckyBagMinUsd          = 9.9 // 最低档位（与 model.EligibilityTiers 兜底一致）
+	luckyBagSendCooldownKey = "lucky_bag:notify:cooldown"
+	luckyBagSendCooldown    = 60 * time.Second // 全局发送冷却：1分钟最多1条
 )
 
 // cstLoc 复用同一个 Location 对象，避免每次调用都分配
@@ -115,6 +117,13 @@ func asyncSafe(fn func()) {
 
 // sendLuckyBagEligibleNotify 拼消息并发送到微信群
 func sendLuckyBagEligibleNotify(ctx context.Context, username string, spendUSD float64, slots int) error {
+	// 全局发送限流：1 分钟最多 1 条，窗口期内直接丢弃（不入队、不补发）
+	// 用 SETNX + TTL 实现：抢到 key 才发，抢不到说明 60s 内已发过
+	if !acquireSendCooldown() {
+		logger.LogInfo(ctx, fmt.Sprintf("[LuckyBagNotify] dropped by cooldown username=%s slots=%d", username, slots))
+		return nil
+	}
+
 	opening := generateOpening(ctx)
 	blessing := generateBlessing(ctx, username, spendUSD, slots)
 
@@ -122,6 +131,22 @@ func sendLuckyBagEligibleNotify(ctx context.Context, username string, spendUSD f
 		opening, username, spendUSD, slots, blessing)
 
 	return SendWechatGroupMessage(msg)
+}
+
+// acquireSendCooldown 抢全局冷却锁。true=抢到，可以发；false=已被占用，应丢弃。
+// 服务重启后 Redis 中的 key 仍在 TTL 内，自然继续生效，避免重启疯狂补发。
+func acquireSendCooldown() bool {
+	if !common.RedisEnabled || common.RDB == nil {
+		// 没有 Redis 时不限流（兜底允许发送，避免完全没消息）
+		return true
+	}
+	ok, err := common.RDB.SetNX(context.Background(), luckyBagSendCooldownKey, "1", luckyBagSendCooldown).Result()
+	if err != nil {
+		// Redis 异常时保守放行，避免因为限流挂了导致一条都发不出
+		logger.LogWarn(context.Background(), fmt.Sprintf("[LuckyBagNotify] cooldown SetNX err: %v", err))
+		return true
+	}
+	return ok
 }
 
 // generateOpening 调用 LLM 生成激励打工人的古诗/金句开头，失败则返回默认值
