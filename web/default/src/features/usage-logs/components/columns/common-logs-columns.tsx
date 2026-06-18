@@ -96,6 +96,39 @@ function splitQuotaDisplay(value: string): { prefix: string; amount: string } {
   return { prefix: match[1], amount: match[2] }
 }
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  alipay: '支付宝',
+  wxpay: '微信支付',
+  hupijiao: '虎皮椒',
+  stripe: 'Stripe',
+  creem: 'Creem',
+  waffo: 'Waffo',
+  waffo_pancake: 'Waffo',
+  balance: '余额',
+  epay: '易支付',
+  admin: '管理员',
+}
+
+function formatTopupContent(
+  content: string,
+  other: LogOtherData | null
+): string {
+  const method =
+    other?.admin_info?.callback_payment_method ||
+    other?.admin_info?.payment_method ||
+    ''
+  const methodLabel = PAYMENT_METHOD_LABELS[method] || method
+
+  // extract money amount: "支付金额: 10.00" or "支付金额：10"
+  const moneyMatch = content.match(/支付金额[：:]\s*([\d.]+)/)
+  const money = moneyMatch ? moneyMatch[1] : null
+
+  if (!money) return content
+
+  const prefix = methodLabel ? `${methodLabel}充值` : '充值'
+  return `${prefix}: ¥${parseFloat(money)}`
+}
+
 function buildDetailSegments(
   log: UsageLog,
   other: LogOtherData | null,
@@ -110,6 +143,10 @@ function buildDetailSegments(
 
   if (log.type === 6) {
     return [{ text: t('Async task refund') }]
+  }
+
+  if (log.type === 1) {
+    return [{ text: formatTopupContent(log.content, other) }]
   }
 
   if (log.type !== 2) return []
