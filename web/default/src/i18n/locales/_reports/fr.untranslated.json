@@ -1,5 +1,6 @@
 {
   "API billing only, excludes gifted credit and manual top-ups": "API billing only, excludes gifted credit and manual top-ups",
+  "API key for generating personalized blessing messages when users become eligible for lucky bag draws. Leave empty to use default messages.": "API key for generating personalized blessing messages when users become eligible for lucky bag draws. Leave empty to use default messages.",
   "Automatically send lucky bag reminders to configured WeChat groups": "Automatically send lucky bag reminders to configured WeChat groups",
   "Come back tomorrow for the next round": "Come back tomorrow for the next round",
   "Come back tomorrow for the next round 🎁": "Come back tomorrow for the next round 🎁",
@@ -20,5 +21,9 @@
   "To next tier": "To next tier",
   "Up to $2 per box, credited directly": "Up to $2 per box, credited directly",
   "Up to 30 days = +30": "Up to 30 check-in days = +30 pt",
-  "Winners receive a redemption code in the draw history": "Winners receive a redemption code visible in the draw history"
+  "Winners receive a redemption code in the draw history": "Winners receive a redemption code visible in the draw history",
+  "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+  "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_one": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+  "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_other": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chances",
+  "Spend today to unlock opening chances": "Spend today to unlock opening chances"
 }

@@ -4897,6 +4897,19 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Today only": "仅限今日",
+    "Refresh in": "刷新倒计时",
+    "Top tier reached, {{slots}} chances unlocked": "已达最高档位，已解锁 {{slots}} 次机会",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance": "再消费 <amount>${{gap}}</amount> 解锁 {{count}} 次机会",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_one": "再消费 <amount>${{gap}}</amount> 解锁 {{count}} 次机会",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_other": "再消费 <amount>${{gap}}</amount> 解锁 {{count}} 次机会",
+    "Lucky Bag Benefits": "福袋权益",
+    "Open now": "立即开启",
+    "Recent openings": "最近开启",
+    "Spend today to unlock opening chances": "今日消费解锁开盒次数",
+    "Today's real spend": "今日真实消费",
+    "Today's spend qualified": "今日消费已达标",
+    "View more": "查看更多"
   }
 }

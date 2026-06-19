@@ -34,7 +34,7 @@ const (
 	defaultPrizeMaxQuota = 1000000 // $2.00
 )
 
-// EligibilityTier 资格档位（昨日消费 quota → 今日机会数）
+// EligibilityTier 资格档位（今日消费 quota → 今日机会数）
 type EligibilityTier struct {
 	MinUsd float64 `json:"min_usd"`
 	Slots  int     `json:"slots"`
@@ -83,21 +83,48 @@ func NextRefreshUnix() int64 {
 
 // GetUserWindowSpendQuota 返回用户当前自然日窗口内的 type=2 quota 扣费总和。
 // 与 GetUserTodayUsedSlots / GetUserTodayWonQuota 使用同一个窗口。
+//
+// 注：扣除同窗口内的退款（type=6），避免「消费 → 退款 → 仍享受档位」的资格漂白。
 func GetUserWindowSpendQuota(userId int) int64 {
 	start, end := calendarDayWindow(time.Now())
+	return getUserWindowSpendQuotaIn(userId, start, end)
+}
+
+func getUserWindowSpendQuotaIn(userId int, start, end int64) int64 {
 	type sumRow struct{ Total int64 }
-	var row sumRow
-	DB.Model(&Log{}).
+	var consume, refund sumRow
+	if err := DB.Model(&Log{}).
 		Select("COALESCE(SUM(quota), 0) AS total").
-		Where("user_id = ? AND type = 2 AND created_at >= ? AND created_at < ?",
-			userId, start, end).
-		Scan(&row)
-	return row.Total
+		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at < ?",
+			userId, LogTypeConsume, start, end).
+		Scan(&consume).Error; err != nil {
+		logger.LogWarn(context.Background(),
+			fmt.Sprintf("[LuckyBag] window spend(consume) query userId=%d err=%v", userId, err))
+		return 0
+	}
+	if err := DB.Model(&Log{}).
+		Select("COALESCE(SUM(quota), 0) AS total").
+		Where("user_id = ? AND type = ? AND created_at >= ? AND created_at < ?",
+			userId, LogTypeRefund, start, end).
+		Scan(&refund).Error; err != nil {
+		logger.LogWarn(context.Background(),
+			fmt.Sprintf("[LuckyBag] window spend(refund) query userId=%d err=%v", userId, err))
+		return consume.Total
+	}
+	net := consume.Total - refund.Total
+	if net < 0 {
+		net = 0
+	}
+	return net
 }
 
 // GetUserDailyEligibility 返回用户当前窗口内的机会数（0/1/2/3/5），基于当前自然日窗口消费
 func GetUserDailyEligibility(userId int) int {
 	spend := GetUserWindowSpendQuota(userId)
+	return eligibilityFromSpend(spend)
+}
+
+func eligibilityFromSpend(spend int64) int {
 	for _, tier := range EligibilityTiers {
 		if float64(spend) >= tier.MinUsd*500000 {
 			return tier.Slots
@@ -109,22 +136,38 @@ func GetUserDailyEligibility(userId int) int {
 // GetUserTodayUsedSlots 返回当前自然日窗口内的开盒次数
 func GetUserTodayUsedSlots(userId int) int {
 	start, end := calendarDayWindow(time.Now())
+	return getUserUsedSlotsIn(userId, start, end)
+}
+
+func getUserUsedSlotsIn(userId int, start, end int64) int {
 	var count int64
-	DB.Model(&LuckyBagOpen{}).
+	if err := DB.Model(&LuckyBagOpen{}).
 		Where("user_id = ? AND opened_at >= ? AND opened_at < ?", userId, start, end).
-		Count(&count)
+		Count(&count).Error; err != nil {
+		logger.LogWarn(context.Background(),
+			fmt.Sprintf("[LuckyBag] used slots query userId=%d err=%v", userId, err))
+		return 0
+	}
 	return int(count)
 }
 
 // GetUserTodayWonQuota 返回当前自然日窗口内累计中奖 quota
 func GetUserTodayWonQuota(userId int) int64 {
 	start, end := calendarDayWindow(time.Now())
+	return getUserWonQuotaIn(userId, start, end)
+}
+
+func getUserWonQuotaIn(userId int, start, end int64) int64 {
 	type sumRow struct{ Total int64 }
 	var row sumRow
-	DB.Model(&LuckyBagOpen{}).
+	if err := DB.Model(&LuckyBagOpen{}).
 		Select("COALESCE(SUM(prize_quota), 0) AS total").
 		Where("user_id = ? AND opened_at >= ? AND opened_at < ?", userId, start, end).
-		Scan(&row)
+		Scan(&row).Error; err != nil {
+		logger.LogWarn(context.Background(),
+			fmt.Sprintf("[LuckyBag] won quota query userId=%d err=%v", userId, err))
+		return 0
+	}
 	return row.Total
 }
 
@@ -161,27 +204,62 @@ func drawPrize(minQ, maxQ int) int {
 	return minQ + rand.Intn(maxQ-minQ+1)
 }
 
+// luckyBagOpenLockTTL 用户级互斥锁的 TTL；保证临界区在崩溃后不会永久卡住
+const luckyBagOpenLockTTL = 5 * time.Second
+
+// acquireOpenLock 抢用户级开盒互斥锁。Redis 不可用时降级为允许（依赖 DB 内部
+// 一致性 + 上层限流），保持单 Redis 节点宕机时基本可用。
+func acquireOpenLock(userId int) (release func(), ok bool) {
+	if !common.RedisEnabled || common.RDB == nil {
+		return func() {}, true
+	}
+	key := fmt.Sprintf("lucky_bag:open_lock:%d", userId)
+	got, err := common.RDB.SetNX(context.Background(), key, "1", luckyBagOpenLockTTL).Result()
+	if err != nil {
+		logger.LogWarn(context.Background(),
+			fmt.Sprintf("[LuckyBag] acquireOpenLock userId=%d SETNX err=%v, fallthrough", userId, err))
+		return func() {}, true
+	}
+	if !got {
+		return nil, false
+	}
+	return func() { _ = common.RedisDel(key) }, true
+}
+
 // OpenLuckyBag 执行一次开盒
-//   - 校验三层资格：消费门槛 / 今日次数 / 每日上限
-//   - 抽奖、写记录、加余额、写 Topup 日志
+//   - Redis 用户级互斥锁，杜绝并发 TOCTOU
+//   - 同一时间快照 (now) 贯穿资格读取/记录写入，避免跨 00:00 漂移
+//   - 先写 LuckyBagOpen（占坑），后加余额；若加余额失败回滚记录
 //   - 若已达上限，会精确截断本次奖金到 limit-won 之间，避免越权
 func OpenLuckyBag(userId int, ip string) (prizeQuota int, err error) {
 	ctx := context.Background()
 
+	// ── 互斥锁：同一用户同一时刻最多一个 OpenLuckyBag 在执行 ──────────
+	release, ok := acquireOpenLock(userId)
+	if !ok {
+		return 0, errors.New("操作太频繁，请稍后再试")
+	}
+	defer release()
+
+	// 同一时间快照贯穿整个临界区，防止跨 00:00 时窗口漂移
+	now := time.Now()
+	winStart, winEnd := calendarDayWindow(now)
+
 	// ── 资格层1：今日消费门槛 ────────────────────────────────────────
-	eligible := GetUserDailyEligibility(userId)
+	spend := getUserWindowSpendQuotaIn(userId, winStart, winEnd)
+	eligible := eligibilityFromSpend(spend)
 	if eligible == 0 {
 		return 0, errors.New("今日真实消费不足 $9.9，暂无参与资格")
 	}
 
 	// ── 资格层2：今日次数 ────────────────────────────────────────────
-	used := GetUserTodayUsedSlots(userId)
+	used := getUserUsedSlotsIn(userId, winStart, winEnd)
 	if used >= eligible {
 		return 0, errors.New("今日机会已用完")
 	}
 
 	// ── 资格层3：每日中奖上限 $10 ────────────────────────────────────
-	won := GetUserTodayWonQuota(userId)
+	won := getUserWonQuotaIn(userId, winStart, winEnd)
 	if won >= LuckyBagDailyWonLimit {
 		return 0, errors.New("今日已达领奖上限 $10")
 	}
@@ -198,23 +276,25 @@ func OpenLuckyBag(userId int, ip string) (prizeQuota int, err error) {
 		}
 	}
 
-	// 加余额
-	if err := IncreaseUserQuota(userId, prize, true); err != nil {
-		logger.LogWarn(ctx, fmt.Sprintf("[LuckyBag] OpenLuckyBag userId=%d IncreaseUserQuota failed: %v", userId, err))
-		return 0, errors.New("加余额失败，请重试")
-	}
-
-	// 写历史记录
-	now := time.Now().Unix()
+	// 先写历史记录占坑（任何后续校验失败必须回滚此记录，否则会少计 used/won）
 	rec := &LuckyBagOpen{
 		UserId:     userId,
 		PrizeQuota: prize,
-		OpenedAt:   now,
+		OpenedAt:   now.Unix(),
 		Ip:         ip,
 	}
 	if err := DB.Create(rec).Error; err != nil {
-		// 历史写失败不阻塞用户拿到余额，但要打 warn
 		logger.LogWarn(ctx, fmt.Sprintf("[LuckyBag] OpenLuckyBag userId=%d create record failed: %v", userId, err))
+		return 0, errors.New("写记录失败，请重试")
+	}
+
+	// 加余额；失败则回滚记录避免「占了次数没拿到钱」
+	if err := IncreaseUserQuota(userId, prize, true); err != nil {
+		logger.LogWarn(ctx, fmt.Sprintf("[LuckyBag] OpenLuckyBag userId=%d IncreaseUserQuota failed: %v, rolling back record id=%d", userId, err, rec.Id))
+		if delErr := DB.Delete(rec).Error; delErr != nil {
+			logger.LogError(ctx, fmt.Sprintf("[LuckyBag] OpenLuckyBag userId=%d rollback record id=%d failed: %v (manual cleanup needed)", userId, rec.Id, delErr))
+		}
+		return 0, errors.New("加余额失败，请重试")
 	}
 
 	// 写 Topup Log

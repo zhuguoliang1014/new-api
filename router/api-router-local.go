@@ -39,7 +39,7 @@ func registerLuckyBagRoutes(apiRouter *gin.RouterGroup) {
 	luckyBagRoute.Use(middleware.UserAuth())
 	{
 		luckyBagRoute.GET("/status", controller.LuckyBagStatus)
-		luckyBagRoute.POST("/open", controller.OpenLuckyBag)
+		luckyBagRoute.POST("/open", middleware.CriticalRateLimit(), controller.OpenLuckyBag)
 		luckyBagRoute.GET("/history", controller.LuckyBagHistory)
 	}
 }

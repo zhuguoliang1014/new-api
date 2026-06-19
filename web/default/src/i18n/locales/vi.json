@@ -4897,6 +4897,19 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Today only": "Today only",
+    "Refresh in": "Refresh in",
+    "Top tier reached, {{slots}} chances unlocked": "Top tier reached, {{slots}} chances unlocked",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_one": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_other": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chances",
+    "Lucky Bag Benefits": "Lucky Bag Benefits",
+    "Open now": "Open now",
+    "Recent openings": "Recent openings",
+    "Spend today to unlock opening chances": "Spend today to unlock opening chances",
+    "Today's real spend": "Today's real spend",
+    "Today's spend qualified": "Today's spend qualified",
+    "View more": "View more"
   }
 }

@@ -1008,7 +1008,6 @@
     "Convert reasoning_content to <think> tag in content": "content内のreasoning_contentを<think>タグに変換",
     "Convert string to lowercase": "文字列を小文字に変換",
     "Convert string to uppercase": "文字列を大文字に変換",
-    "Copied": "コピー済み",
     "Converter": "コンバーター",
     "Converter does not match incoming path": "コンバーターが受信パスと一致しません",
     "Converter is not registered": "コンバーターが登録されていません",
@@ -4898,6 +4897,19 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Today only": "Today only",
+    "Refresh in": "Refresh in",
+    "Top tier reached, {{slots}} chances unlocked": "Top tier reached, {{slots}} chances unlocked",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_one": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance",
+    "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chance_other": "Spend <amount>${{gap}}</amount> more to unlock {{count}} more chances",
+    "Lucky Bag Benefits": "Lucky Bag Benefits",
+    "Open now": "Open now",
+    "Recent openings": "Recent openings",
+    "Spend today to unlock opening chances": "Spend today to unlock opening chances",
+    "Today's real spend": "Today's real spend",
+    "Today's spend qualified": "Today's spend qualified",
+    "View more": "View more"
   }
 }
