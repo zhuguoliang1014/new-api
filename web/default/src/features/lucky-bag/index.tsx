@@ -49,10 +49,10 @@ function HeroBanner({
   const remainingSlots = eligibility.remaining_slots
 
   // 计算距下一档差额
-  const yesterdaySpendUsd = quotaToUsd(eligibility.yesterday_spend_quota)
+  const todaySpendUsd = quotaToUsd(eligibility.today_spend_quota)
   const TIERS_USD = [9.9, 29.9, 59.9, 99.9]
-  const nextTierUsd = TIERS_USD.find((u) => yesterdaySpendUsd < u) ?? 0
-  const gapUsd = nextTierUsd > 0 ? Math.max(0, nextTierUsd - yesterdaySpendUsd) : 0
+  const nextTierUsd = TIERS_USD.find((u) => todaySpendUsd < u) ?? 0
+  const gapUsd = nextTierUsd > 0 ? Math.max(0, nextTierUsd - todaySpendUsd) : 0
 
   return (
     <div
@@ -142,7 +142,7 @@ function HeroBanner({
                 <div
                   className='h-full rounded-full bg-white transition-all'
                   style={{
-                    width: `${Math.max(0, Math.min(100, (yesterdaySpendUsd / nextTierUsd) * 100))}%`,
+                    width: `${Math.max(0, Math.min(100, (todaySpendUsd / nextTierUsd) * 100))}%`,
                   }}
                 />
               </div>
@@ -150,7 +150,7 @@ function HeroBanner({
           ) : null}
 
           <p className='mt-2.5 flex items-center justify-between text-[11px] text-white/75'>
-            <span>{t('Refreshes daily at 08:00')}</span>
+            <span>{t('Refreshes daily at 00:00')}</span>
             {!expired && (
               <span className='tabular-nums'>
                 {pad2(h)}:{pad2(m)}:{pad2(s)}
@@ -201,7 +201,7 @@ function OpenBoxCard({
       case 'opening':
         return t('Opening...')
       case 'noEligible':
-        return t('Insufficient yesterday spend')
+        return t('Insufficient today spend')
       case 'noChances':
         return t("Today's chances used up")
       case 'limitReached':
@@ -344,7 +344,7 @@ function OpenBoxCard({
       {/* 三条规则 */}
       <div className='mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3'>
         {[
-          t('Spend $9.9+ yesterday for 1 chance today'),
+          t('Spend $9.9+ today for 1 chance now'),
           t('Up to $2 per box, credited directly'),
           t('Per-person daily cap $10, while-supplies-last'),
         ].map((line, i) => (
@@ -376,7 +376,7 @@ function EligibilityPanel({
   tiers: Tier[]
 }) {
   const { t } = useTranslation()
-  const yesterdaySpendUsd = quotaToUsd(eligibility.yesterday_spend_quota)
+  const todaySpendUsd = quotaToUsd(eligibility.today_spend_quota)
   const eligible = eligibility.eligible_slots > 0
   const dailyLimitReached = eligibility.daily_limit_reached
   const todayWonUsd = quotaToUsd(eligibility.today_won_quota)
@@ -384,8 +384,8 @@ function EligibilityPanel({
 
   // 距下一档
   const sortedTiers = [...tiers].sort((a, b) => a.min_usd - b.min_usd)
-  const nextTier = sortedTiers.find((t) => yesterdaySpendUsd < t.min_usd)
-  const gapToNext = nextTier ? nextTier.min_usd - yesterdaySpendUsd : 0
+  const nextTier = sortedTiers.find((t) => todaySpendUsd < t.min_usd)
+  const gapToNext = nextTier ? nextTier.min_usd - todaySpendUsd : 0
   const currentTierSlots = eligibility.eligible_slots
 
   type RowStatus = 'met' | 'limited' | 'unmet'
@@ -458,8 +458,8 @@ function EligibilityPanel({
         {/* 1. 消费门槛 */}
         <Row
           status={eligible ? 'met' : 'unmet'}
-          main={t("Yesterday's real spend {{amount}}", {
-            amount: `$${yesterdaySpendUsd.toFixed(2)}`,
+          main={t("Today's real spend {{amount}}", {
+            amount: `$${todaySpendUsd.toFixed(2)}`,
           })}
           sub={t('API billing only, excludes gifted credit and manual top-ups')}
           badge={
@@ -485,7 +485,7 @@ function EligibilityPanel({
                 })
               : t('No chances today')
           }
-          sub={t('More spend = more chances tomorrow, max 5 per day')}
+          sub={t('More spend today = more chances now, max 5 per day')}
           badge={`${eligibility.remaining_slots} ${t('chances')}`}
         />
 
@@ -516,7 +516,7 @@ function EligibilityPanel({
       >
         {sortedTiers.map((tier) => {
           const isCurrent = currentTierSlots === tier.slots
-          const isPast = yesterdaySpendUsd >= tier.min_usd
+          const isPast = todaySpendUsd >= tier.min_usd
           return (
             <div
               key={tier.min_usd}
@@ -558,7 +558,7 @@ function EligibilityPanel({
       {eligible && nextTier && gapToNext > 0 && (
         <p className='mt-3 text-center text-[12px] text-zinc-500'>
           {t(
-            'Spend ${{gap}} more today to get {{slots}} chances tomorrow',
+            'Spend ${{gap}} more today to unlock {{slots}} more chances',
             { gap: gapToNext.toFixed(2), slots: nextTier.slots },
           )}
         </p>
@@ -566,7 +566,7 @@ function EligibilityPanel({
 
       {eligibility.next_refresh_unix > 0 && (
         <p className='mt-2 text-center text-[12px] text-zinc-400'>
-          {t('Refreshes daily at 08:00')}
+          {t('Refreshes daily at 00:00')}
         </p>
       )}
     </section>

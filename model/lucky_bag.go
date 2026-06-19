@@ -17,8 +17,9 @@ import (
 // 福袋盲盒（手动开盒、每次必中、奖金直接进余额）
 //
 // 业务模型：
-//   - 资格基于「昨日 type=2 真实 API 扣费」分档，映射到「今日机会次数」
-//   - 每日机会刷新时刻：08:00 (UTC+8)
+//   - 资格基于「当日 type=2 真实 API 扣费」分档，映射到「当日机会次数」
+//   - 每日机会刷新时刻：00:00 (UTC+8) 自然日切换
+//   - 消费 / 开盒次数 / 中奖上限 共用同一个自然日窗口 [今日 00:00, 明日 00:00)
 //   - 单次开盒 [$0.30, $2.00]（管理员可调），每次必中
 //   - 奖金直接 IncreaseUserQuota 入余额，并写一条 LogTypeTopup
 //   - 单人每日累计中奖 quota 上限 $10 (5,000,000 quota)
@@ -28,8 +29,6 @@ import (
 const (
 	// LuckyBagDailyWonLimit 单人每日累计中奖 quota 上限（$10）
 	LuckyBagDailyWonLimit = 5000000
-	// LuckyBagRefreshHour 每日机会刷新时刻（CST 小时）
-	LuckyBagRefreshHour = 8
 	// 默认奖金区间（quota 单位，500000 = $1）
 	defaultPrizeMinQuota = 150000  // $0.30
 	defaultPrizeMaxQuota = 1000000 // $2.00
@@ -63,71 +62,42 @@ func cstLocation() *time.Location {
 	return time.FixedZone("CST", 8*3600)
 }
 
-// dayWindowAt08 返回「以 08:00 (CST) 为日界」的当前所属窗口 [start, end)，单位：unix 秒
+// calendarDayWindow 返回「CST 自然日」的当前所属窗口 [start, end)，单位：unix 秒
 //
-//	now ≥ 今日 08:00 → [今日 08:00, 明日 08:00)
-//	now <  今日 08:00 → [昨日 08:00, 今日 08:00)
-func dayWindowAt08(now time.Time) (start, end int64) {
+//	[今日 00:00, 明日 00:00)
+//
+// 资格消费 / 开盒次数 / 中奖上限 共用此窗口，确保不会跨窗口复用消费。
+func calendarDayWindow(now time.Time) (start, end int64) {
 	loc := cstLocation()
 	t := now.In(loc)
-	today8 := time.Date(t.Year(), t.Month(), t.Day(), LuckyBagRefreshHour, 0, 0, 0, loc)
-	if t.Before(today8) {
-		yesterday8 := today8.AddDate(0, 0, -1)
-		return yesterday8.Unix(), today8.Unix()
-	}
-	tomorrow8 := today8.AddDate(0, 0, 1)
-	return today8.Unix(), tomorrow8.Unix()
+	todayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
+	tomorrowStart := todayStart.AddDate(0, 0, 1)
+	return todayStart.Unix(), tomorrowStart.Unix()
 }
 
-// NextRefreshUnix 返回下一次资格刷新时刻（08:00 CST）的 unix 秒
+// NextRefreshUnix 返回下一次资格刷新时刻（明日 00:00 CST）的 unix 秒
 func NextRefreshUnix() int64 {
-	_, end := dayWindowAt08(time.Now())
+	_, end := calendarDayWindow(time.Now())
 	return end
 }
 
-// yesterdayCalendarWindow 返回昨日（CST 自然日）的 [start, end)
-//
-//	无论现在几点，"昨日" 总是指上一个完整自然日 00:00 ~ 24:00
-func yesterdayCalendarWindow(now time.Time) (start, end int64) {
-	loc := cstLocation()
-	t := now.In(loc)
-	todayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-	yesterdayStart := todayStart.AddDate(0, 0, -1)
-	return yesterdayStart.Unix(), todayStart.Unix()
-}
-
-// GetUserTodaySpendQuota 返回用户今日（CST 自然日）type=2 的 quota 扣费总和
-func GetUserTodaySpendQuota(userId int) int64 {
-	loc := cstLocation()
-	t := time.Now().In(loc)
-	todayStart := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc)
-	tomorrowStart := todayStart.AddDate(0, 0, 1)
+// GetUserWindowSpendQuota 返回用户当前自然日窗口内的 type=2 quota 扣费总和。
+// 与 GetUserTodayUsedSlots / GetUserTodayWonQuota 使用同一个窗口。
+func GetUserWindowSpendQuota(userId int) int64 {
+	start, end := calendarDayWindow(time.Now())
 	type sumRow struct{ Total int64 }
 	var row sumRow
 	DB.Model(&Log{}).
 		Select("COALESCE(SUM(quota), 0) AS total").
 		Where("user_id = ? AND type = 2 AND created_at >= ? AND created_at < ?",
-			userId, todayStart.Unix(), tomorrowStart.Unix()).
+			userId, start, end).
 		Scan(&row)
 	return row.Total
 }
 
-// GetUserYesterdaySpendQuota 返回用户昨日（CST 自然日）type=2 的 quota 扣费总和
-func GetUserYesterdaySpendQuota(userId int) int64 {
-	yStart, yEnd := yesterdayCalendarWindow(time.Now())
-	type sumRow struct{ Total int64 }
-	var row sumRow
-	DB.Model(&Log{}).
-		Select("COALESCE(SUM(quota), 0) AS total").
-		Where("user_id = ? AND type = 2 AND created_at >= ? AND created_at < ?",
-			userId, yStart, yEnd).
-		Scan(&row)
-	return row.Total
-}
-
-// GetUserDailyEligibility 返回用户今日机会数（0/1/2/3/5）
+// GetUserDailyEligibility 返回用户当前窗口内的机会数（0/1/2/3/5），基于当前自然日窗口消费
 func GetUserDailyEligibility(userId int) int {
-	spend := GetUserYesterdaySpendQuota(userId)
+	spend := GetUserWindowSpendQuota(userId)
 	for _, tier := range EligibilityTiers {
 		if float64(spend) >= tier.MinUsd*500000 {
 			return tier.Slots
@@ -136,9 +106,9 @@ func GetUserDailyEligibility(userId int) int {
 	return 0
 }
 
-// GetUserTodayUsedSlots 返回当前刷新窗口内（今日 08:00 起）的开盒次数
+// GetUserTodayUsedSlots 返回当前自然日窗口内的开盒次数
 func GetUserTodayUsedSlots(userId int) int {
-	start, end := dayWindowAt08(time.Now())
+	start, end := calendarDayWindow(time.Now())
 	var count int64
 	DB.Model(&LuckyBagOpen{}).
 		Where("user_id = ? AND opened_at >= ? AND opened_at < ?", userId, start, end).
@@ -146,9 +116,9 @@ func GetUserTodayUsedSlots(userId int) int {
 	return int(count)
 }
 
-// GetUserTodayWonQuota 返回当前刷新窗口内累计中奖 quota
+// GetUserTodayWonQuota 返回当前自然日窗口内累计中奖 quota
 func GetUserTodayWonQuota(userId int) int64 {
-	start, end := dayWindowAt08(time.Now())
+	start, end := calendarDayWindow(time.Now())
 	type sumRow struct{ Total int64 }
 	var row sumRow
 	DB.Model(&LuckyBagOpen{}).
@@ -198,10 +168,10 @@ func drawPrize(minQ, maxQ int) int {
 func OpenLuckyBag(userId int, ip string) (prizeQuota int, err error) {
 	ctx := context.Background()
 
-	// ── 资格层1：昨日消费门槛 ────────────────────────────────────────
+	// ── 资格层1：今日消费门槛 ────────────────────────────────────────
 	eligible := GetUserDailyEligibility(userId)
 	if eligible == 0 {
-		return 0, errors.New("昨日真实消费不足 $9.9，暂无参与资格")
+		return 0, errors.New("今日真实消费不足 $9.9，暂无参与资格")
 	}
 
 	// ── 资格层2：今日次数 ────────────────────────────────────────────

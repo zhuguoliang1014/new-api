@@ -18,7 +18,7 @@ func LuckyBagStatus(c *gin.Context) {
 	if remainingSlots < 0 {
 		remainingSlots = 0
 	}
-	yesterdaySpend := model.GetUserYesterdaySpendQuota(userId)
+	todaySpend := model.GetUserWindowSpendQuota(userId)
 	todayWon := model.GetUserTodayWonQuota(userId)
 	dailyLimitReached := todayWon >= model.LuckyBagDailyWonLimit
 
@@ -26,7 +26,7 @@ func LuckyBagStatus(c *gin.Context) {
 
 	common.ApiSuccess(c, gin.H{
 		"eligibility": gin.H{
-			"yesterday_spend_quota": yesterdaySpend,
+			"today_spend_quota": todaySpend,
 			"eligible_slots":        eligibleSlots,
 			"used_slots":            usedSlots,
 			"remaining_slots":       remainingSlots,

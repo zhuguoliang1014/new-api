@@ -1,7 +1,7 @@
 // Lucky Bag v2 — 手动开盒模型
 
 export interface EligibilityInfo {
-  yesterday_spend_quota: number    // quota 单位（500000 = $1）
+  today_spend_quota: number        // quota 单位（500000 = $1）
   eligible_slots: number           // 今日总机会
   used_slots: number               // 今日已开盒次数
   remaining_slots: number          // 剩余次数

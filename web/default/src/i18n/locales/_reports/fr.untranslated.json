@@ -15,7 +15,7 @@
   "Scheduled to go on sale": "Scheduled to go on sale",
   "Send lucky bag draw reminders to WeChat groups 1 hour before each draw": "Send lucky bag draw reminders to WeChat groups 1 hour before each draw",
   "Set to 0 to disable Alipay for this plan": "Set to 0 to disable Alipay for this plan",
-  "Spend ${{gap}} more today to get {{slots}} chances tomorrow": "Spend ${{gap}} more today to get {{slots}} chances tomorrow",
+  "Spend ${{gap}} more today to unlock {{slots}} more chances": "Spend ${{gap}} more today to unlock {{slots}} more chances",
   "The message sent to groups 1 hour before each draw. Leave empty to use the built-in default.": "The message sent to groups 1 hour before each draw. Leave empty to use the built-in default.",
   "To next tier": "To next tier",
   "Up to $2 per box, credited directly": "Up to $2 per box, credited directly",

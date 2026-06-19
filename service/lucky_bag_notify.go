@@ -63,8 +63,8 @@ func TriggerLuckyBagNotify(userId int, quota int) {
 
 	ctx := context.Background()
 
-	// 快速前置过滤：今日累计消费是否已经超过最低档门槛
-	todaySpend := model.GetUserTodaySpendQuota(userId)
+	// 快速前置过滤：当前窗口累计消费是否已经超过最低档门槛
+	todaySpend := model.GetUserWindowSpendQuota(userId)
 	if float64(todaySpend) < luckyBagMinUsd*500000 {
 		return
 	}
@@ -143,7 +143,7 @@ func sendLuckyBagEligibleNotify(ctx context.Context, username string, spendUSD f
 	opening := (<-openingCh).val
 	blessing := (<-blessingCh).val
 
-	msg := fmt.Sprintf("%s\n\n用户：%s\n今日消费：$%.2f\n明日抽奖次数：%d 次\n\n%s\n\n请于明日 08:00 后登录平台前往抽奖页面领取～",
+	msg := fmt.Sprintf("%s\n\n用户：%s\n今日消费：$%.2f\n今日抽奖次数：%d 次\n\n%s\n\n快登录平台前往抽奖页面领取～",
 		opening, username, spendUSD, slots, blessing)
 
 	return SendWechatGroupMessage(msg)
@@ -177,11 +177,11 @@ func generateOpening(ctx context.Context) string {
 
 // generateBlessing 调用 LLM 生成谄媚祝福话术，失败则返回默认值
 func generateBlessing(ctx context.Context, username string, spendUSD float64, slots int) string {
-	userPrompt := fmt.Sprintf("用户「%s」今日在AI平台消费达到 $%.2f，明日将获得 %d 次福袋抽奖资格，请生成一段祝福提醒话术。", username, spendUSD, slots)
+	userPrompt := fmt.Sprintf("用户「%s」今日在AI平台消费达到 $%.2f，现在已获得 %d 次福袋抽奖资格，请生成一段祝福提醒话术。", username, spendUSD, slots)
 	systemPrompt := "你是一个调皮谄媚的福袋小助手，管用户叫爸爸。生成一句话的祝福，风格口语化、接地气、像朋友发微信一样自然，不要太AI腔，最多用1个emoji，不超过30字，直接输出内容。"
 	result, err := callLLMWithSystem(ctx, systemPrompt, userPrompt, 100)
 	if err != nil || strings.TrimSpace(result) == "" {
-		return fmt.Sprintf("%s爸爸今天消费给力，明天福袋等你来抽！", username)
+		return fmt.Sprintf("%s爸爸今天消费给力，福袋现在就可以抽！", username)
 	}
 	return strings.TrimSpace(result)
 }
