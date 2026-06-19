@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -165,14 +166,61 @@ func acquireSendCooldown() bool {
 	return ok
 }
 
-// generateOpening 调用 LLM 生成激励打工人的古诗/金句开头，失败则返回默认值
+// openingFallbacks 兜底候选池。LLM 失效或被命中黑名单时随机抽用，保证多样性。
+var openingFallbacks = []string{
+	"少壮不搬砖，老大徒伤悲",
+	"打工是不可能打工的，这辈子都不可能",
+	"上班如上坟，工资是寿衣",
+	"摸鱼一时爽，工资火葬场",
+	"你不努力一下，都不知道什么叫绝望",
+	"打工人的快乐，往往就是这么简单",
+	"福报已到账，请查收人间疾苦",
+	"今日份的精神状态：在线营业",
+	"卷又卷不动，躺又躺不平",
+	"周一吃苦周二吃苦周三吃苦周四吃苦周五吃苦周六不吃苦周日不吃苦",
+}
+
+// openingBlocklist LLM 输出里要踢掉的高频"模板套话"。匹配则视为低质回退。
+var openingBlocklist = []string{
+	"天生我材必",
+	"君不见黄河之水",
+	"少壮不努力", // 让兜底版本独占改编位
+	"莫等闲、白了少年头",
+}
+
+// openingDirections 多个方向轮换塞进 prompt，避免"魔改古诗"被首选偏置反复命中。
+var openingDirections = [][]string{
+	{"佛系打工金句", "魔改名人名言", "网络段子改编", "鸡汤反讽"},
+	{"打工人吐槽段子", "互联网黑话改编", "魔改广告语", "佛系金句"},
+	{"反鸡汤金句", "打工版谚语改造", "网友神评论", "魔改流行歌词"},
+	{"赛博丧文学", "现代诗式吐槽", "脱口秀风格金句", "网络梗改编"},
+}
+
+// generateOpening 调用 LLM 生成激励打工人的金句开头，失败/低质则从候选池随机回退。
 func generateOpening(ctx context.Context) string {
-	prompt := "生成一句激励打工人/牛马的开头语，从以下方向随机选一个：1.魔改中国古诗 2.魔改名人名言 3.谚语改版 4.佛系打工金句。风格幽默接地气带点自嘲，不超过20字，直接输出这一句话，不要有任何解释。"
-	result, err := callLLM(ctx, prompt, 80)
-	if err != nil || strings.TrimSpace(result) == "" {
-		return "少壮不搬砖，老大徒伤悲"
+	dir := openingDirections[rand.Intn(len(openingDirections))]
+	rand.Shuffle(len(dir), func(i, j int) { dir[i], dir[j] = dir[j], dir[i] })
+	prompt := fmt.Sprintf(
+		"生成一句激励/调侃打工人的开头语，从以下方向选一个：%s。"+
+			"硬性要求：1) 不超过20字 2) 必须原创，禁止套用「天生我材」「君不见黄河」「少壮不努力」等高频古诗句式 3) 风格幽默接地气、有自嘲感 4) 直接输出一句话，不要解释、不要引号、不要标号。",
+		strings.Join(dir, "、"),
+	)
+	result, err := callLLMWithParams(ctx, "", prompt, 80, 1.1)
+	cleaned := strings.TrimSpace(result)
+	if err != nil || cleaned == "" || hitBlocklist(cleaned, openingBlocklist) {
+		return openingFallbacks[rand.Intn(len(openingFallbacks))]
 	}
-	return strings.TrimSpace(result)
+	return cleaned
+}
+
+// hitBlocklist 命中任意黑名单关键字则返回 true。
+func hitBlocklist(s string, list []string) bool {
+	for _, kw := range list {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // generateBlessing 调用 LLM 生成谄媚祝福话术，失败则返回默认值
@@ -186,13 +234,18 @@ func generateBlessing(ctx context.Context, username string, spendUSD float64, sl
 	return strings.TrimSpace(result)
 }
 
-// callLLM 调用外部 LLM 接口（无 system prompt）
+// callLLM 调用外部 LLM 接口（无 system prompt，默认 temperature 1.0）
 func callLLM(ctx context.Context, userPrompt string, maxTokens int) (string, error) {
-	return callLLMWithSystem(ctx, "", userPrompt, maxTokens)
+	return callLLMWithParams(ctx, "", userPrompt, maxTokens, 1.0)
 }
 
-// callLLMWithSystem 调用外部 LLM 接口
+// callLLMWithSystem 调用外部 LLM 接口（默认 temperature 1.0）
 func callLLMWithSystem(ctx context.Context, systemPrompt, userPrompt string, maxTokens int) (string, error) {
+	return callLLMWithParams(ctx, systemPrompt, userPrompt, maxTokens, 1.0)
+}
+
+// callLLMWithParams 调用外部 LLM 接口，可显式指定 temperature 控制多样性。
+func callLLMWithParams(ctx context.Context, systemPrompt, userPrompt string, maxTokens int, temperature float64) (string, error) {
 	apiKey := getLLMConfig()
 	if apiKey == "" {
 		return "", fmt.Errorf("LuckyBagLLMApiKey not configured")
@@ -205,9 +258,10 @@ func callLLMWithSystem(ctx context.Context, systemPrompt, userPrompt string, max
 	messages = append(messages, map[string]string{"role": "user", "content": userPrompt})
 
 	body, err := common.Marshal(map[string]any{
-		"model":      luckyBagLLMModel,
-		"messages":   messages,
-		"max_tokens": maxTokens,
+		"model":       luckyBagLLMModel,
+		"messages":    messages,
+		"max_tokens":  maxTokens,
+		"temperature": temperature,
 	})
 	if err != nil {
 		return "", err
