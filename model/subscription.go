@@ -165,10 +165,10 @@ type SubscriptionPlan struct {
 	Enabled   bool `json:"enabled" gorm:"default:true"`
 	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
 
-	AllowBalancePay *bool `json:"allow_balance_pay" gorm:"default:true"`
+	AllowBalancePay *bool `json:"allow_balance_pay"`
 
 	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
-	AllowWalletOverflow *bool `json:"allow_wallet_overflow" gorm:"default:true"`
+	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
 
 	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
 	CreemProductId        string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
@@ -315,7 +315,7 @@ type UserSubscription struct {
 	DowngradeGroup string `json:"downgrade_group" gorm:"type:varchar(64);default:''"`
 
 	// Whether wallet fallback is allowed after this subscription's quota is exhausted (snapshot from plan)
-	AllowWalletOverflow bool `json:"allow_wallet_overflow" gorm:"default:true"`
+	AllowWalletOverflow bool `json:"allow_wallet_overflow"`
 
 	// UserPriority is set by the user to control deduction order (higher = deducted first).
 	UserPriority int `json:"user_priority" gorm:"not null;default:0"`
