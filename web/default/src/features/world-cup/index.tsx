@@ -19,7 +19,7 @@ import { Dialog } from '@/components/dialog'
 import { SectionPageLayout } from '@/components/layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import {
   Empty,
   EmptyDescription,
@@ -28,6 +28,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
+import { formatQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getWorldCupHistory, getWorldCupStatus, predictWorldCup } from './api'
@@ -42,6 +43,12 @@ import type {
 type Translate = (key: string, options?: Record<string, unknown>) => string
 type WorldCupPageStyle = CSSProperties & {
   '--world-cup-page-bg': string
+}
+type WorldCupHistoryEntry = {
+  id: string
+  match?: WorldCupMatch
+  prediction?: WorldCupPrediction
+  sortTime: number
 }
 type WorldCupDevScenario =
   | 'api'
@@ -98,6 +105,16 @@ function formatMatchTime(match: WorldCupMatch): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(timestamp))
+}
+
+function formatPredictionTime(prediction: WorldCupPrediction): string {
+  if (!prediction.match_time) return prediction.match_date
+  return new Intl.DateTimeFormat(undefined, {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(prediction.match_time * 1000))
 }
 
 function isPredictionLocked(match: WorldCupMatch): boolean {
@@ -165,6 +182,35 @@ function completedMatches(schedule: WorldCupSchedule | undefined) {
       .flatMap((day) => day.schedule_list)
       .sort((a, b) => parseMatchTime(b) - parseMatchTime(a)) ?? []
   )
+}
+
+function buildHistoryEntries(
+  matches: WorldCupMatch[],
+  records: WorldCupPrediction[]
+): WorldCupHistoryEntry[] {
+  const entries = new Map<string, WorldCupHistoryEntry>()
+  for (const match of matches) {
+    const id = matchId(match)
+    entries.set(id, {
+      id,
+      match,
+      sortTime: parseMatchTime(match),
+    })
+  }
+  for (const prediction of records) {
+    const existing = entries.get(prediction.match_id)
+    if (existing) {
+      existing.prediction = prediction
+      existing.sortTime = Math.max(existing.sortTime, prediction.match_time)
+    } else {
+      entries.set(prediction.match_id, {
+        id: prediction.match_id,
+        prediction,
+        sortTime: prediction.match_time,
+      })
+    }
+  }
+  return [...entries.values()].sort((a, b) => b.sortTime - a.sortTime)
 }
 
 function getMatchStatusText(match: WorldCupMatch, t: Translate): string {
@@ -545,83 +591,28 @@ export function WorldCupHistoryPage() {
     () => completedMatches(historyQuery.data?.data?.completed_schedule),
     [historyQuery.data?.data]
   )
+  const entries = useMemo(
+    () =>
+      buildHistoryEntries(completed, historyQuery.data?.data?.records ?? []),
+    [completed, historyQuery.data?.data?.records]
+  )
 
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>
-        {t('World Cup History')}
-      </SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='mx-auto flex w-full max-w-7xl flex-col gap-6'>
-          <div className='flex flex-wrap items-center justify-between gap-3'>
-            <div>
-              <h1 className='text-2xl font-semibold'>
-                {t('World Cup History')}
-              </h1>
-              <p className='text-muted-foreground mt-1 text-sm'>
-                {t('Completed fixtures and recent World Cup predictions')}
-              </p>
-            </div>
+          <div className='flex justify-end'>
             <Button variant='outline' render={<Link to='/world-cup' />}>
               <ArrowLeft data-icon='inline-start' aria-hidden='true' />
               {t('Back to World Cup')}
             </Button>
           </div>
 
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between gap-3'>
-              <div>
-                <CardTitle className='flex items-center gap-2'>
-                  <History className='size-5' aria-hidden='true' />
-                  {t('Prediction Records')}
-                </CardTitle>
-                <p className='text-muted-foreground mt-1 text-sm'>
-                  {t('Recent World Cup predictions')}
-                </p>
-              </div>
-              <Badge variant='outline'>
-                {historyQuery.data?.data?.total ?? 0}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {historyQuery.isLoading ? (
-                <div className='flex flex-col gap-2'>
-                  <Skeleton className='h-11 w-full' />
-                  <Skeleton className='h-11 w-full' />
-                  <Skeleton className='h-11 w-full' />
-                </div>
-              ) : (
-                <HistoryList records={historyQuery.data?.data?.records ?? []} />
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className='flex flex-row items-center justify-between gap-3'>
-              <div>
-                <CardTitle className='flex items-center gap-2'>
-                  <Trophy className='size-5' aria-hidden='true' />
-                  {t('Completed Matches')}
-                </CardTitle>
-                <p className='text-muted-foreground mt-1 text-sm'>
-                  {t('Final scores from completed World Cup fixtures')}
-                </p>
-              </div>
-              <Badge variant='outline'>
-                {t('{{count}} completed', { count: completed.length })}
-              </Badge>
-            </CardHeader>
-            <CardContent>
-              {historyQuery.isLoading ? (
-                <div className='flex flex-col gap-2'>
-                  <Skeleton className='h-11 w-full' />
-                  <Skeleton className='h-11 w-full' />
-                </div>
-              ) : (
-                <CompletedMatchList matches={completed} />
-              )}
-            </CardContent>
-          </Card>
+          {historyQuery.isLoading ? (
+            <HistorySkeleton />
+          ) : (
+            <WorldCupHistoryCards entries={entries} />
+          )}
         </div>
       </SectionPageLayout.Content>
     </SectionPageLayout>
@@ -906,9 +897,31 @@ function TeamBlock(props: {
   )
 }
 
-function CompletedMatchList(props: { matches: WorldCupMatch[] }) {
+function HistorySkeleton() {
+  return (
+    <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+      {['first', 'second', 'third'].map((key) => (
+        <Card key={key} className='overflow-hidden'>
+          <Skeleton className='h-1 w-full' />
+          <CardHeader className='gap-3'>
+            <div className='flex items-center justify-between gap-2'>
+              <Skeleton className='h-5 w-24' />
+              <Skeleton className='h-5 w-16' />
+            </div>
+            <Skeleton className='h-16 w-full' />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className='h-14 w-full' />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+function WorldCupHistoryCards(props: { entries: WorldCupHistoryEntry[] }) {
   const { t } = useTranslation()
-  if (props.matches.length === 0) {
+  if (props.entries.length === 0) {
     return (
       <Empty className='rounded-lg border border-dashed py-10'>
         <EmptyHeader>
@@ -918,7 +931,7 @@ function CompletedMatchList(props: { matches: WorldCupMatch[] }) {
           <EmptyTitle>{t('No completed matches yet')}</EmptyTitle>
           <EmptyDescription>
             {t(
-              'Completed matches will appear here after final scores are available'
+              'Completed matches and prediction results will appear here after settlement'
             )}
           </EmptyDescription>
         </EmptyHeader>
@@ -927,80 +940,174 @@ function CompletedMatchList(props: { matches: WorldCupMatch[] }) {
   }
 
   return (
-    <div className='flex flex-col divide-y rounded-lg border'>
-      {props.matches.map((match) => (
-        <div
-          key={matchId(match)}
-          className='flex flex-wrap items-center justify-between gap-3 px-3 py-3 text-sm'
-        >
-          <div className='min-w-0'>
-            <div className='truncate font-medium'>
-              {match.host_team_name} {t('vs')} {match.guest_team_name}
-            </div>
-            <div className='text-muted-foreground text-xs'>
-              {match.date} · {match.group_name || match.match_type_des}
-            </div>
-          </div>
-          <div className='flex items-center gap-2'>
-            <div className='bg-muted/35 rounded-lg border px-3 py-1 font-semibold tabular-nums'>
-              {match.host_team_score || '0'} : {match.guest_team_score || '0'}
-            </div>
-            <Badge variant='secondary'>
-              {match.match_des || t('Completed')}
-            </Badge>
-          </div>
-        </div>
+    <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+      {props.entries.map((entry) => (
+        <WorldCupHistoryCard key={entry.id} entry={entry} />
       ))}
     </div>
   )
 }
 
-function HistoryList(props: { records: WorldCupPrediction[] }) {
+function WorldCupHistoryCard(props: { entry: WorldCupHistoryEntry }) {
   const { t } = useTranslation()
-  if (props.records.length === 0) {
-    return (
-      <Empty>
-        <EmptyHeader>
-          <EmptyTitle>{t('No prediction history')}</EmptyTitle>
-          <EmptyDescription>
-            {t('Predictions will appear here after you submit them')}
-          </EmptyDescription>
-        </EmptyHeader>
-      </Empty>
-    )
+  const { match, prediction } = props.entry
+  const hostName = match?.host_team_name || prediction?.host_team_name || ''
+  const guestName = match?.guest_team_name || prediction?.guest_team_name || ''
+  const hasFinalScore = Boolean(
+    match &&
+      (match.host_team_score || match.guest_team_score || isMatchFinished(match))
+  )
+  const centerValue = hasFinalScore
+    ? `${match?.host_team_score || '0'} : ${match?.guest_team_score || '0'}`
+    : prediction
+      ? formatPredictionTime(prediction)
+      : '- : -'
+  const rewardQuota =
+    prediction?.status === 'won'
+      ? Number(prediction.reward_quota || 0) +
+        Number(prediction.streak_bonus_quota || 0)
+      : 0
+  let PredictionStatusIcon = Clock
+  if (prediction?.status === 'won') {
+    PredictionStatusIcon = CheckCircle2
+  } else if (prediction?.status === 'lost' || prediction?.status === 'void') {
+    PredictionStatusIcon = XCircle
   }
 
   return (
-    <div className='flex flex-col divide-y rounded-lg border'>
-      {props.records.map((record) => (
-        <div
-          key={record.id}
-          className='flex flex-wrap items-center justify-between gap-3 px-3 py-3 text-sm'
-        >
-          <div className='min-w-0'>
-            <div className='truncate font-medium'>
-              {record.host_team_name} {t('vs')} {record.guest_team_name}
-            </div>
-            <div className='text-muted-foreground text-xs'>
-              {record.match_date} ·{' '}
-              {predictionLabel(
-                record.choice,
-                record.host_team_name,
-                record.guest_team_name,
-                t
-              )}
-            </div>
-          </div>
-          <div className='flex items-center gap-2'>
-            <Badge variant={record.status === 'won' ? 'default' : 'secondary'}>
-              {statusLabel(record, t)}
-            </Badge>
-            {record.status === 'won' ? (
-              <Badge variant='outline'>{t('Reward issued')}</Badge>
+    <Card className='overflow-hidden border-emerald-950/10 shadow-sm'>
+      <div className='h-1 bg-[linear-gradient(90deg,#0f8a4b,#f2c14e,#c7332d)]' />
+      <CardHeader className='gap-3'>
+        <div className='flex flex-wrap items-center justify-between gap-2'>
+          <div className='flex flex-wrap items-center gap-2'>
+            {(match?.group_name || prediction?.group_name) ? (
+              <Badge variant='outline'>
+                {t('Group {{group}}', {
+                  group: match?.group_name || prediction?.group_name,
+                })}
+              </Badge>
+            ) : null}
+            {match?.match_type_des || prediction?.match_type ? (
+              <Badge variant='secondary'>
+                {match?.match_type_des || prediction?.match_type}
+              </Badge>
             ) : null}
           </div>
+          <Badge variant='secondary'>
+            {match?.match_des ||
+              (prediction ? statusLabel(prediction, t) : t('Completed'))}
+          </Badge>
         </div>
-      ))}
-    </div>
+
+        <div className='grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2'>
+          <TeamBlock name={hostName} logo={match?.host_team_logo_url || ''} />
+          <div className='bg-muted/35 flex h-12 min-w-[78px] items-center justify-center rounded-lg border px-2 text-center sm:h-14 sm:min-w-20 sm:px-3'>
+            <div>
+              <div className='text-muted-foreground text-[11px] font-medium uppercase'>
+                {hasFinalScore ? t('Final score') : t('Kick-off')}
+              </div>
+              <div className='text-xs font-semibold tabular-nums sm:text-sm'>
+                {centerValue}
+              </div>
+            </div>
+          </div>
+          <TeamBlock
+            name={guestName}
+            logo={match?.guest_team_logo_url || ''}
+            align='right'
+          />
+        </div>
+      </CardHeader>
+
+      <CardContent className='flex flex-col gap-3'>
+        {prediction ? (
+          <>
+            <div className='grid grid-cols-3 gap-2'>
+              {(['host', 'draw', 'guest'] as WorldCupChoice[]).map((choice) => {
+                const selectedChoice = prediction.choice === choice
+                return (
+                  <div
+                    key={choice}
+                    className={cn(
+                      'flex h-14 min-w-0 flex-col items-center justify-center gap-0.5 rounded-lg border px-2 text-center text-sm',
+                      selectedChoice
+                        ? 'border-emerald-600 bg-emerald-600 text-white shadow-sm dark:border-emerald-500 dark:bg-emerald-600'
+                        : 'border-emerald-950/10 bg-white/70 text-muted-foreground opacity-70 dark:bg-background/50'
+                    )}
+                  >
+                    <span className='text-sm leading-5 font-semibold'>
+                      {choiceLabel(choice, t)}
+                    </span>
+                    <span className='max-w-full truncate text-[11px] leading-4 font-normal opacity-75'>
+                      {choiceSubLabel(
+                        choice,
+                        {
+                          host_team_name: hostName,
+                          guest_team_name: guestName,
+                        } as WorldCupMatch,
+                        t
+                      )}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+            <div
+              className={cn(
+                'flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,.7)]',
+                prediction.status === 'won'
+                  ? 'border-emerald-500/30 bg-emerald-500/10'
+                  : 'border-emerald-950/10 bg-white/80 dark:bg-background/60'
+              )}
+            >
+              <div className='min-w-0'>
+                <div className='text-muted-foreground text-xs font-medium'>
+                  {t('Your prediction')}
+                </div>
+                <div className='text-foreground truncate font-semibold'>
+                  {predictionLabel(prediction.choice, hostName, guestName, t)}
+                </div>
+              </div>
+              <div className='flex shrink-0 items-center gap-2'>
+                {rewardQuota > 0 ? (
+                  <Badge variant='outline'>
+                    {t('Reward {{amount}}', {
+                      amount: formatQuota(rewardQuota),
+                    })}
+                  </Badge>
+                ) : null}
+                <span
+                  className={cn(
+                    'inline-flex h-7 items-center gap-1 rounded-full border px-2.5 text-xs font-medium',
+                    prediction.status === 'won' &&
+                      'border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                    prediction.status === 'lost' &&
+                      'border-destructive/30 bg-destructive/10 text-destructive',
+                    prediction.status === 'void' &&
+                      'border-muted-foreground/25 bg-muted/30 text-muted-foreground',
+                    prediction.status === 'pending' &&
+                      'border-amber-500/35 bg-amber-500/10 text-amber-700 dark:text-amber-300'
+                  )}
+                >
+                  <PredictionStatusIcon
+                    className='size-3.5'
+                    aria-hidden='true'
+                  />
+                  {statusLabel(prediction, t)}
+                </span>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className='flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-emerald-950/15 bg-white/55 px-3 py-2 text-sm text-muted-foreground dark:bg-background/40'>
+            <div>
+              <div className='text-xs font-medium'>{t('Your prediction')}</div>
+              <div className='font-semibold'>{t('Not predicted')}</div>
+            </div>
+            <Badge variant='outline'>{t('Completed')}</Badge>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

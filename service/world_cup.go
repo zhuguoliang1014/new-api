@@ -25,6 +25,7 @@ import (
 
 const (
 	defaultWorldCupScheduleURL = "https://apis.juhe.cn/fapigw/worldcup2026/schedule"
+	defaultWorldCupAPIKey      = "6d16aeb565bd015359f73f4b24f90c4e"
 	worldCupMCPProtocolVersion = "2024-11-05"
 	worldCupScheduleToolName   = "get_worldcup_schedule"
 
@@ -645,7 +646,7 @@ func worldCupAPIKey() string {
 	return firstWorldCupConfigValue(
 		[]string{"WORLD_CUP_API_KEY", "JUHE_WORLD_CUP_API_KEY", "JUHE_API_KEY"},
 		[]string{"WorldCupAPIKey", "JuheWorldCupAPIKey", "JuheAPIKey"},
-		"",
+		defaultWorldCupAPIKey,
 	)
 }
 
