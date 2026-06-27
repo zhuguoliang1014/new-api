@@ -358,7 +358,7 @@ export function WorldCup() {
           style={worldCupPageStyle}
         >
           <div className='relative z-10 mx-auto flex w-full max-w-7xl flex-col gap-6'>
-            <section className='relative overflow-hidden rounded-lg border bg-emerald-950 text-white shadow-sm lg:aspect-[3/1]'>
+            <section className='relative aspect-[16/9] min-h-[190px] overflow-hidden rounded-lg border bg-emerald-950 text-white shadow-sm sm:aspect-[5/2] sm:min-h-[240px] lg:aspect-[3/1] lg:min-h-0'>
               <img
                 src='/world-cup-hero.png'
                 alt=''
@@ -367,7 +367,7 @@ export function WorldCup() {
               />
               <div className='absolute inset-0 bg-[linear-gradient(90deg,rgba(3,38,25,.42),rgba(3,38,25,.18)_44%,rgba(3,38,25,.04))]' />
               <div className='absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(0deg,rgba(3,38,25,.70),rgba(3,38,25,0))]' />
-              <div className='relative flex min-h-[420px] items-end p-5 pb-4 sm:p-8 sm:pb-6 lg:h-full lg:min-h-0 lg:p-10 lg:pb-8'>
+              <div className='relative flex h-full items-end p-4 pb-4 sm:p-8 sm:pb-6 lg:p-10 lg:pb-8'>
                 <div className='max-w-3xl translate-y-2 sm:translate-y-3'>
                   <div className='flex flex-wrap items-center gap-2'>
                     <Badge className='h-9 rounded-full border-white/25 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md'>
@@ -429,7 +429,7 @@ export function WorldCup() {
                   {matches.map((match) => (
                     <div
                       key={matchId(match)}
-                      className='w-[82vw] max-w-[520px] shrink-0 snap-start sm:w-[460px] lg:w-[520px]'
+                      className='w-[88vw] max-w-[520px] shrink-0 snap-start sm:w-[460px] lg:w-[520px]'
                     >
                       <MatchCard
                         match={match}
@@ -770,17 +770,17 @@ function MatchCard(props: {
             {getMatchStatusText(props.match, t)}
           </Badge>
         </div>
-        <div className='grid gap-2 sm:grid-cols-[1fr_auto_1fr] sm:items-center'>
+        <div className='grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2'>
           <TeamBlock
             name={props.match.host_team_name}
             logo={props.match.host_team_logo_url}
           />
-          <div className='bg-muted/35 flex h-14 min-w-20 items-center justify-center rounded-lg border px-3 text-center'>
+          <div className='bg-muted/35 flex h-12 min-w-[78px] items-center justify-center rounded-lg border px-2 text-center sm:h-14 sm:min-w-20 sm:px-3'>
             <div>
               <div className='text-muted-foreground text-[11px] font-medium uppercase'>
                 {finished ? t('Result') : t('Kick-off')}
               </div>
-              <div className='text-sm font-semibold tabular-nums'>
+              <div className='text-xs font-semibold tabular-nums sm:text-sm'>
                 {finished ? score : formatMatchTime(props.match)}
               </div>
             </div>
@@ -881,16 +881,16 @@ function TeamBlock(props: {
   return (
     <div
       className={cn(
-        'flex min-w-0 items-center gap-3',
+        'flex min-w-0 items-center gap-1.5 sm:gap-3',
         props.align === 'right' && 'flex-row-reverse text-right'
       )}
     >
-      <div className='bg-background flex size-12 shrink-0 items-center justify-center rounded-lg border'>
+      <div className='bg-background flex size-9 shrink-0 items-center justify-center rounded-lg border sm:size-12'>
         {props.logo ? (
           <img
             src={props.logo}
             alt=''
-            className='size-9 object-contain'
+            className='size-6 object-contain sm:size-9'
             loading='lazy'
           />
         ) : (
@@ -898,7 +898,9 @@ function TeamBlock(props: {
         )}
       </div>
       <div className='min-w-0'>
-        <div className='truncate text-base font-semibold'>{props.name}</div>
+        <div className='truncate text-[13px] leading-5 font-semibold sm:text-base'>
+          {props.name}
+        </div>
       </div>
     </div>
   )
