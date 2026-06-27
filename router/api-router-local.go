@@ -17,7 +17,7 @@ func RegisterLocalSelfRoutes(selfRoute *gin.RouterGroup) {
 }
 
 // RegisterLocalRoutes registers all remaining local routes (webhooks,
-// subscription-scoped, and Lucky Bag groups). Call once from SetApiRouter
+// subscription-scoped, Lucky Bag, and World Cup groups). Call once from SetApiRouter
 // after the subscription route group is defined.
 func RegisterLocalRoutes(
 	apiRouter *gin.RouterGroup,
@@ -32,6 +32,7 @@ func RegisterLocalRoutes(
 
 	// Lucky Bag — registers its own route groups under apiRouter
 	registerLuckyBagRoutes(apiRouter)
+	registerWorldCupRoutes(apiRouter)
 }
 
 func registerLuckyBagRoutes(apiRouter *gin.RouterGroup) {
@@ -41,5 +42,21 @@ func registerLuckyBagRoutes(apiRouter *gin.RouterGroup) {
 		luckyBagRoute.GET("/status", controller.LuckyBagStatus)
 		luckyBagRoute.POST("/open", middleware.CriticalRateLimit(), controller.OpenLuckyBag)
 		luckyBagRoute.GET("/history", controller.LuckyBagHistory)
+	}
+}
+
+func registerWorldCupRoutes(apiRouter *gin.RouterGroup) {
+	worldCupRoute := apiRouter.Group("/world-cup")
+	worldCupRoute.Use(middleware.UserAuth())
+	{
+		worldCupRoute.GET("/status", controller.WorldCupStatus)
+		worldCupRoute.POST("/predict", middleware.CriticalRateLimit(), controller.PredictWorldCup)
+		worldCupRoute.GET("/history", controller.WorldCupPredictionHistory)
+	}
+
+	worldCupAdminRoute := apiRouter.Group("/world-cup/admin")
+	worldCupAdminRoute.Use(middleware.AdminAuth())
+	{
+		worldCupAdminRoute.POST("/settle", middleware.CriticalRateLimit(), controller.AdminSettleWorldCupPredictions)
 	}
 }

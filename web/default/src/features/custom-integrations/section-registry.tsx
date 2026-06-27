@@ -3,7 +3,6 @@ import { createSectionRegistry } from '@/features/system-settings/utils/section-
 import { HupijiaoSettingsSection } from './hupijiao-settings-section'
 import { InviteRewardsSection } from './invite-rewards-section'
 import { LuckyBagSection } from './lucky-bag-section'
-import { OpenAIStatusMonitorSection } from './openai-status-section'
 import { WechatBotSection } from './wechat-bot-section'
 import type { CustomIntegrationSettings } from './types'
 
@@ -19,6 +18,7 @@ function resolveAddonDefaults(
     LuckyBagDrawHours: settings.LuckyBagDrawHours ?? '9,12,17',
     LuckyBagMinUsd: settings.LuckyBagMinUsd ?? '1',
     LuckyBagMaxUsd: settings.LuckyBagMaxUsd ?? '10',
+    LuckyBagLLMApiKey: settings.LuckyBagLLMApiKey ?? '',
     HupijiaoPrice: settings.HupijiaoPrice ?? 7.3,
     HupijiaoAmountOptions: settings.HupijiaoAmountOptions ?? '[]',
     HupijiaoAmountDiscount: settings.HupijiaoAmountDiscount ?? '{}',
@@ -31,7 +31,6 @@ function resolveAddonDefaults(
     HupijiaoReturnUrl: settings.HupijiaoReturnUrl ?? '',
     HupijiaoMinTopUp: settings.HupijiaoMinTopUp ?? 1,
     HupijiaoInviteRewardRatio: settings.HupijiaoInviteRewardRatio ?? 0.2,
-    OpenAIStatusMonitorEnabled: settings.OpenAIStatusMonitorEnabled ?? false,
   }
 }
 
@@ -66,14 +65,6 @@ const CUSTOM_INTEGRATIONS_SECTIONS = [
     descriptionKey: 'Configure rewards for invited users who pay through Hupijiao',
     build: (settings: CustomIntegrationSettings) => (
       <InviteRewardsSection defaultValues={resolveAddonDefaults(settings)} />
-    ),
-  },
-  {
-    id: 'openai-status',
-    titleKey: 'OpenAI Status Monitor',
-    descriptionKey: 'Push OpenAI upstream incidents to WeChat groups',
-    build: (settings: CustomIntegrationSettings) => (
-      <OpenAIStatusMonitorSection defaultValues={resolveAddonDefaults(settings)} />
     ),
   },
 ] as const

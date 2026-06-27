@@ -1,25 +1,26 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { SectionPageLayout } from '@/components/layout'
 import { HupijiaoPaymentDialog } from '@/components/payment/hupijiao-payment-dialog'
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentConfirmDialog } from '@/features/wallet/components/dialogs/payment-confirm-dialog'
 import { PAYMENT_TYPES } from '@/features/wallet/constants'
+
 import { AffiliateTab } from './components/affiliate-tab'
 import { BalanceStatsCard } from './components/balance-stats-card'
 import { RechargeTab } from './components/recharge-tab'
 import { SubscriptionTab } from './components/subscription-tab'
 import { TransferDialog } from './components/transfer-dialog'
-import { useMyWallet } from './hooks/use-my-wallet'
+import { type WalletTab, useMyWallet } from './hooks/use-my-wallet'
 
-export function MyWallet() {
+interface MyWalletProps {
+  initialTab?: WalletTab
+}
+
+export function MyWallet(props: MyWalletProps) {
   const { t } = useTranslation()
-  const wallet = useMyWallet()
+  const wallet = useMyWallet(props.initialTab)
 
   const alipayMethod = useMemo(
     () => ({
@@ -30,17 +31,13 @@ export function MyWallet() {
     [t]
   )
 
-
   return (
     <>
       <SectionPageLayout>
         <SectionPageLayout.Title>{t('Wallet')}</SectionPageLayout.Title>
         <SectionPageLayout.Content>
           <div className='mx-auto flex w-full max-w-7xl flex-col gap-4 sm:gap-5'>
-            <BalanceStatsCard
-              user={wallet.user}
-              loading={wallet.userLoading}
-            />
+            <BalanceStatsCard user={wallet.user} loading={wallet.userLoading} />
 
             <Tabs
               value={wallet.activeTab}
@@ -53,15 +50,15 @@ export function MyWallet() {
               className='gap-4'
             >
               <div className='overflow-x-auto pb-1'>
-                <TabsList className='group-data-horizontal/tabs:h-auto min-w-max p-1'>
+                <TabsList className='min-w-max p-1 group-data-horizontal/tabs:h-auto'>
                   <TabsTrigger
                     value='recharge'
                     className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
                   >
-                    <span className='text-base font-semibold leading-none'>
+                    <span className='text-base leading-none font-semibold'>
                       {t('Recharge')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
                       {t('Flexible pay-as-you-go')}
                     </span>
                   </TabsTrigger>
@@ -69,10 +66,10 @@ export function MyWallet() {
                     value='subscription'
                     className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
                   >
-                    <span className='text-base font-semibold leading-none'>
+                    <span className='text-base leading-none font-semibold'>
                       {t('Subscription')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
                       {t('Lower unit price')}
                     </span>
                   </TabsTrigger>
@@ -80,10 +77,10 @@ export function MyWallet() {
                     value='affiliate'
                     className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
                   >
-                    <span className='text-base font-semibold leading-none'>
+                    <span className='text-base leading-none font-semibold'>
                       {t('Referral Program')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] font-normal leading-none'>
+                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
                       {t('Invite to earn rewards')}
                     </span>
                   </TabsTrigger>

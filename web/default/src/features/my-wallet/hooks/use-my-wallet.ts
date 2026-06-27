@@ -1,24 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { getSelf } from '@/lib/api'
-import { useAffiliate, useRedemption, useTopupInfo } from '@/features/wallet/hooks'
+
 import { DEFAULT_DISCOUNT_RATE } from '@/features/wallet/constants'
+import {
+  useAffiliate,
+  useRedemption,
+  useTopupInfo,
+} from '@/features/wallet/hooks'
 import { mergePresetAmounts } from '@/features/wallet/lib'
+import { getSelf } from '@/lib/api'
+
 import {
   calculateHupijiaoAmount,
   getHupijiaoTopupOrderStatus,
   isApiSuccess,
 } from '../api'
-import { useHupijiaoPayment } from './use-hupijiao-payment'
 import type {
   HupijiaoPaymentData,
   MyWalletTopupInfo,
   PresetAmount,
   UserWalletData,
 } from '../types'
+import { useHupijiaoPayment } from './use-hupijiao-payment'
 
-type WalletTab = 'recharge' | 'subscription' | 'affiliate'
+export type WalletTab = 'recharge' | 'subscription' | 'affiliate'
 
 function parseNumberArray(value: unknown): number[] {
   const data = typeof value === 'string' ? safeJson(value) : value
@@ -47,11 +53,13 @@ function safeJson(value: string): unknown {
 
 function getHupijiaoMinTopup(topupInfo: MyWalletTopupInfo | null): number {
   if (!topupInfo) return 1
-  if ((topupInfo.hupijiao_min_recharge_amount ?? 0) > 0) {
-    return topupInfo.hupijiao_min_recharge_amount!
+  const minRechargeAmount = topupInfo.hupijiao_min_recharge_amount ?? 0
+  if (minRechargeAmount > 0) {
+    return minRechargeAmount
   }
-  if ((topupInfo.hupijiao_min_topup ?? 0) > 0) {
-    return topupInfo.hupijiao_min_topup!
+  const minTopupAmount = topupInfo.hupijiao_min_topup ?? 0
+  if (minTopupAmount > 0) {
+    return minTopupAmount
   }
   return 1
 }
@@ -65,9 +73,9 @@ function getHupijiaoPresets(
   return mergePresetAmounts(amounts, discounts)
 }
 
-export function useMyWallet() {
+export function useMyWallet(initialTab: WalletTab = 'recharge') {
   const { t } = useTranslation()
-  const [activeTab, setActiveTab] = useState<WalletTab>('recharge')
+  const [activeTab, setActiveTab] = useState<WalletTab>(initialTab)
   const [user, setUser] = useState<UserWalletData | null>(null)
   const [userLoading, setUserLoading] = useState(true)
   const [topupAmount, setTopupAmount] = useState(0)
@@ -111,7 +119,7 @@ export function useMyWallet() {
         const response = await calculateHupijiaoAmount({ amount })
         const value =
           isApiSuccess(response) && response.data
-            ? parseFloat(response.data)
+            ? Number.parseFloat(response.data)
             : 0
         setPaymentAmount(value)
         return value
@@ -141,6 +149,9 @@ export function useMyWallet() {
     fetchUser()
   }, [fetchUser])
 
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
   // Initialize default amount once topupInfo arrives
   useEffect(() => {

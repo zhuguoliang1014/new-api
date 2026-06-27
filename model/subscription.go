@@ -339,6 +339,7 @@ func (s *UserSubscription) BeforeUpdate(tx *gorm.DB) error {
 type SubscriptionSummary struct {
 	Subscription *UserSubscription `json:"subscription"`
 	PlanTitle    string            `json:"plan_title,omitempty"`
+	Plan         *SubscriptionPlan `json:"-"`
 }
 
 func calcPlanEndTime(start time.Time, plan *SubscriptionPlan) (int64, error) {
@@ -951,8 +952,15 @@ func GetAllUserSubscriptions(userId int) ([]SubscriptionSummary, error) {
 }
 
 func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
+	return buildSubscriptionSummariesWithDB(DB, subs)
+}
+
+func buildSubscriptionSummariesWithDB(db *gorm.DB, subs []UserSubscription) []SubscriptionSummary {
 	if len(subs) == 0 {
 		return []SubscriptionSummary{}
+	}
+	if db == nil {
+		db = DB
 	}
 	planIds := make([]int, 0, len(subs))
 	seen := make(map[int]struct{}, len(subs))
@@ -963,21 +971,31 @@ func buildSubscriptionSummaries(subs []UserSubscription) []SubscriptionSummary {
 		seen[sub.PlanId] = struct{}{}
 		planIds = append(planIds, sub.PlanId)
 	}
-	titleMap := make(map[int]string, len(planIds))
+	planMap := make(map[int]SubscriptionPlan, len(planIds))
 	if len(planIds) > 0 {
 		var plans []SubscriptionPlan
-		if err := DB.Select("id, title").Where("id IN ?", planIds).Find(&plans).Error; err == nil {
+		if err := db.Where("id IN ?", planIds).Find(&plans).Error; err == nil {
 			for _, plan := range plans {
-				titleMap[plan.Id] = plan.Title
+				planMap[plan.Id] = plan
 			}
 		}
 	}
 	result := make([]SubscriptionSummary, 0, len(subs))
 	for _, sub := range subs {
 		subCopy := sub
+		planCopy, hasPlan := planMap[sub.PlanId]
+		var plan *SubscriptionPlan
+		if hasPlan {
+			plan = &planCopy
+		}
+		planTitle := ""
+		if plan != nil {
+			planTitle = plan.Title
+		}
 		result = append(result, SubscriptionSummary{
 			Subscription: &subCopy,
-			PlanTitle:    titleMap[sub.PlanId],
+			PlanTitle:    planTitle,
+			Plan:         plan,
 		})
 	}
 	return result

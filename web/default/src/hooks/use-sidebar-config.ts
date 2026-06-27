@@ -53,6 +53,7 @@ const DEFAULT_SIDEBAR_MODULES: SidebarModulesAdminConfig = {
     enabled: true,
     topup: true,
     orders: true,
+    world_cup: true,
     personal: true,
   },
   admin: {
@@ -108,6 +109,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/wallet': { section: 'personal', module: 'topup' },
   '/my-wallet': { section: 'personal', module: 'topup' },
   '/orders': { section: 'personal', module: 'orders' },
+  '/world-cup': { section: 'personal', module: 'world_cup' },
   '/profile': { section: 'personal', module: 'personal' },
   '/channels': { section: 'admin', module: 'channel' },
   '/models': { section: 'admin', module: 'models' },

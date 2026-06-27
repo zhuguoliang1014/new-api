@@ -1,6 +1,6 @@
-import { Gift, Receipt, ScrollText, Wallet } from 'lucide-react'
+import { Gift, Receipt, ScrollText, Trophy, Wallet } from 'lucide-react'
 import type { TFunction } from 'i18next'
-import { type NavItem, type SidebarData } from '@/components/layout/types'
+import type { NavItem, SidebarData } from '@/components/layout/types'
 import { LOCAL_CONFIG } from '@/lib/local-config'
 
 // Local-only sidebar entries. Kept in a sibling hook so future merges only
@@ -17,6 +17,12 @@ function getLocalPersonalItems(t: TFunction): NavItem[] {
       title: t('Lucky Bag'),
       url: '/lucky-bag',
       icon: Gift,
+    },
+    {
+      title: t('World Cup'),
+      url: '/world-cup',
+      icon: Trophy,
+      activeUrls: ['/world-cup/history'],
     },
     {
       title: '我的订单',
@@ -42,7 +48,7 @@ function injectInto(
   base: SidebarData,
   groupId: string,
   items: NavItem[],
-  insertIndex: number,
+  insertIndex: number
 ): SidebarData {
   return {
     ...base,
@@ -57,7 +63,7 @@ function injectInto(
 
 export function injectLocalNavItems(
   base: SidebarData,
-  t: TFunction,
+  t: TFunction
 ): SidebarData {
   // Personal: prepend Wallet/Lucky Bag/Orders before Profile (which is the
   // sole upstream entry).

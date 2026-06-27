@@ -15,6 +15,7 @@ const defaultSettings: CustomIntegrationSettings = {
   LuckyBagDrawHours: '9,12,17',
   LuckyBagMinUsd: '1',
   LuckyBagMaxUsd: '10',
+  LuckyBagLLMApiKey: '',
   HupijiaoPrice: 7.3,
   HupijiaoAmountOptions: '[]',
   HupijiaoAmountDiscount: '{}',
@@ -26,7 +27,6 @@ const defaultSettings: CustomIntegrationSettings = {
   HupijiaoReturnUrl: '',
   HupijiaoMinTopUp: 1,
   HupijiaoInviteRewardRatio: 0.2,
-  OpenAIStatusMonitorEnabled: false,
 }
 
 export function CustomIntegrationsSettings() {

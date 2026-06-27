@@ -119,6 +119,9 @@ func main() {
 	// Subscription quota reset task (daily/weekly/monthly/custom)
 	service.StartSubscriptionQuotaResetTask()
 
+	// World Cup prediction settlement task (refreshes schedule and settles completed matches)
+	service.StartWorldCupPredictionSettlementTask()
+
 	// OpenAI status RSS monitor — notifies WeChat group on upstream incidents
 	service.StartOpenAIStatusMonitor()
 
