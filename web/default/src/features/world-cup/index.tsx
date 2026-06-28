@@ -734,6 +734,9 @@ function MatchCard(props: {
   const score = `${props.match.host_team_score || '0'} : ${
     props.match.guest_team_score || '0'
   }`
+  const groupName = props.match.group_name.trim()
+  const matchType =
+    props.match.match_type_des.trim() || props.match.match_type_name.trim()
   let PredictionStatusIcon = Clock
   if (props.prediction?.status === 'won') {
     PredictionStatusIcon = CheckCircle2
@@ -750,12 +753,12 @@ function MatchCard(props: {
       <CardHeader className='gap-3'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex flex-wrap items-center gap-2'>
-            {props.match.group_name ? (
+            {groupName ? (
               <Badge variant='outline'>
-                {t('Group {{group}}', { group: props.match.group_name })}
+                {t('Group {{group}}', { group: groupName })}
               </Badge>
             ) : null}
-            <Badge variant='secondary'>{props.match.match_type_des}</Badge>
+            {matchType ? <Badge variant='secondary'>{matchType}</Badge> : null}
           </div>
           <Badge variant={finished ? 'secondary' : 'outline'}>
             {getMatchStatusText(props.match, t)}
@@ -953,6 +956,12 @@ function WorldCupHistoryCard(props: { entry: WorldCupHistoryEntry }) {
   const { match, prediction } = props.entry
   const hostName = match?.host_team_name || prediction?.host_team_name || ''
   const guestName = match?.guest_team_name || prediction?.guest_team_name || ''
+  const groupName = (
+    match?.group_name ||
+    prediction?.group_name ||
+    ''
+  ).trim()
+  const matchType = (match?.match_type_des || prediction?.match_type || '').trim()
   const hasFinalScore = Boolean(
     match &&
       (match.host_team_score || match.guest_team_score || isMatchFinished(match))
@@ -980,18 +989,14 @@ function WorldCupHistoryCard(props: { entry: WorldCupHistoryEntry }) {
       <CardHeader className='gap-3'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <div className='flex flex-wrap items-center gap-2'>
-            {(match?.group_name || prediction?.group_name) ? (
+            {groupName ? (
               <Badge variant='outline'>
                 {t('Group {{group}}', {
-                  group: match?.group_name || prediction?.group_name,
+                  group: groupName,
                 })}
               </Badge>
             ) : null}
-            {match?.match_type_des || prediction?.match_type ? (
-              <Badge variant='secondary'>
-                {match?.match_type_des || prediction?.match_type}
-              </Badge>
-            ) : null}
+            {matchType ? <Badge variant='secondary'>{matchType}</Badge> : null}
           </div>
           <Badge variant='secondary'>
             {match?.match_des ||
