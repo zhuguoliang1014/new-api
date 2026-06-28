@@ -22,7 +22,7 @@ func TestMain(m *testing.M) {
 	DB = db
 	LOG_DB = db
 
-	common.UsingSQLite = true
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 	common.BatchUpdateEnabled = false
 	common.LogConsumeEnabled = true
@@ -50,6 +50,9 @@ func TestMain(m *testing.M) {
 		&PerfMetric{},
 		&WorldCupPrediction{},
 		&WorldCupPredictionStreak{},
+		&SystemInstance{},
+		&SystemTask{},
+		&SystemTaskLock{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -75,6 +78,9 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM perf_metrics")
 		DB.Exec("DELETE FROM world_cup_predictions")
 		DB.Exec("DELETE FROM world_cup_prediction_streaks")
+		DB.Exec("DELETE FROM system_instances")
+		DB.Exec("DELETE FROM system_task_locks")
+		DB.Exec("DELETE FROM system_tasks")
 	})
 }
 

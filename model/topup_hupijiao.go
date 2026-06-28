@@ -101,7 +101,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 	var inviteRewardQuota int
 
 	refCol := "`trade_no`"
-	if common.UsingPostgreSQL {
+	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
 

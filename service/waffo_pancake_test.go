@@ -19,14 +19,11 @@ func setupWaffoPancakeTestDB(t *testing.T) *gorm.DB {
 
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
-	previousUsingSQLite := common.UsingSQLite
-	previousUsingMySQL := common.UsingMySQL
-	previousUsingPostgreSQL := common.UsingPostgreSQL
+	previousMainDatabaseType := common.MainDatabaseType()
+	previousLogDatabaseType := common.LogDatabaseType()
 	previousRedisEnabled := common.RedisEnabled
 
-	common.UsingSQLite = true
-	common.UsingMySQL = false
-	common.UsingPostgreSQL = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	common.RedisEnabled = false
 
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
@@ -45,9 +42,7 @@ func setupWaffoPancakeTestDB(t *testing.T) *gorm.DB {
 		}
 		model.DB = previousDB
 		model.LOG_DB = previousLogDB
-		common.UsingSQLite = previousUsingSQLite
-		common.UsingMySQL = previousUsingMySQL
-		common.UsingPostgreSQL = previousUsingPostgreSQL
+		common.SetDatabaseTypes(previousMainDatabaseType, previousLogDatabaseType)
 		common.RedisEnabled = previousRedisEnabled
 	})
 
