@@ -91,7 +91,7 @@ type WorldCupMatchOutcome struct {
 	GuestScore int
 }
 
-type worldCupRewardAdjustment struct {
+type WorldCupRewardAdjustment struct {
 	UserId           int
 	Prediction       WorldCupPrediction
 	RewardDelta      int
@@ -396,15 +396,20 @@ func GetWorldCupPredictionHistory(userId, page, size int) ([]WorldCupPredictionD
 }
 
 func SettleWorldCupPredictions(outcome WorldCupMatchOutcome) (won int, lost int, err error) {
+	won, lost, _, err = SettleWorldCupPredictionsWithRewards(outcome)
+	return won, lost, err
+}
+
+func SettleWorldCupPredictionsWithRewards(outcome WorldCupMatchOutcome) (won int, lost int, adjustments []WorldCupRewardAdjustment, err error) {
 	if strings.TrimSpace(outcome.MatchId) == "" || strings.TrimSpace(outcome.MatchDate) == "" {
-		return 0, 0, errors.New("invalid world cup outcome")
+		return 0, 0, nil, errors.New("invalid world cup outcome")
 	}
 	winningChoice, ok := NormalizeWorldCupChoice(outcome.Choice)
 	if !ok {
-		return 0, 0, errors.New("invalid world cup outcome choice")
+		return 0, 0, nil, errors.New("invalid world cup outcome choice")
 	}
 	now := common.GetTimestamp()
-	adjustments := make([]worldCupRewardAdjustment, 0)
+	adjustments = make([]WorldCupRewardAdjustment, 0)
 
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		var rows []WorldCupPrediction
@@ -431,7 +436,7 @@ func SettleWorldCupPredictions(outcome WorldCupMatchOutcome) (won int, lost int,
 					Update("quota", gorm.Expr("quota + ?", totalRewardQuota)).Error; err != nil {
 					return err
 				}
-				adjustments = append(adjustments, worldCupRewardAdjustment{
+				adjustments = append(adjustments, WorldCupRewardAdjustment{
 					UserId:           row.UserId,
 					Prediction:       row,
 					RewardDelta:      totalRewardQuota,
@@ -456,7 +461,7 @@ func SettleWorldCupPredictions(outcome WorldCupMatchOutcome) (won int, lost int,
 		return nil
 	})
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 	for _, adjustment := range adjustments {
 		userId := adjustment.UserId
@@ -478,7 +483,7 @@ func SettleWorldCupPredictions(outcome WorldCupMatchOutcome) (won int, lost int,
 				logger.LogQuota(adjustment.StreakBonusDelta)))
 		}
 	}
-	return won, lost, nil
+	return won, lost, adjustments, nil
 }
 
 func addWorldCupPredictionStreakTx(tx *gorm.DB, row WorldCupPrediction) (int, error) {

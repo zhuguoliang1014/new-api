@@ -174,10 +174,15 @@ func AdminSettleWorldCupPredictions(c *gin.Context) {
 			if !ok {
 				continue
 			}
-			won, lost, err := model.SettleWorldCupPredictions(outcome)
+			won, lost, rewards, err := model.SettleWorldCupPredictionsWithRewards(outcome)
 			if err != nil {
 				common.ApiError(c, err)
 				return
+			}
+			if len(rewards) > 0 {
+				if _, err := service.SendWechatWorldCupWinResult(c.Request.Context(), rewards, outcome); err != nil {
+					common.SysLog("world cup prediction wechat notify failed: " + err.Error())
+				}
 			}
 			totalWon += won
 			totalLost += lost

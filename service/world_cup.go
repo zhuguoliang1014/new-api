@@ -322,13 +322,18 @@ func settleWorldCupPredictionsFromSchedule(ctx context.Context, schedule *WorldC
 		return items[i].StartUnix < items[j].StartUnix
 	})
 	for _, item := range items {
-		won, lost, err := model.SettleWorldCupPredictions(item.Outcome)
+		won, lost, rewards, err := model.SettleWorldCupPredictionsWithRewards(item.Outcome)
 		if err != nil {
 			logger.LogWarn(ctx, fmt.Sprintf("world cup prediction settlement failed match_id=%s date=%s: %v", item.Outcome.MatchId, item.Outcome.MatchDate, err))
 			continue
 		}
 		if won > 0 || lost > 0 {
 			logger.LogInfo(ctx, fmt.Sprintf("world cup prediction settled match_id=%s date=%s won=%d lost=%d", item.Outcome.MatchId, item.Outcome.MatchDate, won, lost))
+		}
+		if len(rewards) > 0 {
+			if _, err := SendWechatWorldCupWinResult(ctx, rewards, item.Outcome); err != nil {
+				logger.LogWarn(ctx, fmt.Sprintf("world cup prediction wechat notify failed match_id=%s: %v", item.Outcome.MatchId, err))
+			}
 		}
 	}
 }
