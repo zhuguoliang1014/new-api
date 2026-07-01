@@ -260,19 +260,6 @@ func InitLogDB() (err error) {
 	return err
 }
 
-// dropLegacyLuckyBagTables 删除旧的福袋抽奖表（v1：定时开奖 + 三名中奖者 + 兑换码模型）
-// v2 已切换为「手动开盒」模式，旧数据无意义，直接 DROP。
-func dropLegacyLuckyBagTables() {
-	if DB.Migrator().HasTable("lucky_bag_entries") {
-		common.SysLog("dropping legacy table: lucky_bag_entries")
-		_ = DB.Migrator().DropTable("lucky_bag_entries")
-	}
-	if DB.Migrator().HasTable("lucky_bag_activities") {
-		common.SysLog("dropping legacy table: lucky_bag_activities")
-		_ = DB.Migrator().DropTable("lucky_bag_activities")
-	}
-}
-
 func migrateDB() error {
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
@@ -280,8 +267,6 @@ func migrateDB() error {
 	if err := migrateTokenModelLimitsToText(); err != nil {
 		return err
 	}
-	// Drop legacy lucky_bag_* tables (v1 model is fully retired in favor of v2)
-	dropLegacyLuckyBagTables()
 
 	err := DB.AutoMigrate(
 		&Channel{},
@@ -309,7 +294,6 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&PerfMetric{},
-		&LuckyBagOpen{},
 		&WorldCupPrediction{},
 		&WorldCupPredictionStreak{},
 		&SystemInstance{},
@@ -332,10 +316,6 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
-
-	// Drop legacy lucky_bag_* tables (v1 model is fully retired in favor of v2)
-	dropLegacyLuckyBagTables()
-
 	var wg sync.WaitGroup
 
 	migrations := []struct {
@@ -367,7 +347,6 @@ func migrateDBFast() error {
 		{&CustomOAuthProvider{}, "CustomOAuthProvider"},
 		{&UserOAuthBinding{}, "UserOAuthBinding"},
 		{&PerfMetric{}, "PerfMetric"},
-		{&LuckyBagOpen{}, "LuckyBagOpen"},
 		{&WorldCupPrediction{}, "WorldCupPrediction"},
 		{&WorldCupPredictionStreak{}, "WorldCupPredictionStreak"},
 		{&SystemInstance{}, "SystemInstance"},

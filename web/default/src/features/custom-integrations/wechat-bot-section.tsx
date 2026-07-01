@@ -1,7 +1,7 @@
-import { useRef, useMemo, useState } from 'react'
+import { useMemo, useRef } from 'react'
 import * as z from 'zod'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -20,16 +20,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { SettingsSection } from '@/features/system-settings/components/settings-section'
 import { useResetForm } from '@/features/system-settings/hooks/use-reset-form'
 import { useUpdateOption } from '@/features/system-settings/hooks/use-update-option'
-import { adminSendWechatTest } from './api'
 import type { CustomIntegrationSettings } from './types'
 
 const schema = z.object({
   WechatBotEnabled: z.boolean(),
   WechatBotUserId: z.string(),
   WechatBotGroupIds: z.string(),
-  WechatBotReminderContent: z.string(),
-  WechatBotResultContent: z.string(),
-  LuckyBagLLMApiKey: z.string(),
 })
 
 type FormValues = z.infer<typeof schema>
@@ -41,8 +37,6 @@ type Props = {
 export function WechatBotSection({ defaultValues }: Props) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
-  const [testLoading, setTestLoading] = useState(false)
-  const [testMessage, setTestMessage] = useState('')
   const baselineRef = useRef<CustomIntegrationSettings>(defaultValues)
 
   const formDefaults = useMemo(
@@ -50,9 +44,6 @@ export function WechatBotSection({ defaultValues }: Props) {
       WechatBotEnabled: defaultValues.WechatBotEnabled,
       WechatBotUserId: defaultValues.WechatBotUserId ?? '',
       WechatBotGroupIds: defaultValues.WechatBotGroupIds ?? '',
-      WechatBotReminderContent: defaultValues.WechatBotReminderContent ?? '',
-      WechatBotResultContent: defaultValues.WechatBotResultContent ?? '',
-      LuckyBagLLMApiKey: defaultValues.LuckyBagLLMApiKey ?? '',
     }),
     [defaultValues]
   )
@@ -79,19 +70,6 @@ export function WechatBotSection({ defaultValues }: Props) {
     baselineRef.current = { ...baselineRef.current, ...values }
   }
 
-  const handleTestSend = async () => {
-    setTestLoading(true)
-    try {
-      await adminSendWechatTest(testMessage || undefined)
-      toast.success(t('Test message sent successfully'))
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      toast.error(t('Failed to send test message') + ': ' + msg)
-    } finally {
-      setTestLoading(false)
-    }
-  }
-
   return (
     <SettingsSection title={t('WeChat Group Notifications')}>
       <Form {...form}>
@@ -107,7 +85,7 @@ export function WechatBotSection({ defaultValues }: Props) {
                   </FormLabel>
                   <FormDescription>
                     {t(
-                      'Automatically send lucky bag reminders to configured WeChat groups'
+                      'Send event notifications to configured WeChat groups'
                     )}
                   </FormDescription>
                 </div>
@@ -161,96 +139,9 @@ export function WechatBotSection({ defaultValues }: Props) {
             )}
           />
 
-          <FormField
-            control={form.control}
-            name='WechatBotReminderContent'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Reminder message content')}</FormLabel>
-                <FormControl>
-                  <Textarea
-                    rows={4}
-                    placeholder={t('Leave empty to use default reminder text')}
-                    {...field}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t(
-                    'The message sent to groups 1 hour before each draw. Leave empty to use the built-in default.'
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='WechatBotResultContent'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Draw result message template')}</FormLabel>
-                <FormControl>
-                  <Textarea
-                    rows={4}
-                    placeholder={t('Leave empty to use default result text')}
-                    {...field}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t(
-                    'Sent after each draw. Placeholders: {winner} {quota} {code} {date} {hour}'
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name='LuckyBagLLMApiKey'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Lucky Bag LLM API Key')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='password'
-                    placeholder='sk-...'
-                    {...field}
-                  />
-                </FormControl>
-                <FormDescription>
-                  {t(
-                    'API key for generating personalized blessing messages when users become eligible for lucky bag draws. Leave empty to use default messages.'
-                  )}
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
           <Button type='submit' disabled={updateOption.isPending}>
             {updateOption.isPending ? t('Saving...') : t('Save')}
           </Button>
-
-          <div className='space-y-2 rounded-lg border p-4'>
-            <p className='text-sm font-medium'>{t('Send test message')}</p>
-            <Textarea
-              rows={3}
-              placeholder={t('Test message content...')}
-              value={testMessage}
-              onChange={(e) => setTestMessage(e.target.value)}
-            />
-            <Button
-              type='button'
-              variant='outline'
-              onClick={handleTestSend}
-              disabled={testLoading}
-            >
-              {testLoading ? t('Sending...') : t('Send')}
-            </Button>
-          </div>
         </form>
       </Form>
     </SettingsSection>

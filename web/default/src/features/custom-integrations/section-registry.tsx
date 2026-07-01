@@ -2,7 +2,6 @@ import type { TFunction } from 'i18next'
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 import { HupijiaoSettingsSection } from './hupijiao-settings-section'
 import { InviteRewardsSection } from './invite-rewards-section'
-import { LuckyBagSection } from './lucky-bag-section'
 import { WechatBotSection } from './wechat-bot-section'
 import type { CustomIntegrationSettings } from './types'
 
@@ -13,12 +12,6 @@ function resolveAddonDefaults(
     WechatBotEnabled: settings.WechatBotEnabled ?? false,
     WechatBotUserId: settings.WechatBotUserId ?? '',
     WechatBotGroupIds: settings.WechatBotGroupIds ?? '',
-    WechatBotReminderContent: settings.WechatBotReminderContent ?? '',
-    WechatBotResultContent: settings.WechatBotResultContent ?? '',
-    LuckyBagDrawHours: settings.LuckyBagDrawHours ?? '9,12,17',
-    LuckyBagMinUsd: settings.LuckyBagMinUsd ?? '1',
-    LuckyBagMaxUsd: settings.LuckyBagMaxUsd ?? '10',
-    LuckyBagLLMApiKey: settings.LuckyBagLLMApiKey ?? '',
     HupijiaoPrice: settings.HupijiaoPrice ?? 7.3,
     HupijiaoAmountOptions: settings.HupijiaoAmountOptions ?? '[]',
     HupijiaoAmountDiscount: settings.HupijiaoAmountDiscount ?? '{}',
@@ -38,17 +31,9 @@ const CUSTOM_INTEGRATIONS_SECTIONS = [
   {
     id: 'wechat-bot',
     titleKey: 'WeChat Notifications',
-    descriptionKey: 'Configure WeChat group draw reminders',
+    descriptionKey: 'Configure WeChat group notifications',
     build: (settings: CustomIntegrationSettings) => (
       <WechatBotSection defaultValues={resolveAddonDefaults(settings)} />
-    ),
-  },
-  {
-    id: 'lucky-bag',
-    titleKey: 'Lucky Bag',
-    descriptionKey: 'Configure lucky bag draw times',
-    build: (settings: CustomIntegrationSettings) => (
-      <LuckyBagSection defaultValues={resolveAddonDefaults(settings)} />
     ),
   },
   {

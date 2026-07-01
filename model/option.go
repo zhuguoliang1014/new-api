@@ -184,22 +184,10 @@ func InitOptionMap() {
 		common.OptionMap[k] = v
 	}
 
-	// 微信群通知配置
+	// 微信群通知配置（用于本地活动通知）
 	common.OptionMap["WechatBotEnabled"] = "false"
 	common.OptionMap["WechatBotUserId"] = ""
 	common.OptionMap["WechatBotGroupIds"] = ""
-	common.OptionMap["WechatBotReminderContent"] = ""
-	common.OptionMap["WechatBotResultContent"] = ""
-
-	// OpenAI status RSS monitor
-	common.OptionMap["OpenAIStatusMonitorEnabled"] = "false"
-
-	// 福袋开盒奖金区间（单位：美元）
-	common.OptionMap["LuckyBagMinUsd"] = "0.3"
-	common.OptionMap["LuckyBagMaxUsd"] = "2"
-
-	// 福袋资格通知 LLM API Key（用于生成祝福话术）
-	common.OptionMap["LuckyBagLLMApiKey"] = ""
 
 	common.OptionMapRWMutex.Unlock()
 	loadOptionsFromDatabase()

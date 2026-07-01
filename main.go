@@ -120,12 +120,6 @@ func main() {
 	// World Cup prediction settlement task (refreshes schedule and settles completed matches)
 	service.StartWorldCupPredictionSettlementTask()
 
-	// OpenAI status RSS monitor — notifies WeChat group on upstream incidents
-	service.StartOpenAIStatusMonitor()
-
-	// Wire lucky bag eligibility notify hook (breaks model -> service import cycle)
-	model.OnConsumeLogHook = service.TriggerLuckyBagNotify
-
 	// Report this process as a system instance so the System Info page can show
 	// all currently alive nodes in multi-instance deployments.
 	service.StartSystemInstanceReporter()

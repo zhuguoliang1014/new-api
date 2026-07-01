@@ -185,7 +185,7 @@ func SetApiRouter(router *gin.Engine) {
 			subscriptionAdminRoute.DELETE("/user_subscriptions/:id", controller.AdminDeleteUserSubscription)
 		}
 
-		// Local-only routes (Hupijiao webhooks/subscription, Lucky Bag) — see router/api-router-local.go
+		// Local-only routes (Hupijiao webhooks/subscription) — see router/api-router-local.go
 		RegisterLocalRoutes(apiRouter, subscriptionRoute)
 
 		// Subscription payment callbacks (no auth)

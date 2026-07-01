@@ -163,7 +163,7 @@ bun run dev     # dev server 启动时会自动重新生成 routeTree.gen.ts
 bun run build   # build 也会触发
 ```
 
-路由文件模板（参考 lucky-bag 路由）：
+路由文件模板（参考现有钱包路由）：
 ```tsx
 import { createFileRoute } from '@tanstack/react-router'
 import { MyWallet } from '@/features/my-wallet'
