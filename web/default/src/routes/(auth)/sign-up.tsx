@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { z } from 'zod'
 import { saveAffiliateCode } from '@/features/auth/lib/storage'
 import { SignUp } from '@/features/auth/sign-up'
+import { useAuthStore } from '@/stores/auth-store'
 
 const searchSchema = z.object({
   aff: z.string().optional(),
@@ -30,6 +31,13 @@ export const Route = createFileRoute('/(auth)/sign-up')({
   beforeLoad: ({ search }) => {
     if (search.aff) {
       saveAffiliateCode(search.aff)
+    }
+
+    const { auth } = useAuthStore.getState()
+
+    // 如果已经有用户信息，说明已登录，注册页对其无意义，跳转到 dashboard
+    if (auth.user) {
+      throw redirect({ to: '/dashboard' })
     }
   },
   component: SignUp,

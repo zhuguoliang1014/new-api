@@ -48,6 +48,21 @@ interface UserInfoDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
+function InfoItem({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className='space-y-1.5'>
+      <Label className='text-muted-foreground text-xs'>{label}</Label>
+      <div className='text-sm font-semibold'>{value}</div>
+    </div>
+  )
+}
+
 function SubscriptionCard({
   record,
   nowSec,
@@ -66,6 +81,19 @@ function SubscriptionCard({
   const usagePercent =
     total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0
   const planTitle = record.plan_title || `#${sub.plan_id}`
+  let statusLabel = t('Expired')
+  if (isActive) {
+    statusLabel = t('Active')
+  } else if (isCancelled) {
+    statusLabel = t('Cancelled')
+  }
+
+  let endTimeLabel = t('Expired at')
+  if (isActive) {
+    endTimeLabel = t('Until')
+  } else if (isCancelled) {
+    endTimeLabel = t('Cancelled at')
+  }
 
   return (
     <div
@@ -76,35 +104,17 @@ function SubscriptionCard({
     >
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <span className='truncate text-sm font-semibold'>{planTitle}</span>
-        {isActive ? (
-          <StatusBadge
-            label={t('Active')}
-            variant='success'
-            copyable={false}
-          />
-        ) : isCancelled ? (
-          <StatusBadge
-            label={t('Cancelled')}
-            variant='neutral'
-            copyable={false}
-          />
-        ) : (
-          <StatusBadge
-            label={t('Expired')}
-            variant='neutral'
-            copyable={false}
-          />
-        )}
+        <StatusBadge
+          label={statusLabel}
+          variant={isActive ? 'success' : 'neutral'}
+          copyable={false}
+        />
       </div>
 
       {sub.end_time > 0 && (
         <div className='text-muted-foreground mt-1.5 inline-flex items-center gap-1 text-[11px]'>
           <CalendarClock className='size-3' />
-          {isActive
-            ? t('Until')
-            : isCancelled
-              ? t('Cancelled at')
-              : t('Expired at')}{' '}
+          {endTimeLabel}{' '}
           <span className='text-foreground/80'>
             {new Date(sub.end_time * 1000).toLocaleDateString()}
           </span>
@@ -219,19 +229,6 @@ export function UserInfoDialog({
     })
     return { active: a, inactive: i }
   }, [subscriptions, nowSec])
-
-  const InfoItem = ({
-    label,
-    value,
-  }: {
-    label: string
-    value: string | number
-  }) => (
-    <div className='space-y-1.5'>
-      <Label className='text-muted-foreground text-xs'>{label}</Label>
-      <div className='text-sm font-semibold'>{value}</div>
-    </div>
-  )
 
   return (
     <Dialog
