@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -424,62 +423,7 @@ func GenerateAccessToken(c *gin.Context) {
 }
 
 type TransferAffQuotaRequest struct {
-	Amount float64 `json:"amount"`
-}
-
-type TransferAffQuotaResponse struct {
-	Amount float64 `json:"amount"`
-	Quota  int     `json:"quota"`
-}
-
-var (
-	errTransferQuotaFieldDeprecated = errors.New("transfer quota field is deprecated")
-	errTransferAmountInvalid        = errors.New("transfer amount is invalid")
-	errTransferAmountMinimum        = errors.New("transfer amount minimum")
-)
-
-func minTransferAffQuota() int {
-	minQuota := int(common.QuotaPerUnit / 100)
-	if minQuota < 1 {
-		return 1
-	}
-	return minQuota
-}
-
-func calculateTransferQuotaFromUSD(amount float64) (float64, int, error) {
-	if math.IsNaN(amount) || math.IsInf(amount, 0) || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
-		return 0, 0, errTransferAmountInvalid
-	}
-	cents := math.Floor(amount*100 + 1e-9)
-	if cents < 1 {
-		return 0, 0, errTransferAmountMinimum
-	}
-	normalizedAmount := cents / 100
-	quotaFloat := math.Round(normalizedAmount * common.QuotaPerUnit)
-	maxInt := int(^uint(0) >> 1)
-	if math.IsNaN(quotaFloat) || math.IsInf(quotaFloat, 0) || quotaFloat <= 0 || quotaFloat > float64(maxInt) {
-		return 0, 0, errTransferAmountInvalid
-	}
-	quota := int(quotaFloat)
-	if quota < minTransferAffQuota() {
-		return 0, 0, errTransferAmountMinimum
-	}
-	return normalizedAmount, quota, nil
-}
-
-func parseTransferAffQuotaRequest(body []byte) (float64, int, error) {
-	var raw map[string]any
-	if err := common.Unmarshal(body, &raw); err != nil {
-		return 0, 0, err
-	}
-	if _, ok := raw["quota"]; ok {
-		return 0, 0, errTransferQuotaFieldDeprecated
-	}
-	tran := TransferAffQuotaRequest{}
-	if err := common.Unmarshal(body, &tran); err != nil {
-		return 0, 0, err
-	}
-	return calculateTransferQuotaFromUSD(tran.Amount)
+	Quota int `json:"quota"`
 }
 
 func TransferAffQuota(c *gin.Context) {
@@ -493,34 +437,17 @@ func TransferAffQuota(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	body, err := c.GetRawData()
-	if err != nil {
+	tran := TransferAffQuotaRequest{}
+	if err := c.ShouldBindJSON(&tran); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	amount, quota, err := parseTransferAffQuotaRequest(body)
-	if err != nil {
-		switch {
-		case errors.Is(err, errTransferQuotaFieldDeprecated):
-			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountFieldRequired)
-		case errors.Is(err, errTransferAmountMinimum):
-			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountMinimum, map[string]any{"Min": "$0.01"})
-		case errors.Is(err, errTransferAmountInvalid):
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		default:
-			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		}
-		return
-	}
-	err = user.TransferAffQuotaToQuota(quota)
+	err = user.TransferAffQuotaToQuota(tran.Quota)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return
 	}
-	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, TransferAffQuotaResponse{
-		Amount: amount,
-		Quota:  quota,
-	})
+	common.ApiSuccessI18n(c, i18n.MsgUserTransferSuccess, nil)
 }
 
 func GetAffCode(c *gin.Context) {

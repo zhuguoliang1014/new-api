@@ -20,18 +20,20 @@ import i18n from 'i18next'
 import LanguageDetector from 'i18next-browser-languagedetector'
 import { initReactI18next } from 'react-i18next'
 
+import { convertDetectedLanguage } from './languages'
 import en from './locales/en.json'
 import fr from './locales/fr.json'
 import ja from './locales/ja.json'
 import ru from './locales/ru.json'
 import vi from './locales/vi.json'
-import zh from './locales/zh.json'
 import enLocal from './locales/local-en.json'
 import frLocal from './locales/local-fr.json'
 import jaLocal from './locales/local-ja.json'
 import ruLocal from './locales/local-ru.json'
 import viLocal from './locales/local-vi.json'
 import zhLocal from './locales/local-zh.json'
+import zhCN from './locales/zh.json'
+import zhTW from './locales/zh-TW.json'
 
 // Local fork: keys in `translation` come from upstream {lang}.json; keys in
 // `local` come from local-{lang}.json. fallbackNS makes `t('foo')` look in
@@ -39,11 +41,12 @@ import zhLocal from './locales/local-zh.json'
 // sites stay unchanged.
 export const resources = {
   en: { ...en, ...enLocal },
-  zh: { ...zh, ...zhLocal },
+  zhCN: { ...zhCN, ...zhLocal },
   fr: { ...fr, ...frLocal },
   ru: { ...ru, ...ruLocal },
   ja: { ...ja, ...jaLocal },
   vi: { ...vi, ...viLocal },
+  zhTW: { ...zhTW, ...zhLocal },
 } as const
 
 i18n
@@ -52,8 +55,8 @@ i18n
   .init({
     resources,
     fallbackLng: 'en',
-    supportedLngs: ['en', 'zh', 'fr', 'ru', 'ja', 'vi'],
-    load: 'languageOnly', // Convert zh-CN -> zh
+    supportedLngs: ['en', 'zhCN', 'fr', 'ru', 'ja', 'vi', 'zhTW'],
+    load: 'currentOnly',
     nsSeparator: false, // Allow literal colons in keys (e.g., URLs, labels)
     defaultNS: 'translation',
     fallbackNS: 'local',
@@ -65,6 +68,9 @@ i18n
     detection: {
       order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
+      // Browsers report `zh-CN`/`zh-TW`/`zh`; map them onto our `zhCN`/`zhTW`
+      // codes (non-Chinese codes pass through for normal supportedLngs matching).
+      convertDetectedLanguage,
     },
   })
 

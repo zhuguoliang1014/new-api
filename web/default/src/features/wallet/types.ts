@@ -216,8 +216,8 @@ export interface AmountRequest {
  * Affiliate quota transfer request
  */
 export interface AffiliateTransferRequest {
-  /** USD amount to transfer (minimum $1) */
-  amount: number
+  /** Quota amount to transfer */
+  quota: number
 }
 
 /**

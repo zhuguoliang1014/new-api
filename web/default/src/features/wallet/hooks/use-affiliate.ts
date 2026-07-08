@@ -61,13 +61,11 @@ export function useAffiliate() {
     copyToClipboard(affiliateLink)
   }, [affiliateLink, copyToClipboard])
 
-  // Transfer affiliate quota to balance. `amount` is the USD amount the user
-  // chose to move, which is what the server expects (the legacy `quota` field
-  // has been removed).
-  const transferQuota = useCallback(async (amount: number): Promise<boolean> => {
+  // Transfer affiliate quota to balance
+  const transferQuota = useCallback(async (quota: number): Promise<boolean> => {
     try {
       setTransferring(true)
-      const response = await transferAffiliateQuota({ amount })
+      const response = await transferAffiliateQuota({ quota })
 
       if (response.success) {
         toast.success(response.message || i18next.t('Transfer successful'))
@@ -77,7 +75,7 @@ export function useAffiliate() {
 
       toast.error(response.message || i18next.t('Transfer failed'))
       return false
-    } catch (_error) {
+    } catch {
       toast.error(i18next.t('Transfer failed'))
       return false
     } finally {
