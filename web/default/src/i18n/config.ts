@@ -36,9 +36,9 @@ import zhCN from './locales/zh.json'
 import zhTW from './locales/zh-TW.json'
 
 // Local fork: keys in `translation` come from upstream {lang}.json; keys in
-// `local` come from local-{lang}.json. fallbackNS makes `t('foo')` look in
-// `translation` first, then transparently fall through to `local`, so call
-// sites stay unchanged.
+// `local` come from local-{lang}.json. fallbackNS makes normal translation
+// lookups check `translation` first, then transparently fall through to `local`,
+// so call sites stay unchanged.
 export const resources = {
   en: { ...en, ...enLocal },
   zhCN: { ...zhCN, ...zhLocal },
