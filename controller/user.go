@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -423,7 +424,40 @@ func GenerateAccessToken(c *gin.Context) {
 }
 
 type TransferAffQuotaRequest struct {
-	Quota int `json:"quota"`
+	Quota  *int     `json:"quota"`
+	Amount *float64 `json:"amount"`
+}
+
+var (
+	errTransferAmountInvalid = errors.New("transfer amount is invalid")
+	errTransferAmountMinimum = errors.New("transfer amount minimum")
+)
+
+func calculateTransferQuotaFromUSD(amount float64) (int, error) {
+	if math.IsNaN(amount) || math.IsInf(amount, 0) || math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
+		return 0, errTransferAmountInvalid
+	}
+	cents := math.Floor(amount*100 + 1e-9)
+	if cents < 1 {
+		return 0, errTransferAmountMinimum
+	}
+	normalizedAmount := cents / 100
+	quotaFloat := math.Round(normalizedAmount * common.QuotaPerUnit)
+	maxInt := int(^uint(0) >> 1)
+	if math.IsNaN(quotaFloat) || math.IsInf(quotaFloat, 0) || quotaFloat <= 0 || quotaFloat > float64(maxInt) {
+		return 0, errTransferAmountInvalid
+	}
+	return int(quotaFloat), nil
+}
+
+func parseTransferAffQuotaRequest(req TransferAffQuotaRequest) (int, error) {
+	if req.Quota != nil {
+		return *req.Quota, nil
+	}
+	if req.Amount == nil {
+		return 0, errTransferAmountInvalid
+	}
+	return calculateTransferQuotaFromUSD(*req.Amount)
 }
 
 func TransferAffQuota(c *gin.Context) {
@@ -442,7 +476,17 @@ func TransferAffQuota(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	err = user.TransferAffQuotaToQuota(tran.Quota)
+	quota, err := parseTransferAffQuotaRequest(tran)
+	if err != nil {
+		switch {
+		case errors.Is(err, errTransferAmountMinimum):
+			common.ApiErrorI18n(c, i18n.MsgUserTransferAmountMinimum, map[string]any{"Min": "$0.01"})
+		default:
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		}
+		return
+	}
+	err = user.TransferAffQuotaToQuota(quota)
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserTransferFailed, map[string]any{"Error": err.Error()})
 		return

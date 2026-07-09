@@ -259,8 +259,8 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
     }
   }
 
-  const handleTransfer = async (amount: number) => {
-    const success = await affiliate.transferQuota(amount)
+  const handleTransfer = async (quota: number) => {
+    const success = await affiliate.transferQuota(quota)
     if (success) await fetchUser()
     return success
   }

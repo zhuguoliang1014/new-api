@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label'
 interface TransferDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onConfirm: (amountUsd: number) => Promise<boolean>
+  onConfirm: (quota: number) => Promise<boolean>
   availableQuota: number
   transferring: boolean
 }
@@ -48,10 +48,12 @@ export function TransferDialog({
   )
   const [amount, setAmount] = useState('')
   const amountValue = Number(amount)
+  const transferQuota = Math.round(amountValue * config.quotaPerUnit)
   const canTransfer =
     Number.isFinite(amountValue) &&
     amountValue >= 0.01 &&
-    amountValue <= availableAmountUsd
+    amountValue <= availableAmountUsd &&
+    transferQuota > 0
 
   useEffect(() => {
     if (open) {
@@ -62,7 +64,7 @@ export function TransferDialog({
 
   const handleConfirm = async () => {
     if (!canTransfer) return
-    const success = await onConfirm(amountValue)
+    const success = await onConfirm(transferQuota)
     if (success) {
       onOpenChange(false)
     }
