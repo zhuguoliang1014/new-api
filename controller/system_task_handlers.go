@@ -20,6 +20,7 @@ import (
 func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(channelTestHandler{})
 	service.RegisterSystemTaskHandler(modelUpdateHandler{})
+	service.RegisterSystemTaskHandler(channelHealthMonitorHandler{})
 	service.RegisterSystemTaskHandler(midjourneyPollHandler{})
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 }
@@ -109,6 +110,33 @@ func (modelUpdateHandler) Run(ctx context.Context, task *model.SystemTask, runne
 	}
 	summary := runChannelUpstreamModelUpdateTaskOnce(ctx, payload.Manual, !payload.Manual, service.NewSystemTaskProgressReporter(task, runnerID))
 	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+type channelHealthMonitorHandler struct{}
+
+func (channelHealthMonitorHandler) Type() string { return model.SystemTaskTypeChannelHealth }
+
+func (channelHealthMonitorHandler) Enabled() bool {
+	return operation_setting.GetChannelHealthAlertSetting().Enabled
+}
+
+func (channelHealthMonitorHandler) Interval() time.Duration {
+	seconds := operation_setting.GetChannelHealthAlertSetting().CheckIntervalSeconds
+	if seconds < 15 {
+		seconds = 15
+	}
+	return time.Duration(seconds) * time.Second
+}
+
+func (channelHealthMonitorHandler) NewPayload() any { return nil }
+
+func (channelHealthMonitorHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	result, err := service.RunChannelHealthMonitorOnce(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, result, nil)
 }
 
 // midjourneyPollHandler runs one Midjourney polling pass per scheduled run.

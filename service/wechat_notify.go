@@ -122,6 +122,22 @@ func SendWechatGroupMessage(msg string) error {
 	return lastErr
 }
 
+func SendWechatGroupMessageToGroups(msg string, groupIdsRaw string) error {
+	if common.OptionMap == nil {
+		return fmt.Errorf("option map not initialized")
+	}
+
+	common.OptionMapRWMutex.RLock()
+	userId := common.OptionMap["WechatBotUserId"]
+	common.OptionMapRWMutex.RUnlock()
+
+	if userId == "" || strings.TrimSpace(groupIdsRaw) == "" {
+		return fmt.Errorf("WechatBotUserId or groupIds not configured")
+	}
+
+	return sendToGroupsWithDelay(userId, groupIdsRaw, msg)
+}
+
 // sendToGroupsWithDelay 多群发送，第二群起每群随机延迟 3~8 秒
 func sendToGroupsWithDelay(userId, groupIdsRaw, msg string) error {
 	groupIds := splitGroupIds(groupIdsRaw)

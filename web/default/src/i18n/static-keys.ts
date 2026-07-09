@@ -46,6 +46,20 @@ export const STATIC_I18N_KEYS = [
   'Routing Reliability',
   'Maintenance',
 
+  // Channel health alert metrics
+  'total_count',
+  'request_count',
+  'success_count',
+  'error_count',
+  'error_rate',
+  'success_rate',
+  'avg_ttft_ms',
+  'p95_ttft_ms',
+  'max_ttft_ms',
+  'avg_latency_ms',
+  'p95_latency_ms',
+  'max_latency_ms',
+
   // System info
   'online',
   'stale',
