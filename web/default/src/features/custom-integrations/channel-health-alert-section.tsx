@@ -59,7 +59,6 @@ const metricOptions = [
 ] as const
 
 const operatorOptions = ['>=', '>', '<=', '<', '==', '!='] as const
-const conditionKeys = new WeakMap<ChannelHealthAlertCondition, string>()
 
 const formSchema = z.object({
   enabled: z.boolean(),
@@ -82,14 +81,6 @@ function createGroupCondition(
   type: 'and' | 'or' = 'and'
 ): ChannelHealthAlertCondition {
   return { [type]: [createLeafCondition()] }
-}
-
-function conditionRenderKey(condition: ChannelHealthAlertCondition): string {
-  const existingKey = conditionKeys.get(condition)
-  if (existingKey) return existingKey
-  const nextKey = crypto.randomUUID()
-  conditionKeys.set(condition, nextKey)
-  return nextKey
 }
 
 function normalizeCondition(
@@ -164,6 +155,7 @@ function isGroupCondition(condition: ChannelHealthAlertCondition): boolean {
 type ConditionEditorProps = {
   condition: ChannelHealthAlertCondition
   depth?: number
+  path: string
   onChange: (condition: ChannelHealthAlertCondition) => void
   onRemove?: () => void
 }
@@ -323,15 +315,19 @@ function ConditionEditor(props: ConditionEditorProps) {
         )}
       </div>
       <div className='flex flex-col gap-2'>
-        {children.map((child, index) => (
-          <ConditionEditor
-            key={conditionRenderKey(child)}
-            condition={child}
-            depth={depth + 1}
-            onChange={(nextCondition) => updateChild(index, nextCondition)}
-            onRemove={() => removeChild(index)}
-          />
-        ))}
+        {children.map((child, index) => {
+          const childPath = `${props.path}.${groupType}.${index}`
+          return (
+            <ConditionEditor
+              key={childPath}
+              condition={child}
+              depth={depth + 1}
+              path={childPath}
+              onChange={(nextCondition) => updateChild(index, nextCondition)}
+              onRemove={() => removeChild(index)}
+            />
+          )
+        })}
       </div>
     </div>
   )
@@ -342,6 +338,11 @@ export function ChannelHealthAlertSection(props: Props) {
   const updateOption = useUpdateOption()
   const [rules, setRules] = useState<ChannelHealthAlertRule[]>(
     normalizeRules(props.defaultValues['channel_health_alert_setting.rules'])
+  )
+  const [ruleKeys, setRuleKeys] = useState<string[]>(() =>
+    props.defaultValues['channel_health_alert_setting.rules'].map(() =>
+      crypto.randomUUID()
+    )
   )
   const baselineRef = useRef({
     enabled: props.defaultValues['channel_health_alert_setting.enabled'],
@@ -379,6 +380,7 @@ export function ChannelHealthAlertSection(props: Props) {
       props.defaultValues['channel_health_alert_setting.rules']
     )
     setRules(normalizedRules)
+    setRuleKeys(normalizedRules.map(() => crypto.randomUUID()))
     form.reset(formDefaults)
     baselineRef.current = {
       enabled: props.defaultValues['channel_health_alert_setting.enabled'],
@@ -401,6 +403,7 @@ export function ChannelHealthAlertSection(props: Props) {
   }
 
   const addRule = () => {
+    setRuleKeys((currentKeys) => [...currentKeys, crypto.randomUUID()])
     setRules((currentRules) => [
       ...currentRules,
       {
@@ -416,6 +419,9 @@ export function ChannelHealthAlertSection(props: Props) {
   }
 
   const removeRule = (index: number) => {
+    setRuleKeys((currentKeys) =>
+      currentKeys.filter((_, ruleIndex) => ruleIndex !== index)
+    )
     setRules((currentRules) =>
       currentRules.filter((_, ruleIndex) => ruleIndex !== index)
     )
@@ -553,7 +559,7 @@ export function ChannelHealthAlertSection(props: Props) {
           <div className='flex flex-col gap-4'>
             {rules.map((rule, index) => (
               <div
-                key={rule.id}
+                key={ruleKeys[index] ?? rule.id}
                 className='border-border flex flex-col gap-4 rounded-lg border p-4'
               >
                 <div className='flex flex-wrap items-center justify-between gap-3'>
@@ -694,6 +700,7 @@ export function ChannelHealthAlertSection(props: Props) {
                   <FormLabel>{t('Condition tree')}</FormLabel>
                   <ConditionEditor
                     condition={rule.condition}
+                    path={`rule.${ruleKeys[index] ?? index}.condition`}
                     onChange={(condition) =>
                       updateRule(index, { ...rule, condition })
                     }
