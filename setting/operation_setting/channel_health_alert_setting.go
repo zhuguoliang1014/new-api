@@ -10,9 +10,11 @@ const (
 	ChannelHealthMetricErrorRate      = "error_rate"
 	ChannelHealthMetricSuccessRate    = "success_rate"
 	ChannelHealthMetricAvgTtftMs      = "avg_ttft_ms"
+	ChannelHealthMetricP50TtftMs      = "p50_ttft_ms"
 	ChannelHealthMetricP95TtftMs      = "p95_ttft_ms"
 	ChannelHealthMetricMaxTtftMs      = "max_ttft_ms"
 	ChannelHealthMetricAvgLatencyMs   = "avg_latency_ms"
+	ChannelHealthMetricP50LatencyMs   = "p50_latency_ms"
 	ChannelHealthMetricP95LatencyMs   = "p95_latency_ms"
 	ChannelHealthMetricMaxLatencyMs   = "max_latency_ms"
 	channelHealthDefaultWechatGroupID = "57047022764@chatroom"
@@ -75,8 +77,8 @@ var channelHealthAlertSetting = ChannelHealthAlertSetting{
 			Condition: ChannelHealthAlertCondition{And: []ChannelHealthAlertCondition{
 				{Metric: ChannelHealthMetricSuccessCount, Op: ">=", Value: 10},
 				{Or: []ChannelHealthAlertCondition{
-					{Metric: ChannelHealthMetricAvgTtftMs, Op: ">=", Value: 8000},
-					{Metric: ChannelHealthMetricAvgLatencyMs, Op: ">=", Value: 60000},
+					{Metric: ChannelHealthMetricP50TtftMs, Op: ">=", Value: 8000},
+					{Metric: ChannelHealthMetricP50LatencyMs, Op: ">=", Value: 60000},
 				}},
 			}},
 		},

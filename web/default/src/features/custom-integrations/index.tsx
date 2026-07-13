@@ -42,8 +42,8 @@ const defaultSettings: CustomIntegrationSettings = {
           { metric: 'success_count', op: '>=', value: 10 },
           {
             or: [
-              { metric: 'avg_ttft_ms', op: '>=', value: 8000 },
-              { metric: 'avg_latency_ms', op: '>=', value: 60000 },
+              { metric: 'p50_ttft_ms', op: '>=', value: 8000 },
+              { metric: 'p50_latency_ms', op: '>=', value: 60000 },
             ],
           },
         ],

@@ -58,12 +58,14 @@ func RunChannelHealthMonitorOnce(ctx context.Context) (map[string]any, error) {
 	alerts := make([]channelHealthAlert, 0)
 	for _, rule := range rules {
 		statsByChannel := aggregateChannelHealthStats(samples, rule, now)
+		ruleAlerts := make([]channelHealthAlert, 0)
 		for _, stats := range statsByChannel {
 			if evaluateChannelHealthCondition(rule.Condition, channelHealthMetrics(stats)) {
-				if reserveChannelHealthCooldown(ctx, rule, stats.ChannelID) {
-					alerts = append(alerts, channelHealthAlert{Rule: rule, Stats: stats})
-				}
+				ruleAlerts = append(ruleAlerts, channelHealthAlert{Rule: rule, Stats: stats})
 			}
+		}
+		if len(ruleAlerts) > 0 && reserveChannelHealthCooldown(ctx, rule) {
+			alerts = append(alerts, ruleAlerts...)
 		}
 	}
 
@@ -199,9 +201,11 @@ func channelHealthMetrics(stats channelHealthStats) map[string]float64 {
 		operation_setting.ChannelHealthMetricErrorRate:    errorRate,
 		operation_setting.ChannelHealthMetricSuccessRate:  successRate,
 		operation_setting.ChannelHealthMetricAvgTtftMs:    avgFloat(stats.TtftValues),
+		operation_setting.ChannelHealthMetricP50TtftMs:    percentileFloat(stats.TtftValues, 0.50),
 		operation_setting.ChannelHealthMetricP95TtftMs:    percentileFloat(stats.TtftValues, 0.95),
 		operation_setting.ChannelHealthMetricMaxTtftMs:    maxFloat(stats.TtftValues),
 		operation_setting.ChannelHealthMetricAvgLatencyMs: avgFloat(stats.LatencyValues),
+		operation_setting.ChannelHealthMetricP50LatencyMs: percentileFloat(stats.LatencyValues, 0.50),
 		operation_setting.ChannelHealthMetricP95LatencyMs: percentileFloat(stats.LatencyValues, 0.95),
 		operation_setting.ChannelHealthMetricMaxLatencyMs: maxFloat(stats.LatencyValues),
 	}
@@ -246,12 +250,12 @@ func evaluateChannelHealthCondition(condition operation_setting.ChannelHealthAle
 	}
 }
 
-func reserveChannelHealthCooldown(ctx context.Context, rule operation_setting.ChannelHealthAlertRule, channelID int) bool {
+func reserveChannelHealthCooldown(ctx context.Context, rule operation_setting.ChannelHealthAlertRule) bool {
 	cooldown := time.Duration(rule.CooldownMinutes) * time.Minute
 	if cooldown <= 0 {
 		cooldown = 15 * time.Minute
 	}
-	key := fmt.Sprintf("channel_health_alert:%s:%d", rule.ID, channelID)
+	key := fmt.Sprintf("channel_health_alert:%s", rule.ID)
 	if common.RedisEnabled && common.RDB != nil {
 		ok, err := common.RDB.SetNX(ctx, key, "1", cooldown).Result()
 		if err == nil {
@@ -341,7 +345,7 @@ func channelHealthAlertMessage(alerts []channelHealthAlert) string {
 			name = "未知渠道"
 		}
 		lines = append(lines, fmt.Sprintf(
-			"#%d %s｜请求 %.0f｜成功 %.0f｜错误 %.0f｜错误率 %.1f%%｜首字均值 %.0fms｜总延迟均值 %.0fms",
+			"#%d %s｜请求 %.0f｜成功 %.0f｜错误 %.0f｜错误率 %.1f%%｜首字 均值/P50/P95 %.0f/%.0f/%.0fms｜总延迟 均值/P50/P95 %.0f/%.0f/%.0fms",
 			stats.ChannelID,
 			name,
 			metrics[operation_setting.ChannelHealthMetricTotalCount],
@@ -349,7 +353,11 @@ func channelHealthAlertMessage(alerts []channelHealthAlert) string {
 			metrics[operation_setting.ChannelHealthMetricErrorCount],
 			metrics[operation_setting.ChannelHealthMetricErrorRate],
 			metrics[operation_setting.ChannelHealthMetricAvgTtftMs],
+			metrics[operation_setting.ChannelHealthMetricP50TtftMs],
+			metrics[operation_setting.ChannelHealthMetricP95TtftMs],
 			metrics[operation_setting.ChannelHealthMetricAvgLatencyMs],
+			metrics[operation_setting.ChannelHealthMetricP50LatencyMs],
+			metrics[operation_setting.ChannelHealthMetricP95LatencyMs],
 		))
 	}
 	if len(alerts) > limit {

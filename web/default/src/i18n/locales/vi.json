@@ -3224,6 +3224,8 @@
     "Overrode user quota from {{from}} to {{to}}": "Đã ghi đè hạn mức người dùng từ {{from}} thành {{to}}",
     "Overview": "Tổng quan",
     "Overwritten": "Đã ghi đè",
+    "p50_latency_ms": "Độ trễ tổng trung vị (P50)",
+    "p50_ttft_ms": "Độ trễ token đầu tiên trung vị (P50)",
     "p95_latency_ms": "P95 độ trễ tổng",
     "p95_ttft_ms": "P95 độ trễ token đầu tiên",
     "Page": "Trang",
