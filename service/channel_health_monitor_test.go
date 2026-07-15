@@ -107,3 +107,51 @@ func TestChannelHealthAlertMessageOnlyShowsTriggeredMetrics(t *testing.T) {
 	assert.NotContains(t, message, "P95")
 	assert.NotContains(t, message, "首字 P50")
 }
+
+func TestChannelHealthP50IgnoresSparseLatencyOutliers(t *testing.T) {
+	stats := channelHealthStats{
+		SuccessCount: 10,
+		TotalCount:   10,
+		TtftValues: []float64{
+			1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 540000, 540000,
+		},
+		LatencyValues: []float64{
+			2000, 2000, 2000, 2000, 2000, 2000, 2000, 2000, 550000, 550000,
+		},
+	}
+
+	metrics := channelHealthMetrics(stats)
+	assert.Equal(t, 1000.0, metrics[operation_setting.ChannelHealthMetricP50TtftMs])
+	assert.Equal(t, 2000.0, metrics[operation_setting.ChannelHealthMetricP50LatencyMs])
+	assert.Equal(t, 540000.0, metrics[operation_setting.ChannelHealthMetricP95TtftMs])
+	assert.Equal(t, 550000.0, metrics[operation_setting.ChannelHealthMetricP95LatencyMs])
+
+	condition := operation_setting.ChannelHealthAlertCondition{Or: []operation_setting.ChannelHealthAlertCondition{
+		{Metric: operation_setting.ChannelHealthMetricP50TtftMs, Op: ">=", Value: 8000},
+		{Metric: operation_setting.ChannelHealthMetricP50LatencyMs, Op: ">=", Value: 60000},
+	}}
+	assert.False(t, evaluateChannelHealthCondition(condition, metrics))
+}
+
+func TestChannelHealthCooldownIsSharedByRule(t *testing.T) {
+	redisEnabled := common.RedisEnabled
+	common.RedisEnabled = false
+	defer func() {
+		common.RedisEnabled = redisEnabled
+		channelHealthMemoryCooldown.Lock()
+		channelHealthMemoryCooldown.items = map[string]time.Time{}
+		channelHealthMemoryCooldown.Unlock()
+	}()
+
+	channelHealthMemoryCooldown.Lock()
+	channelHealthMemoryCooldown.items = map[string]time.Time{}
+	channelHealthMemoryCooldown.Unlock()
+
+	rule := operation_setting.ChannelHealthAlertRule{ID: "high_latency", CooldownMinutes: 15}
+	assert.True(t, reserveChannelHealthCooldown(t.Context(), rule))
+	assert.False(t, reserveChannelHealthCooldown(t.Context(), rule))
+	assert.True(t, reserveChannelHealthCooldown(t.Context(), operation_setting.ChannelHealthAlertRule{
+		ID:              "high_error_rate",
+		CooldownMinutes: 15,
+	}))
+}

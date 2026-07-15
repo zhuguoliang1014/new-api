@@ -58,12 +58,14 @@ func RunChannelHealthMonitorOnce(ctx context.Context) (map[string]any, error) {
 	alerts := make([]channelHealthAlert, 0)
 	for _, rule := range rules {
 		statsByChannel := aggregateChannelHealthStats(samples, rule, now)
+		ruleAlerts := make([]channelHealthAlert, 0)
 		for _, stats := range statsByChannel {
 			if evaluateChannelHealthCondition(rule.Condition, channelHealthMetrics(stats)) {
-				if reserveChannelHealthCooldown(ctx, rule, stats.ChannelID) {
-					alerts = append(alerts, channelHealthAlert{Rule: rule, Stats: stats})
-				}
+				ruleAlerts = append(ruleAlerts, channelHealthAlert{Rule: rule, Stats: stats})
 			}
+		}
+		if len(ruleAlerts) > 0 && reserveChannelHealthCooldown(ctx, rule) {
+			alerts = append(alerts, ruleAlerts...)
 		}
 	}
 
@@ -248,12 +250,12 @@ func evaluateChannelHealthCondition(condition operation_setting.ChannelHealthAle
 	}
 }
 
-func reserveChannelHealthCooldown(ctx context.Context, rule operation_setting.ChannelHealthAlertRule, channelID int) bool {
+func reserveChannelHealthCooldown(ctx context.Context, rule operation_setting.ChannelHealthAlertRule) bool {
 	cooldown := time.Duration(rule.CooldownMinutes) * time.Minute
 	if cooldown <= 0 {
 		cooldown = 15 * time.Minute
 	}
-	key := fmt.Sprintf("channel_health_alert:%s:%d", rule.ID, channelID)
+	key := fmt.Sprintf("channel_health_alert:%s", rule.ID)
 	if common.RedisEnabled && common.RDB != nil {
 		ok, err := common.RDB.SetNX(ctx, key, "1", cooldown).Result()
 		if err == nil {

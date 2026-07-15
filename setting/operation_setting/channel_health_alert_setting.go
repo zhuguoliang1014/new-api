@@ -77,8 +77,8 @@ var channelHealthAlertSetting = ChannelHealthAlertSetting{
 			Condition: ChannelHealthAlertCondition{And: []ChannelHealthAlertCondition{
 				{Metric: ChannelHealthMetricSuccessCount, Op: ">=", Value: 10},
 				{Or: []ChannelHealthAlertCondition{
-					{Metric: ChannelHealthMetricAvgTtftMs, Op: ">=", Value: 8000},
-					{Metric: ChannelHealthMetricAvgLatencyMs, Op: ">=", Value: 60000},
+					{Metric: ChannelHealthMetricP50TtftMs, Op: ">=", Value: 8000},
+					{Metric: ChannelHealthMetricP50LatencyMs, Op: ">=", Value: 60000},
 				}},
 			}},
 		},
