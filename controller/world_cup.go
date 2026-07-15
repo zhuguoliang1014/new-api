@@ -46,7 +46,7 @@ func WorldCupStatus(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	eligible, subscriptions, err := model.HasWorldCupSubscription(userId)
+	subscriptions, err := model.GetAllActiveUserSubscriptions(userId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -55,7 +55,7 @@ func WorldCupStatus(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{
 		"schedule":             schedule,
 		"predictions":          predictions,
-		"eligible":             eligible,
+		"eligible":             true,
 		"subscriptions":        subscriptions,
 		"next_settlement_unix": model.NextWorldCupSettlementUnix(),
 	})
@@ -77,16 +77,6 @@ func PredictWorldCup(c *gin.Context) {
 	}
 	if _, ok := model.NormalizeWorldCupChoice(req.Choice); !ok {
 		common.ApiErrorMsg(c, "竞猜选项无效")
-		return
-	}
-
-	eligible, _, err := model.HasWorldCupSubscription(userId)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if !eligible {
-		common.ApiErrorMsg(c, "仅订阅世界杯套餐的用户可以参与竞猜")
 		return
 	}
 

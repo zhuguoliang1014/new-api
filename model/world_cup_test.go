@@ -35,13 +35,7 @@ func withWorldCupTestSettings(t *testing.T) {
 func insertWorldCupUserWithSubscription(t *testing.T, userId int, totalAmount int64, startTime int64, days int64) {
 	t.Helper()
 
-	require.NoError(t, DB.Create(&User{
-		Id:       userId,
-		Username: fmt.Sprintf("world_cup_user_%d", userId),
-		Status:   common.UserStatusEnabled,
-		Quota:    0,
-		AffCode:  fmt.Sprintf("world_cup_%d", userId),
-	}).Error)
+	insertWorldCupUser(t, userId)
 
 	plan := &SubscriptionPlan{
 		Id:            userId,
@@ -65,6 +59,18 @@ func insertWorldCupUserWithSubscription(t *testing.T, userId int, totalAmount in
 		Status:              "active",
 		Source:              "admin",
 		AllowWalletOverflow: true,
+	}).Error)
+}
+
+func insertWorldCupUser(t *testing.T, userId int) {
+	t.Helper()
+
+	require.NoError(t, DB.Create(&User{
+		Id:       userId,
+		Username: fmt.Sprintf("world_cup_user_%d", userId),
+		Status:   common.UserStatusEnabled,
+		Quota:    0,
+		AffCode:  fmt.Sprintf("world_cup_%d", userId),
 	}).Error)
 }
 
@@ -157,6 +163,19 @@ func TestWorldCupPredictionRewardUsesPackageDailyFormula(t *testing.T) {
 	assert.Equal(t, 12, rewardQuota)
 }
 
+func TestWorldCupPredictionRewardForUserWithoutSubscriptionIsOneDollar(t *testing.T) {
+	truncateTables(t)
+	withWorldCupTestSettings(t)
+
+	now := time.Now().Unix()
+	insertWorldCupUser(t, 3251)
+
+	rewardQuota, err := WorldCupPredictionRewardQuotaForUserAt(3251, now)
+
+	require.NoError(t, err)
+	assert.Equal(t, int(common.QuotaPerUnit), rewardQuota)
+}
+
 func TestPlaceWorldCupPredictionValidatesProductRules(t *testing.T) {
 	truncateTables(t)
 	withWorldCupTestSettings(t)
@@ -180,6 +199,19 @@ func TestPlaceWorldCupPredictionValidatesProductRules(t *testing.T) {
 
 	_, err = PlaceWorldCupPrediction(3301, WorldCupChoiceHost, worldCupSnapshot("rule-match-3", matchTime), "127.0.0.1", matchTime-3600)
 	require.ErrorContains(t, err, "1 小时")
+}
+
+func TestPlaceWorldCupPredictionAllowsUserWithoutSubscription(t *testing.T) {
+	truncateTables(t)
+	withWorldCupTestSettings(t)
+
+	now := time.Now().Unix()
+	insertWorldCupUser(t, 3351)
+
+	prediction, err := PlaceWorldCupPrediction(3351, WorldCupChoiceHost, worldCupSnapshot("open-match-1", now+3*3600), "127.0.0.1", now)
+
+	require.NoError(t, err)
+	assert.Equal(t, WorldCupChoiceHost, prediction.Choice)
 }
 
 func TestSettleWorldCupPredictionsRewardsWinnerAndMarksLoser(t *testing.T) {

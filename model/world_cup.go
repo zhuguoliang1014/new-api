@@ -140,7 +140,7 @@ func WorldCupLocation() *time.Location {
 }
 
 func WorldCupPredictionRewardQuota() int {
-	fallback := int(common.QuotaPerUnit / 10)
+	fallback := common.QuotaRound(common.QuotaPerUnit)
 	if fallback <= 0 {
 		return 1
 	}

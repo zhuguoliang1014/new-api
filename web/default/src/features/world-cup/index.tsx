@@ -59,7 +59,6 @@ type WorldCupDevScenario =
   | 'won'
   | 'lost'
   | 'finished'
-  | 'ineligible'
   | 'empty'
 
 const worldCupDevScenarios: {
@@ -73,7 +72,6 @@ const worldCupDevScenarios: {
   { value: 'won' },
   { value: 'lost' },
   { value: 'finished' },
-  { value: 'ineligible' },
   { value: 'empty' },
 ]
 
@@ -249,12 +247,8 @@ function buildWorldCupDevStatus(
   const dateTime = formatDevDateTime(offsetMinutes)
   const finished =
     scenario === 'won' || scenario === 'lost' || scenario === 'finished'
-  let hostTeamName = '美国'
-  let guestTeamName = '墨西哥'
-  if (scenario === 'ineligible') {
-    hostTeamName = '加拿大'
-    guestTeamName = '摩洛哥'
-  }
+  const hostTeamName = '美国'
+  const guestTeamName = '墨西哥'
 
   let hostTeamScore = ''
   let guestTeamScore = ''
@@ -324,7 +318,7 @@ function buildWorldCupDevStatus(
   }
 
   return {
-    eligible: scenario !== 'ineligible',
+    eligible: true,
     predictions,
     schedule: {
       reason: 'dev',
@@ -365,7 +359,6 @@ export function WorldCup() {
     [devScenario, status, usingDevScenario]
   )
   const matches = useMemo(() => upcomingMatches(displayStatus), [displayStatus])
-  const eligible = displayStatus?.eligible ?? false
   const showingScheduleLoading = statusQuery.isLoading && !usingDevScenario
 
   const mutation = useMutation({
@@ -419,7 +412,7 @@ export function WorldCup() {
                     <Badge className='h-9 rounded-full border-white/25 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md'>
                       {t('All matches')}
                     </Badge>
-                    <EligibilityPanel eligible={eligible} />
+                    <EligibilityPanel />
                     <RulesDialog />
                   </div>
                   <p className='mt-3 max-w-md text-sm leading-6 text-white/85 sm:text-base sm:leading-7'>
@@ -480,7 +473,6 @@ export function WorldCup() {
                       <MatchCard
                         match={match}
                         prediction={displayStatus?.predictions[matchId(match)]}
-                        eligible={eligible}
                         active={activeMatchId === matchId(match)}
                         onPredict={submitPrediction}
                       />
@@ -533,7 +525,6 @@ function WorldCupDevPanel(props: {
     won: '猜中了',
     lost: '没猜中',
     finished: '已结束',
-    ineligible: '无资格',
     empty: '无赛事',
   }
 
@@ -619,37 +610,20 @@ export function WorldCupHistoryPage() {
   )
 }
 
-function EligibilityPanel(props: { eligible: boolean }) {
+function EligibilityPanel() {
   const { t } = useTranslation()
 
   return (
-    <Link
-      to='/my-wallet'
-      search={{ tab: 'subscription' }}
-      className={cn(
-        'inline-flex h-9 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md transition-colors outline-none hover:bg-white/25 focus-visible:ring-2 focus-visible:ring-white/70',
-        props.eligible
-          ? 'hover:border-emerald-200/55'
-          : 'hover:border-amber-200/60'
-      )}
-      aria-label={t('Subscribe to the World Cup package to join predictions')}
-    >
-      {props.eligible ? (
-        <ShieldCheck className='size-3.5' aria-hidden='true' />
-      ) : (
-        <XCircle className='size-3.5' aria-hidden='true' />
-      )}
-      {props.eligible
-        ? t('World Cup package active')
-        : t('World Cup package required')}
-    </Link>
+    <div className='inline-flex h-9 items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-3 text-xs font-semibold text-white shadow-sm backdrop-blur-md'>
+      <ShieldCheck className='size-3.5' aria-hidden='true' />
+      {t('All users')}
+    </div>
   )
 }
 
 function RulesDialog() {
   const { t } = useTranslation()
   const rules = [
-    t('Only users with an active World Cup package can join.'),
     t('All World Cup matches are open for prediction.'),
     t('Each account can submit one prediction per match.'),
     t('Predictions close 1 hour before kick-off.'),
@@ -657,7 +631,7 @@ function RulesDialog() {
       'Results and rewards are handled automatically by the server; refresh the page to see the latest status.'
     ),
     t(
-      'Correct picks receive quota based on package total quota divided by package days and then divided by 10.'
+      'Correct picks reward subscribers based on package quota; other users receive $1.'
     ),
     t('Consecutive correct predictions can trigger milestone bonus quota.'),
   ]
@@ -722,14 +696,13 @@ function ScheduleSkeleton() {
 function MatchCard(props: {
   match: WorldCupMatch
   prediction?: WorldCupPrediction
-  eligible: boolean
   active: boolean
   onPredict: (match: WorldCupMatch, choice: WorldCupChoice) => void
 }) {
   const { t } = useTranslation()
   const finished = isMatchFinished(props.match)
   const locked = isPredictionLocked(props.match)
-  const canPredict = props.eligible && !locked && !finished && !props.prediction
+  const canPredict = !locked && !finished && !props.prediction
   const disabled = !canPredict || props.active
   const score = `${props.match.host_team_score || '0'} : ${
     props.match.guest_team_score || '0'
@@ -966,11 +939,12 @@ function WorldCupHistoryCard(props: { entry: WorldCupHistoryEntry }) {
     match &&
       (match.host_team_score || match.guest_team_score || isMatchFinished(match))
   )
-  const centerValue = hasFinalScore
-    ? `${match?.host_team_score || '0'} : ${match?.guest_team_score || '0'}`
-    : prediction
-      ? formatPredictionTime(prediction)
-      : '- : -'
+  let centerValue = '- : -'
+  if (hasFinalScore) {
+    centerValue = `${match?.host_team_score || '0'} : ${match?.guest_team_score || '0'}`
+  } else if (prediction) {
+    centerValue = formatPredictionTime(prediction)
+  }
   const rewardQuota =
     prediction?.status === 'won'
       ? Number(prediction.reward_quota || 0) +
