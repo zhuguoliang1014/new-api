@@ -51,9 +51,11 @@ const metricOptions = [
   'error_rate',
   'success_rate',
   'avg_ttft_ms',
+  'p50_ttft_ms',
   'p95_ttft_ms',
   'max_ttft_ms',
   'avg_latency_ms',
+  'p50_latency_ms',
   'p95_latency_ms',
   'max_latency_ms',
 ] as const

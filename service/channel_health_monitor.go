@@ -199,9 +199,11 @@ func channelHealthMetrics(stats channelHealthStats) map[string]float64 {
 		operation_setting.ChannelHealthMetricErrorRate:    errorRate,
 		operation_setting.ChannelHealthMetricSuccessRate:  successRate,
 		operation_setting.ChannelHealthMetricAvgTtftMs:    avgFloat(stats.TtftValues),
+		operation_setting.ChannelHealthMetricP50TtftMs:    percentileFloat(stats.TtftValues, 0.50),
 		operation_setting.ChannelHealthMetricP95TtftMs:    percentileFloat(stats.TtftValues, 0.95),
 		operation_setting.ChannelHealthMetricMaxTtftMs:    maxFloat(stats.TtftValues),
 		operation_setting.ChannelHealthMetricAvgLatencyMs: avgFloat(stats.LatencyValues),
+		operation_setting.ChannelHealthMetricP50LatencyMs: percentileFloat(stats.LatencyValues, 0.50),
 		operation_setting.ChannelHealthMetricP95LatencyMs: percentileFloat(stats.LatencyValues, 0.95),
 		operation_setting.ChannelHealthMetricMaxLatencyMs: maxFloat(stats.LatencyValues),
 	}
@@ -326,8 +328,7 @@ func channelHealthAlertMessage(alerts []channelHealthAlert) string {
 	rule := alerts[0].Rule
 	lines := []string{
 		"渠道健康报警：" + rule.Name,
-		fmt.Sprintf("窗口：最近 %d 分钟", rule.WindowMinutes),
-		fmt.Sprintf("冷却：%d 分钟", rule.CooldownMinutes),
+		fmt.Sprintf("窗口：最近 %d 分钟｜冷却：%d 分钟", rule.WindowMinutes, rule.CooldownMinutes),
 	}
 	limit := len(alerts)
 	if limit > channelHealthAlertMaxChannels {
@@ -340,22 +341,114 @@ func channelHealthAlertMessage(alerts []channelHealthAlert) string {
 		if name == "" {
 			name = "未知渠道"
 		}
-		lines = append(lines, fmt.Sprintf(
-			"#%d %s｜请求 %.0f｜成功 %.0f｜错误 %.0f｜错误率 %.1f%%｜首字均值 %.0fms｜总延迟均值 %.0fms",
-			stats.ChannelID,
-			name,
-			metrics[operation_setting.ChannelHealthMetricTotalCount],
-			metrics[operation_setting.ChannelHealthMetricSuccessCount],
-			metrics[operation_setting.ChannelHealthMetricErrorCount],
-			metrics[operation_setting.ChannelHealthMetricErrorRate],
-			metrics[operation_setting.ChannelHealthMetricAvgTtftMs],
-			metrics[operation_setting.ChannelHealthMetricAvgLatencyMs],
-		))
+		lines = append(lines, fmt.Sprintf("#%d %s", stats.ChannelID, name))
+		for _, condition := range triggeredChannelHealthConditions(rule.Condition, metrics) {
+			lines = append(lines, "触发："+formatChannelHealthCondition(condition, metrics))
+		}
 	}
 	if len(alerts) > limit {
 		lines = append(lines, fmt.Sprintf("另有 %d 个渠道也触发该规则", len(alerts)-limit))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func triggeredChannelHealthConditions(condition operation_setting.ChannelHealthAlertCondition, metrics map[string]float64) []operation_setting.ChannelHealthAlertCondition {
+	if len(condition.And) > 0 {
+		conditions := make([]operation_setting.ChannelHealthAlertCondition, 0)
+		for _, child := range condition.And {
+			if evaluateChannelHealthCondition(child, metrics) {
+				conditions = append(conditions, triggeredChannelHealthConditions(child, metrics)...)
+			}
+		}
+		return conditions
+	}
+	if len(condition.Or) > 0 {
+		conditions := make([]operation_setting.ChannelHealthAlertCondition, 0)
+		for _, child := range condition.Or {
+			if evaluateChannelHealthCondition(child, metrics) {
+				conditions = append(conditions, triggeredChannelHealthConditions(child, metrics)...)
+			}
+		}
+		return conditions
+	}
+	if evaluateChannelHealthCondition(condition, metrics) {
+		return []operation_setting.ChannelHealthAlertCondition{condition}
+	}
+	return nil
+}
+
+func formatChannelHealthCondition(condition operation_setting.ChannelHealthAlertCondition, metrics map[string]float64) string {
+	actual := metrics[condition.Metric]
+	return fmt.Sprintf("%s %s（%s%s）",
+		channelHealthMetricLabel(condition.Metric),
+		formatChannelHealthMetricValue(condition.Metric, actual),
+		formatChannelHealthOperator(condition.Op),
+		formatChannelHealthMetricValue(condition.Metric, condition.Value),
+	)
+}
+
+func channelHealthMetricLabel(metric string) string {
+	switch metric {
+	case operation_setting.ChannelHealthMetricTotalCount, operation_setting.ChannelHealthMetricRequestCount:
+		return "请求"
+	case operation_setting.ChannelHealthMetricSuccessCount:
+		return "成功"
+	case operation_setting.ChannelHealthMetricErrorCount:
+		return "错误"
+	case operation_setting.ChannelHealthMetricErrorRate:
+		return "错误率"
+	case operation_setting.ChannelHealthMetricSuccessRate:
+		return "成功率"
+	case operation_setting.ChannelHealthMetricAvgTtftMs:
+		return "首字均值"
+	case operation_setting.ChannelHealthMetricP50TtftMs:
+		return "首字 P50"
+	case operation_setting.ChannelHealthMetricP95TtftMs:
+		return "首字 P95"
+	case operation_setting.ChannelHealthMetricMaxTtftMs:
+		return "首字最大"
+	case operation_setting.ChannelHealthMetricAvgLatencyMs:
+		return "总延迟均值"
+	case operation_setting.ChannelHealthMetricP50LatencyMs:
+		return "总延迟 P50"
+	case operation_setting.ChannelHealthMetricP95LatencyMs:
+		return "总延迟 P95"
+	case operation_setting.ChannelHealthMetricMaxLatencyMs:
+		return "总延迟最大"
+	default:
+		return metric
+	}
+}
+
+func formatChannelHealthMetricValue(metric string, value float64) string {
+	switch metric {
+	case operation_setting.ChannelHealthMetricErrorRate, operation_setting.ChannelHealthMetricSuccessRate:
+		return fmt.Sprintf("%.1f%%", value)
+	case operation_setting.ChannelHealthMetricAvgTtftMs,
+		operation_setting.ChannelHealthMetricP50TtftMs,
+		operation_setting.ChannelHealthMetricP95TtftMs,
+		operation_setting.ChannelHealthMetricMaxTtftMs,
+		operation_setting.ChannelHealthMetricAvgLatencyMs,
+		operation_setting.ChannelHealthMetricP50LatencyMs,
+		operation_setting.ChannelHealthMetricP95LatencyMs,
+		operation_setting.ChannelHealthMetricMaxLatencyMs:
+		return fmt.Sprintf("%.0fms", value)
+	default:
+		return fmt.Sprintf("%.0f", value)
+	}
+}
+
+func formatChannelHealthOperator(operator string) string {
+	switch operator {
+	case ">=":
+		return "≥"
+	case "<=":
+		return "≤"
+	case "==":
+		return "="
+	default:
+		return operator
+	}
 }
 
 func avgFloat(values []float64) float64 {

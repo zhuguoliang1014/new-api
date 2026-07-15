@@ -3224,6 +3224,8 @@
     "Overrode user quota from {{from}} to {{to}}": "ユーザーのクォータを {{from}} から {{to}} に上書きしました",
     "Overview": "概要",
     "Overwritten": "上書き済み",
+    "p50_latency_ms": "P50 総レイテンシ",
+    "p50_ttft_ms": "P50 初回トークンレイテンシ",
     "p95_latency_ms": "P95 総レイテンシ",
     "p95_ttft_ms": "P95 初回トークンレイテンシ",
     "Page": "ページ",

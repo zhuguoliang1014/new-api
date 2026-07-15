@@ -70,6 +70,40 @@ func TestAggregateChannelHealthStatsRespectsScopeAndWindow(t *testing.T) {
 	metrics := channelHealthMetrics(stats)
 	assert.Equal(t, 50.0, metrics[operation_setting.ChannelHealthMetricErrorRate])
 	assert.Equal(t, 1200.0, metrics[operation_setting.ChannelHealthMetricAvgTtftMs])
+	assert.Equal(t, 1200.0, metrics[operation_setting.ChannelHealthMetricP50TtftMs])
 	assert.Equal(t, 9000.0, metrics[operation_setting.ChannelHealthMetricAvgLatencyMs])
+	assert.Equal(t, 9000.0, metrics[operation_setting.ChannelHealthMetricP50LatencyMs])
 	assert.NotContains(t, statsByChannel, 8)
+}
+
+func TestChannelHealthAlertMessageOnlyShowsTriggeredMetrics(t *testing.T) {
+	rule := operation_setting.ChannelHealthAlertRule{
+		Name:            "延迟过高",
+		WindowMinutes:   30,
+		CooldownMinutes: 30,
+		Condition: operation_setting.ChannelHealthAlertCondition{And: []operation_setting.ChannelHealthAlertCondition{
+			{Metric: operation_setting.ChannelHealthMetricSuccessCount, Op: ">=", Value: 10},
+			{Or: []operation_setting.ChannelHealthAlertCondition{
+				{Metric: operation_setting.ChannelHealthMetricP50TtftMs, Op: ">=", Value: 10000},
+				{Metric: operation_setting.ChannelHealthMetricP50LatencyMs, Op: ">=", Value: 20000},
+			}},
+		}},
+	}
+	message := channelHealthAlertMessage([]channelHealthAlert{{
+		Rule: rule,
+		Stats: channelHealthStats{
+			ChannelID:     47,
+			ChannelName:   "sub-gpt-普通号池",
+			SuccessCount:  26,
+			TtftValues:    []float64{1000, 2000, 3000},
+			LatencyValues: []float64{15000, 22000, 24000},
+		},
+	}})
+
+	assert.Contains(t, message, "#47 sub-gpt-普通号池")
+	assert.Contains(t, message, "成功 26（≥10）")
+	assert.Contains(t, message, "总延迟 P50 22000ms（≥20000ms）")
+	assert.NotContains(t, message, "均值")
+	assert.NotContains(t, message, "P95")
+	assert.NotContains(t, message, "首字 P50")
 }
