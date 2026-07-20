@@ -1,4 +1,4 @@
-import { Receipt, ScrollText, Trophy, Wallet } from 'lucide-react'
+import { Receipt, ScrollText, Wallet } from 'lucide-react'
 import type { TFunction } from 'i18next'
 import type { NavItem, SidebarData } from '@/components/layout/types'
 import { LOCAL_CONFIG } from '@/lib/local-config'
@@ -12,12 +12,6 @@ function getLocalPersonalItems(t: TFunction): NavItem[] {
       title: t('Wallet'),
       url: LOCAL_CONFIG.walletRoute,
       icon: Wallet,
-    },
-    {
-      title: t('World Cup'),
-      url: '/world-cup',
-      icon: Trophy,
-      activeUrls: ['/world-cup/history'],
     },
     {
       title: '我的订单',
@@ -60,7 +54,7 @@ export function injectLocalNavItems(
   base: SidebarData,
   t: TFunction
 ): SidebarData {
-  // Personal: prepend Wallet/World Cup/Orders before Profile (which is the
+  // Personal: prepend Wallet/Orders before Profile (which is the
   // sole upstream entry).
   let next = injectInto(base, 'personal', getLocalPersonalItems(t), 0)
   // Admin: insert Order History after Channels (index 1).

@@ -48,8 +48,6 @@ func TestMain(m *testing.M) {
 		&model.TopUp{},
 		&model.SubscriptionPlan{},
 		&model.UserSubscription{},
-		&model.WorldCupPrediction{},
-		&model.WorldCupPredictionStreak{},
 		&model.SystemTask{},
 		&model.SystemTaskLock{},
 	); err != nil {
@@ -74,8 +72,6 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM top_ups")
 		model.DB.Exec("DELETE FROM subscription_plans")
 		model.DB.Exec("DELETE FROM user_subscriptions")
-		model.DB.Exec("DELETE FROM world_cup_predictions")
-		model.DB.Exec("DELETE FROM world_cup_prediction_streaks")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
 	})

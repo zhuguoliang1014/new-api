@@ -16,8 +16,8 @@ func RegisterLocalSelfRoutes(selfRoute *gin.RouterGroup) {
 	selfRoute.POST("/hupijiao/pay", middleware.CriticalRateLimit(), controller.RequestHupijiaoPay)
 }
 
-// RegisterLocalRoutes registers all remaining local routes (webhooks,
-// subscription-scoped, and World Cup groups). Call once from SetApiRouter after the
+// RegisterLocalRoutes registers all remaining local routes (webhooks and
+// subscription-scoped). Call once from SetApiRouter after the
 // subscription route group is defined.
 func RegisterLocalRoutes(
 	apiRouter *gin.RouterGroup,
@@ -30,21 +30,4 @@ func RegisterLocalRoutes(
 	// Hupijiao subscription pay
 	subscriptionRoute.POST("/hupijiao/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestHupijiao)
 
-	registerWorldCupRoutes(apiRouter)
-}
-
-func registerWorldCupRoutes(apiRouter *gin.RouterGroup) {
-	worldCupRoute := apiRouter.Group("/world-cup")
-	worldCupRoute.Use(middleware.UserAuth())
-	{
-		worldCupRoute.GET("/status", controller.WorldCupStatus)
-		worldCupRoute.POST("/predict", middleware.CriticalRateLimit(), controller.PredictWorldCup)
-		worldCupRoute.GET("/history", controller.WorldCupPredictionHistory)
-	}
-
-	worldCupAdminRoute := apiRouter.Group("/world-cup/admin")
-	worldCupAdminRoute.Use(middleware.AdminAuth())
-	{
-		worldCupAdminRoute.POST("/settle", middleware.CriticalRateLimit(), controller.AdminSettleWorldCupPredictions)
-	}
 }

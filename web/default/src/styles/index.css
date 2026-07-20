@@ -202,29 +202,6 @@ For commercial licensing, please contact support@quantumnous.com
   @apply after:pointer-events-none after:absolute after:start-0 after:bottom-0 after:hidden after:h-32 after:w-full after:rounded-b-2xl after:bg-[linear-gradient(180deg,_transparent_10%,_var(--background)_70%)] md:after:block;
 }
 
-.world-cup-page-shell {
-  background-color: #f6faf4;
-}
-
-.world-cup-page-shell::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.72),
-      rgba(255, 255, 255, 0.88) 34%,
-      rgba(246, 250, 244, 0.96)
-    ),
-    var(--world-cup-page-bg);
-  background-position: center top;
-  background-repeat: no-repeat;
-  background-size: cover;
-}
-
 .CollapsibleContent {
   overflow: hidden;
 }

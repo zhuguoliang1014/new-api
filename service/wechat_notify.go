@@ -7,93 +7,15 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
 	"github.com/bytedance/gopkg/util/gopool"
 )
 
 const wechatGroupMessageAPI = "http://8.141.100.180/api/wechat/group-message/send"
-
-// SendWechatWorldCupWinResult 向配置的群发送世界杯竞猜中奖喜讯。
-func SendWechatWorldCupWinResult(ctx context.Context, rewards []model.WorldCupRewardAdjustment, outcome model.WorldCupMatchOutcome) (notSkipped bool, err error) {
-	if len(rewards) == 0 {
-		return false, nil
-	}
-	if common.OptionMap == nil {
-		logger.LogWarn(ctx, "wechat world cup result: OptionMap is nil; skipping")
-		return false, nil
-	}
-
-	common.OptionMapRWMutex.RLock()
-	enabled := common.OptionMap["WechatBotEnabled"]
-	userId := common.OptionMap["WechatBotUserId"]
-	groupIdsRaw := common.OptionMap["WechatBotGroupIds"]
-	common.OptionMapRWMutex.RUnlock()
-
-	if enabled != "true" {
-		logger.LogInfo(ctx, fmt.Sprintf("wechat world cup result: WechatBotEnabled=%q; skipping match_id=%s", enabled, outcome.MatchId))
-		return false, nil
-	}
-	if userId == "" || groupIdsRaw == "" {
-		logger.LogWarn(ctx, fmt.Sprintf("wechat world cup result: userId or groupIds empty; skipping match_id=%s", outcome.MatchId))
-		return false, nil
-	}
-
-	hostTeam := strings.TrimSpace(rewards[0].Prediction.HostTeamName)
-	guestTeam := strings.TrimSpace(rewards[0].Prediction.GuestTeamName)
-	if hostTeam == "" {
-		hostTeam = "主队"
-	}
-	if guestTeam == "" {
-		guestTeam = "客队"
-	}
-
-	lines := make([]string, 0, len(rewards))
-	for _, reward := range rewards {
-		username, err := model.GetUsernameById(reward.UserId, false)
-		if err != nil || strings.TrimSpace(username) == "" {
-			username = fmt.Sprintf("用户%d", reward.UserId)
-		}
-		rewardText := formatWorldCupWechatQuota(reward.RewardDelta)
-		if reward.StreakBonusDelta > 0 {
-			rewardText = fmt.Sprintf("%s（含连胜奖励 %s）", rewardText, formatWorldCupWechatQuota(reward.StreakBonusDelta))
-		}
-		lines = append(lines, fmt.Sprintf("🎯 %s 获得 %s", username, rewardText))
-	}
-
-	msg := fmt.Sprintf(
-		"🎉 世界杯竞猜喜讯\n%s %d:%d %s\n恭喜以下用户猜中赛果：\n%s",
-		hostTeam,
-		outcome.HostScore,
-		outcome.GuestScore,
-		guestTeam,
-		strings.Join(lines, "\n"),
-	)
-	logger.LogInfo(ctx, fmt.Sprintf("wechat world cup result: sending match_id=%s winners=%d groups=%q", outcome.MatchId, len(rewards), groupIdsRaw))
-	if err := sendToGroupsWithDelay(userId, groupIdsRaw, msg); err != nil {
-		return true, err
-	}
-	return true, nil
-}
-
-func formatWorldCupWechatQuota(quota int) string {
-	if common.QuotaPerUnit <= 0 {
-		return fmt.Sprintf("%d 额度", quota)
-	}
-
-	value := float64(quota) / common.QuotaPerUnit
-	text := strconv.FormatFloat(value, 'f', 2, 64)
-	text = strings.TrimRight(strings.TrimRight(text, "0"), ".")
-	if text == "" {
-		text = "0"
-	}
-	return fmt.Sprintf("$%s 额度", text)
-}
 
 // SendWechatGroupMessage 立即发送指定消息到所有配置群（用于测试，也带随机延迟）
 func SendWechatGroupMessage(msg string) error {
