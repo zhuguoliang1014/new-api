@@ -110,6 +110,7 @@ const URL_TO_CONFIG_MAP: Record<string, { section: string; module: string }> = {
   '/my-wallet': { section: 'personal', module: 'topup' },
   '/orders': { section: 'personal', module: 'orders' },
   '/profile': { section: 'personal', module: 'personal' },
+  '/wechat': { section: 'personal', module: 'personal' },
   '/channels': { section: 'admin', module: 'channel' },
   '/models': { section: 'admin', module: 'models' },
   '/models/metadata': { section: 'admin', module: 'models' },
