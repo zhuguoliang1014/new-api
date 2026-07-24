@@ -58,7 +58,7 @@ function CustomOAuthIcon({ icon }: { icon?: string }) {
         src={value}
         alt=''
         aria-hidden='true'
-        className='h-4 w-4 rounded object-contain'
+        className='h-7 w-7 rounded object-contain'
       />
     )
   }
