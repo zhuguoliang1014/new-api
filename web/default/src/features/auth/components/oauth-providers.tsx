@@ -26,6 +26,7 @@ import {
   IconWeChat,
 } from '@/assets/brand-icons'
 import { Button } from '@/components/ui/button'
+import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 
 import { useOAuthLogin } from '../hooks/use-oauth-login'
@@ -45,6 +46,31 @@ type ProviderButton = {
   onClick: () => void
   icon?: ReactNode
   disabled?: boolean
+}
+
+function CustomOAuthIcon({ icon }: { icon?: string }) {
+  const value = icon?.trim()
+  if (!value) return null
+
+  if (/^https?:\/\//i.test(value)) {
+    return (
+      <img
+        src={value}
+        alt=''
+        aria-hidden='true'
+        className='h-4 w-4 rounded object-contain'
+      />
+    )
+  }
+
+  return (
+    <span
+      aria-hidden='true'
+      className='flex h-4 w-4 items-center justify-center'
+    >
+      {getLobeIcon(value, 16)}
+    </span>
+  )
 }
 
 export function OAuthProviders({
@@ -131,6 +157,7 @@ export function OAuthProviders({
         key: `custom-${provider.slug}`,
         label: t('Continue with {{name}}', { name: provider.name }),
         onClick: () => handleCustomOAuthLogin(provider),
+        icon: <CustomOAuthIcon icon={provider.icon} />,
       })
     }
   }
