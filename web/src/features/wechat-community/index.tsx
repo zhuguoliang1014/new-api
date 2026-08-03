@@ -23,7 +23,7 @@ import { CopyButton } from '@/components/copy-button'
 import { SectionPageLayout } from '@/components/layout'
 
 const QR_CODE_SRC =
-  'https://aicloudroute.com/static/uploads/images/announce-wechat-qrcode.jpg'
+  'https://92ai.asia/static/uploads/images/announce-wechat-qrcode.jpg'
 const WECHAT_ID = 'ls587657'
 
 export function WeChatCommunity() {
