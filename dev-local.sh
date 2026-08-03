@@ -12,7 +12,7 @@ export LC_ALL="${LC_ALL:-en_US.UTF-8}"
 export LANG="${LANG:-en_US.UTF-8}"
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
-FRONTEND_DIR="${ROOT_DIR}/web/default"
+FRONTEND_DIR="${ROOT_DIR}/web"
 LOG_DIR="${ROOT_DIR}/.dev-logs"
 mkdir -p "${LOG_DIR}"
 
@@ -30,6 +30,7 @@ export SQL_DSN="${SQL_DSN:-postgresql://$(whoami)@localhost:5432/new-api?sslmode
 export SESSION_SECRET="${SESSION_SECRET:-249aec5efa2c89c35237782551c3c422b6e51af2797c4873d99621abfea68de7}"
 export PORT="${BACKEND_PORT}"
 export VITE_REACT_APP_SERVER_URL="http://localhost:${BACKEND_PORT}"
+export GOPROXY="${GOPROXY:-https://goproxy.cn,direct}"
 export GOCACHE="${GOCACHE:-${ROOT_DIR}/.gocache}"
 export GOTMPDIR="${GOTMPDIR:-${ROOT_DIR}/.gocache-temp}"
 mkdir -p "${GOCACHE}" "${GOTMPDIR}"
@@ -64,19 +65,17 @@ if [ ! -x "${FRONTEND_DIR}/node_modules/.bin/rsbuild" ]; then
   ( cd "${FRONTEND_DIR}" && bun install )
 fi
 
+log "检查后端依赖（GOPROXY=${GOPROXY}）..."
+( cd "${ROOT_DIR}" && go mod download ) || die "后端依赖下载失败，请检查网络或 GOPROXY"
+
 # Go embed requires the frontend dist directories and index files to exist at
 # compile time. In local dev the real frontend is served by Rsbuild, so use
 # ignored placeholders when production assets have not been built yet.
 prepare_embed_placeholders() {
-  created=0
-  for dist_dir in "${ROOT_DIR}/web/default/dist" "${ROOT_DIR}/web/classic/dist"; do
-    if [ ! -f "${dist_dir}/index.html" ]; then
-      mkdir -p "${dist_dir}"
-      printf '%s\n' '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body></html>' > "${dist_dir}/index.html"
-      created=1
-    fi
-  done
-  if [ "${created}" -eq 1 ]; then
+  dist_dir="${ROOT_DIR}/web/dist"
+  if [ ! -f "${dist_dir}/index.html" ]; then
+    mkdir -p "${dist_dir}"
+    printf '%s\n' '<!doctype html><html><head><title>dev</title></head><body>use frontend dev server</body></html>' > "${dist_dir}/index.html"
     log "已准备 Go embed 占位前端产物"
   fi
 }
