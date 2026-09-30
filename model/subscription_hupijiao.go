@@ -6,9 +6,9 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
 
 	"gorm.io/gorm"
 )
@@ -25,8 +25,6 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 	}
 
 	var order SubscriptionOrder
-	var inviterId int
-	var inviteRewardQuota int
 
 	refCol := "`trade_no`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
@@ -35,7 +33,7 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// 锁定订单记录
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&order).Error
+		err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrSubscriptionOrderNotFound
@@ -58,6 +56,9 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 			return ErrSubscriptionOrderStatusInvalid
 		}
 
+		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 || math.IsNaN(order.Money) || math.IsInf(order.Money, 0) || order.Money <= 0 {
+			return errors.New("无效的支付金额")
+		}
 		// 金额验证（允许0.01元误差）
 		if order.Money < amount-0.01 || order.Money > amount+0.01 {
 			return fmt.Errorf("金额不匹配: 期望%.2f, 实际%.2f", order.Money, amount)
@@ -88,22 +89,12 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 			return err
 		}
 
-		var rewardErr error
-		inviterId, inviteRewardQuota, rewardErr = applyHupijiaoInviteRewardTx(tx, order.UserId, amount)
-		if rewardErr != nil {
-			return fmt.Errorf("增加邀请奖励失败: %w", rewardErr)
-		}
-
 		return nil
 	})
 
 	if err != nil {
 		common.SysError("hupijiao subscription failed: " + err.Error())
 		return err
-	}
-
-	if inviterId > 0 && inviteRewardQuota > 0 {
-		RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("虎皮椒订阅邀请奖励，来自用户 %d，待转移奖励额度: %v，支付金额: %.2f", order.UserId, logger.FormatQuota(inviteRewardQuota), amount))
 	}
 
 	return nil

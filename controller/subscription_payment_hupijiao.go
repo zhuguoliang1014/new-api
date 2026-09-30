@@ -129,7 +129,11 @@ func SubscriptionRequestHupijiao(c *gin.Context) {
 
 	if openId != "" {
 		topUp.OpenOrderId = openId
-		_ = topUp.Update()
+		if err := topUp.UpdateOpenOrderID(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("保存虎皮椒平台订单号失败 trade_no=%s err=%v", tradeNo, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存支付订单失败，请稍后重试"})
+			return
+		}
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("虎皮椒订阅订单创建成功 user_id=%d trade_no=%s plan=%s", userId, tradeNo, plan.Title))

@@ -7,7 +7,7 @@ import (
 	"io"
 	"math"
 	"net/http"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -72,7 +72,7 @@ func generateHupijiaoSignature(params map[string]string, appSecret string) strin
 		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 
 	// 按 key=value 格式拼接
 	var parts []string
@@ -88,7 +88,7 @@ func generateHupijiaoSignature(params map[string]string, appSecret string) strin
 
 // hupijiaoMinQuotaHintMsg 按最低人民币 ÷ 价格系数算出单笔最少要买多少美元额度（与 topup/info 一致）。
 func hupijiaoMinQuotaHintMsg() string {
-	if setting.HupijiaoPrice <= 0 {
+	if math.IsNaN(setting.HupijiaoPrice) || math.IsInf(setting.HupijiaoPrice, 0) || setting.HupijiaoPrice <= 0 {
 		return "请先配置虎皮椒价格系数"
 	}
 	minUsd := formatHupijiaoMinQuotaFromCents(computeMinHupijiaoRechargeAmount())
@@ -114,9 +114,22 @@ func bindHupijiaoTopupQuotaCents(c *gin.Context) (usdCents int64, msg string) {
 	if a < 0.01 {
 		return 0, hupijiaoMinQuotaHintMsg()
 	}
-	cents := int64(math.Round(a * 100))
+	cents, err := parseHupijiaoQuotaToUsdCents(strconv.FormatFloat(a, 'f', -1, 64))
+	if err != nil {
+		return 0, "充值额度超出系统可表示范围"
+	}
 	if cents < 1 {
 		return 0, hupijiaoMinQuotaHintMsg()
+	}
+	if math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
+		return 0, "充值额度超出系统可表示范围"
+	}
+	creditedQuota, err := validateCreditedQuota(decimal.NewFromInt(cents).Div(decimal.NewFromInt(100)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if err != nil {
+		return 0, err.Error()
+	}
+	if err := model.ValidateTopUpQuotaCapacity(c.GetInt("id"), creditedQuota); err != nil {
+		return 0, err.Error()
 	}
 	return cents, ""
 }
@@ -144,7 +157,7 @@ func RequestHupijiaoPay(c *gin.Context) {
 	userId := c.GetInt("id")
 	username := c.GetString("username")
 
-	if setting.HupijiaoPrice <= 0 {
+	if math.IsNaN(setting.HupijiaoPrice) || math.IsInf(setting.HupijiaoPrice, 0) || setting.HupijiaoPrice <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "未配置虎皮椒价格系数（HupijiaoPrice），请在系统设置中填写大于 0 的值",
@@ -163,6 +176,10 @@ func RequestHupijiaoPay(c *gin.Context) {
 		return
 	}
 	payMoney := payYuanRaw.Round(2).InexactFloat64()
+	if math.IsNaN(payMoney) || math.IsInf(payMoney, 0) || payMoney <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的支付金额"})
+		return
+	}
 
 	// 生成唯一订单号
 	tradeNo := fmt.Sprintf("HUPI%d%d", userId, time.Now().UnixNano()/1e6)
@@ -203,7 +220,11 @@ func RequestHupijiaoPay(c *gin.Context) {
 	// 保存虎皮椒平台订单号到数据库
 	if openId != "" {
 		topUp.OpenOrderId = openId
-		_ = topUp.Update()
+		if err := topUp.UpdateOpenOrderID(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("保存虎皮椒平台订单号失败 trade_no=%s err=%v", tradeNo, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存支付订单失败，请稍后重试"})
+			return
+		}
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("虎皮椒订单创建成功 user_id=%d trade_no=%s openid=%s amount=%.2f", userId, tradeNo, openId, payMoney))
@@ -269,7 +290,7 @@ func createHupijiaoPayment(tradeNo string, amount float64, username string) (pay
 	}
 
 	// 解析响应
-	var result map[string]interface{}
+	var result map[string]any
 	err = common.Unmarshal(body, &result)
 	if err != nil {
 		return "", "", "", fmt.Errorf("解析响应失败: %w, body=%s", err, string(body))
@@ -345,7 +366,7 @@ func HupijiaoWebhook(c *gin.Context) {
 	// 验证签名
 	expectedHash := generateHupijiaoSignature(params, setting.HupijiaoAppSecret)
 	if hash != expectedHash {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒回调签名验证失败 trade_no=%s expected=%s got=%s", tradeNo, expectedHash, hash))
+		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒回调签名验证失败 trade_no=%s", tradeNo))
 		c.String(http.StatusForbidden, "fail")
 		return
 	}
@@ -441,7 +462,7 @@ func RequestHupijiaoAmount(c *gin.Context) {
 		return
 	}
 
-	if setting.HupijiaoPrice <= 0 {
+	if math.IsNaN(setting.HupijiaoPrice) || math.IsInf(setting.HupijiaoPrice, 0) || setting.HupijiaoPrice <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "未配置虎皮椒价格系数（HupijiaoPrice）",
@@ -460,6 +481,10 @@ func RequestHupijiaoAmount(c *gin.Context) {
 	}
 
 	payMoney := getHupijiaoPayMoneyUsdCents(usdCents)
+	if math.IsNaN(payMoney) || math.IsInf(payMoney, 0) || payMoney <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "无效的支付金额"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -592,7 +617,7 @@ func queryHupijiaoOrderStatus(openid string) (*hupijiaoOrderStatusResult, error)
 	}
 
 	// 解析响应
-	var result map[string]interface{}
+	var result map[string]any
 	err = common.Unmarshal(body, &result)
 	if err != nil {
 		return nil, fmt.Errorf("解析响应失败: %w, body=%s", err, string(body))
@@ -615,7 +640,7 @@ func queryHupijiaoOrderStatus(openid string) (*hupijiaoOrderStatusResult, error)
 	}
 
 	// 响应数据在 data 字段中
-	dataObj, _ := result["data"].(map[string]interface{})
+	dataObj, _ := result["data"].(map[string]any)
 	if dataObj == nil {
 		return nil, fmt.Errorf("虎皮椒查询API返回数据为空")
 	}
@@ -952,7 +977,11 @@ func RepayTopUpOrder(c *gin.Context) {
 	// 更新虎皮椒平台订单号
 	if openId != "" {
 		topUp.OpenOrderId = openId
-		_ = topUp.Update()
+		if err := topUp.UpdateOpenOrderID(); err != nil {
+			logger.LogError(c.Request.Context(), fmt.Sprintf("保存虎皮椒平台订单号失败 trade_no=%s err=%v", tradeNo, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存支付订单失败，请稍后重试"})
+			return
+		}
 	}
 
 	logger.LogInfo(c.Request.Context(), fmt.Sprintf("重新支付订单 user_id=%d trade_no=%s openid=%s", userId, tradeNo, openId))

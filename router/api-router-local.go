@@ -24,8 +24,8 @@ func RegisterLocalRoutes(
 	subscriptionRoute *gin.RouterGroup,
 ) {
 	// Hupijiao webhooks (no auth — verified by signature in handler)
-	apiRouter.POST("/hupijiao/webhook", controller.HupijiaoWebhook)
-	apiRouter.POST("/hupijiao/subscription/webhook", controller.HupijiaoSubscriptionWebhook)
+	apiRouter.POST("/hupijiao/webhook", middleware.AnonymousRequestBodyLimit(), controller.HupijiaoWebhook)
+	apiRouter.POST("/hupijiao/subscription/webhook", middleware.AnonymousRequestBodyLimit(), controller.HupijiaoSubscriptionWebhook)
 
 	// Hupijiao subscription pay
 	subscriptionRoute.POST("/hupijiao/pay", middleware.CriticalRateLimit(), controller.SubscriptionRequestHupijiao)

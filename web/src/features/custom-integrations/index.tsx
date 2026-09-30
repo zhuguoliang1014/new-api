@@ -8,48 +8,6 @@ import {
 import type { CustomIntegrationSettings } from './types'
 
 const defaultSettings: CustomIntegrationSettings = {
-  WechatBotEnabled: false,
-  WechatBotUserId: '',
-  WechatBotGroupIds: '',
-  'channel_health_alert_setting.enabled': false,
-  'channel_health_alert_setting.check_interval_seconds': 60,
-  'channel_health_alert_setting.wechat_group_ids': '57047022764@chatroom',
-  'channel_health_alert_setting.rules': [
-    {
-      id: 'high_error_rate',
-      name: 'High error rate',
-      enabled: true,
-      window_minutes: 5,
-      cooldown_minutes: 15,
-      scope: {},
-      condition: {
-        and: [
-          { metric: 'total_count', op: '>=', value: 10 },
-          { metric: 'error_count', op: '>=', value: 5 },
-          { metric: 'error_rate', op: '>=', value: 50 },
-        ],
-      },
-    },
-    {
-      id: 'high_latency',
-      name: 'High latency',
-      enabled: true,
-      window_minutes: 5,
-      cooldown_minutes: 15,
-      scope: {},
-      condition: {
-        and: [
-          { metric: 'success_count', op: '>=', value: 10 },
-          {
-            or: [
-              { metric: 'p50_ttft_ms', op: '>=', value: 8000 },
-              { metric: 'p50_latency_ms', op: '>=', value: 60000 },
-            ],
-          },
-        ],
-      },
-    },
-  ],
   HupijiaoPrice: 7.3,
   HupijiaoAmountOptions: '[]',
   HupijiaoAmountDiscount: '{}',
@@ -60,7 +18,6 @@ const defaultSettings: CustomIntegrationSettings = {
   HupijiaoNotifyUrl: '',
   HupijiaoReturnUrl: '',
   HupijiaoMinTopUp: 1,
-  HupijiaoInviteRewardRatio: 0.2,
 }
 
 export function CustomIntegrationsSettings() {

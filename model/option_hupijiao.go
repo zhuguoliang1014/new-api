@@ -23,7 +23,6 @@ func SeedHupijiaoOptions() {
 	common.OptionMap["HupijiaoPrice"] = strconv.FormatFloat(setting.HupijiaoPrice, 'f', -1, 64)
 	common.OptionMap["HupijiaoAmountOptions"] = setting.HupijiaoAmountOptions
 	common.OptionMap["HupijiaoAmountDiscount"] = setting.HupijiaoAmountDiscount
-	common.OptionMap["HupijiaoInviteRewardRatio"] = strconv.FormatFloat(setting.HupijiaoInviteRewardRatio, 'f', -1, 64)
 }
 
 // RunHupijiaoMigrations runs Hupijiao-specific data migrations after options
@@ -57,8 +56,6 @@ func UpdateHupijiaoOption(key, value string) bool {
 		setting.HupijiaoAmountOptions = value
 	case "HupijiaoAmountDiscount":
 		setting.HupijiaoAmountDiscount = value
-	case "HupijiaoInviteRewardRatio":
-		setting.HupijiaoInviteRewardRatio, _ = strconv.ParseFloat(value, 64)
 	default:
 		return false
 	}

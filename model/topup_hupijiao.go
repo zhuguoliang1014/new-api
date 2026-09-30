@@ -9,8 +9,6 @@ import (
 	"math"
 
 	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -40,55 +38,6 @@ func inferHupijiaoPaymentCurrency(method, provider string) (string, bool) {
 	return "", false
 }
 
-func calculateHupijiaoInviteRewardQuota(paidCNY float64) int {
-	if paidCNY <= 0 || setting.HupijiaoPrice <= 0 || setting.HupijiaoInviteRewardRatio <= 0 || setting.HupijiaoInviteRewardRatio > 1 || common.QuotaPerUnit <= 0 {
-		return 0
-	}
-	if math.IsNaN(paidCNY) || math.IsInf(paidCNY, 0) ||
-		math.IsNaN(setting.HupijiaoPrice) || math.IsInf(setting.HupijiaoPrice, 0) ||
-		math.IsNaN(setting.HupijiaoInviteRewardRatio) || math.IsInf(setting.HupijiaoInviteRewardRatio, 0) ||
-		math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) {
-		return 0
-	}
-	dPaidCNY := decimal.NewFromFloat(paidCNY)
-	dRewardRatio := decimal.NewFromFloat(setting.HupijiaoInviteRewardRatio)
-	dHupijiaoPrice := decimal.NewFromFloat(setting.HupijiaoPrice)
-	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-	return int(dPaidCNY.Mul(dRewardRatio).Div(dHupijiaoPrice).Mul(dQuotaPerUnit).Round(0).IntPart())
-}
-
-func applyHupijiaoInviteRewardTx(tx *gorm.DB, inviteeId int, paidCNY float64) (int, int, error) {
-	if tx == nil {
-		return 0, 0, errors.New("tx is nil")
-	}
-	rewardQuota := calculateHupijiaoInviteRewardQuota(paidCNY)
-	if rewardQuota <= 0 {
-		return 0, 0, nil
-	}
-
-	var invitee User
-	if err := tx.Select("id", "inviter_id").Where("id = ?", inviteeId).First(&invitee).Error; err != nil {
-		return 0, 0, err
-	}
-	if invitee.InviterId <= 0 {
-		return 0, 0, nil
-	}
-
-	updates := map[string]interface{}{
-		"aff_quota":   gorm.Expr("aff_quota + ?", rewardQuota),
-		"aff_history": gorm.Expr("aff_history + ?", rewardQuota),
-	}
-	result := tx.Model(&User{}).Where("id = ?", invitee.InviterId).Updates(updates)
-	if result.Error != nil {
-		return 0, 0, result.Error
-	}
-	if result.RowsAffected == 0 {
-		return 0, 0, nil
-	}
-
-	return invitee.InviterId, rewardQuota, nil
-}
-
 // RechargeByHupijiao processes Hupijiao payment callback and increases user quota
 func RechargeByHupijiao(tradeNo string, amount float64) error {
 	if tradeNo == "" {
@@ -97,8 +46,6 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 
 	var topUp TopUp
 	var quotaToAdd int
-	var inviterId int
-	var inviteRewardQuota int
 
 	refCol := "`trade_no`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
@@ -106,7 +53,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Set("gorm:query_option", "FOR UPDATE").Where(refCol+" = ?", tradeNo).First(&topUp).Error
+		err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&topUp).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrTopUpNotFound
@@ -126,6 +73,9 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 			return ErrTopUpStatusInvalid
 		}
 
+		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 || math.IsNaN(topUp.Money) || math.IsInf(topUp.Money, 0) || topUp.Money <= 0 {
+			return errors.New("无效的支付金额")
+		}
 		if amount < topUp.Money-0.01 {
 			return fmt.Errorf("支付金额不足: 应付%.2f元, 实际支付%.2f元", topUp.Money, amount)
 		}
@@ -135,10 +85,13 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 
 		// topUp.Amount：虎皮椒配额订单为「美元分」（$1.00=100），与 controller 侧一致；站内配额 = (Amount/100)*QuotaPerUnit
 		dUsd := decimal.NewFromInt(topUp.Amount).Div(decimal.NewFromInt(100))
+		if math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
+			return ErrInvalidTopUpQuota
+		}
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		quotaToAdd = int(dUsd.Mul(dQuotaPerUnit).Round(0).IntPart())
-		if quotaToAdd <= 0 {
-			return errors.New("无效的充值额度")
+		quotaToAdd, err = common.WalletQuotaFromDecimalStrict(dUsd.Mul(dQuotaPerUnit))
+		if err != nil || quotaToAdd <= 0 {
+			return ErrInvalidTopUpQuota
 		}
 
 		topUp.CompleteTime = common.GetTimestamp()
@@ -147,17 +100,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 			return fmt.Errorf("更新订单失败: %w", err)
 		}
 
-		if err := tx.Model(&User{}).Where("id = ?", topUp.UserId).Update("quota", gorm.Expr("quota + ?", quotaToAdd)).Error; err != nil {
-			return fmt.Errorf("增加配额失败: %w", err)
-		}
-
-		var rewardErr error
-		inviterId, inviteRewardQuota, rewardErr = applyHupijiaoInviteRewardTx(tx, topUp.UserId, amount)
-		if rewardErr != nil {
-			return fmt.Errorf("增加邀请奖励失败: %w", rewardErr)
-		}
-
-		return nil
+		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
 	})
 
 	if err != nil {
@@ -166,10 +109,8 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 	}
 
 	if quotaToAdd > 0 {
+		syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "hupijiao topup")
 		RecordTopupLog(topUp.UserId, fmt.Sprintf("支付宝充值 %.2f 元", topUp.Money), "", topUp.PaymentMethod, PaymentMethodHupijiao)
-		if inviterId > 0 && inviteRewardQuota > 0 {
-			RecordLog(inviterId, LogTypeSystem, fmt.Sprintf("虎皮椒邀请奖励，来自用户 %d，待转移奖励额度: %v，支付金额: %.2f", topUp.UserId, logger.FormatQuota(inviteRewardQuota), amount))
-		}
 		UpgradeUserGroupOnTopup(topUp.UserId)
 	}
 

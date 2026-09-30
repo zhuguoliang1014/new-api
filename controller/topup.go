@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"net/url"
@@ -143,7 +144,7 @@ func GetTopUpInfo(c *gin.Context) {
 		"enable_redemption":                complianceConfirmed,
 		"payment_compliance_confirmed":     complianceConfirmed,
 		"payment_compliance_terms_version": operation_setting.CurrentComplianceTermsVersion,
-		"waffo_pay_methods": func() interface{} {
+		"waffo_pay_methods": func() any {
 			if enableWaffo {
 				return setting.GetWaffoPayMethods()
 			}
@@ -249,7 +250,7 @@ func getHupijiaoPayMoneyUsdCents(usdCents int64) float64 {
 
 // computeMinHupijiaoRechargeAmount 最低美元额度（美分）= ceil(最低人民币 / HupijiaoPrice × 100)，与档位折扣、分组倍率无关。
 func computeMinHupijiaoRechargeAmount() int64 {
-	if setting.HupijiaoPrice <= 0 {
+	if math.IsNaN(setting.HupijiaoPrice) || math.IsInf(setting.HupijiaoPrice, 0) || setting.HupijiaoPrice <= 0 {
 		return 100
 	}
 	if setting.HupijiaoMinTopUp <= 0 {
@@ -260,11 +261,11 @@ func computeMinHupijiaoRechargeAmount() int64 {
 	if dPrice.Sign() <= 0 {
 		return 100
 	}
-	cents := dMin.Div(dPrice).Mul(decimal.NewFromInt(100)).Ceil().IntPart()
-	if cents < 1 {
-		return 1
+	cents := dMin.Div(dPrice).Mul(decimal.NewFromInt(100)).Ceil()
+	if cents.GreaterThan(decimal.NewFromInt(math.MaxInt64)) {
+		return math.MaxInt64
 	}
-	return cents
+	return max(1, cents.IntPart())
 }
 
 func hupijiaoMinQuotaFloatFromCents(cents int64) float64 {
@@ -287,14 +288,15 @@ func parseHupijiaoQuotaToUsdCents(s string) (int64, error) {
 	if s == "" {
 		return 0, strconv.ErrSyntax
 	}
-	f, err := strconv.ParseFloat(s, 64)
+	amount, err := decimal.NewFromString(s)
 	if err != nil {
 		return 0, err
 	}
-	if f < 0 {
-		return 0, strconv.ErrSyntax
+	cents := amount.Mul(decimal.NewFromInt(100)).Round(0)
+	if amount.IsNegative() || cents.GreaterThan(decimal.NewFromInt(math.MaxInt64)) {
+		return 0, strconv.ErrRange
 	}
-	return int64(math.Round(f * 100)), nil
+	return cents.IntPart(), nil
 }
 
 func clonePayMethodsForTopup(src []map[string]string) []map[string]string {
@@ -307,9 +309,7 @@ func clonePayMethodsForTopup(src []map[string]string) []map[string]string {
 			continue
 		}
 		out[i] = make(map[string]string, len(m))
-		for k, v := range m {
-			out[i][k] = v
-		}
+		maps.Copy(out[i], m)
 	}
 	return out
 }
@@ -319,7 +319,11 @@ func getMinTopup() int64 {
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
 		dMinTopup := decimal.NewFromInt(int64(minTopup))
 		dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-		minTopup = common.QuotaFromDecimal(dMinTopup.Mul(dQuotaPerUnit))
+		quota, err := common.WalletQuotaFromDecimalStrict(dMinTopup.Mul(dQuotaPerUnit))
+		if err != nil {
+			return common.MaxWalletQuota
+		}
+		minTopup = quota
 	}
 	return int64(minTopup)
 }
@@ -332,7 +336,7 @@ func getTopUpQuota(amount int64) (int, error) {
 	} else {
 		quota = quota.Mul(decimal.NewFromFloat(common.QuotaPerUnit))
 	}
-	return common.QuotaFromDecimalStrict(quota)
+	return common.WalletQuotaFromDecimalStrict(quota)
 }
 
 func getMaxTopUpAmount() int64 {
@@ -340,7 +344,7 @@ func getMaxTopUpAmount() int64 {
 		return 0
 	}
 	quotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
-	maxStoredAmount := decimal.NewFromInt(common.MaxQuota - 1).
+	maxStoredAmount := decimal.NewFromInt(common.MaxWalletQuota).
 		Div(quotaPerUnit).
 		Floor()
 	if operation_setting.GetQuotaDisplayType() == operation_setting.QuotaDisplayTypeTokens {
@@ -354,7 +358,7 @@ func getMaxTopUpAmount() int64 {
 }
 
 func validateCreditedQuota(quota decimal.Decimal) (int, error) {
-	value, err := common.QuotaFromDecimalStrict(quota)
+	value, err := common.WalletQuotaFromDecimalStrict(quota)
 	if err != nil {
 		return 0, errors.New("充值额度超出系统可表示范围")
 	}

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"math"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -50,4 +51,17 @@ func TestParseTransferAffQuotaRequestRejectsBelowOneCent(t *testing.T) {
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, errTransferAmountMinimum))
+}
+
+func TestParseTransferAffQuotaRequestRejectsUnrepresentableWalletCredit(t *testing.T) {
+	original := common.QuotaPerUnit
+	common.QuotaPerUnit = 500000
+	t.Cleanup(func() { common.QuotaPerUnit = original })
+	for _, amount := range []float64{math.NaN(), math.Inf(1), math.MaxFloat64, float64(common.MaxWalletQuota)} {
+		_, err := parseTransferAffQuotaRequest(TransferAffQuotaRequest{Amount: &amount})
+		require.ErrorIs(t, err, errTransferAmountInvalid)
+	}
+	quota := common.MaxWalletQuota + 1
+	_, err := parseTransferAffQuotaRequest(TransferAffQuotaRequest{Quota: &quota})
+	require.ErrorIs(t, err, errTransferAmountInvalid)
 }

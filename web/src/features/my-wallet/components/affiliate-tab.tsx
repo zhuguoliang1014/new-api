@@ -1,18 +1,14 @@
-import {
-  ArrowRight,
-  Coins,
-  PiggyBank,
-  Share2,
-  Users,
-} from 'lucide-react'
+import { ArrowRight, Coins, PiggyBank, Share2, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
+import { CopyButton } from '@/components/copy-button'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
-import { CopyButton } from '@/components/copy-button'
+import { formatQuota } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import type { UserWalletData } from '../types'
 
 interface AffiliateTabProps {
@@ -81,7 +77,7 @@ export function AffiliateTab({
       <TitledCard
         title={t('Referral Program')}
         description={t(
-          'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
+          'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
         )}
         icon={<Share2 className='h-4 w-4' />}
         contentClassName='space-y-3'
@@ -177,7 +173,7 @@ export function AffiliateTab({
             <li>{t('Share your referral link with friends')}</li>
             <li>
               {t(
-                'Earn rewards when your referrals add funds. Transfer accumulated rewards to your balance anytime.'
+                'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
               )}
             </li>
             <li>

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import * as z from 'zod'
-import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Code2, Eye } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import * as z from 'zod'
+
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -30,6 +31,7 @@ import {
   normalizeJsonForComparison,
   removeTrailingSlash,
 } from '@/features/system-settings/integrations/utils'
+
 import type { CustomIntegrationSettings } from './types'
 
 const schema = z.object({
@@ -80,9 +82,7 @@ type Props = {
 function buildFormDefaults(d: CustomIntegrationSettings): FormValues {
   return {
     HupijiaoPrice: d.HupijiaoPrice ?? 7.3,
-    HupijiaoAmountOptions: formatJsonForEditor(
-      d.HupijiaoAmountOptions ?? '[]'
-    ),
+    HupijiaoAmountOptions: formatJsonForEditor(d.HupijiaoAmountOptions ?? '[]'),
     HupijiaoAmountDiscount: formatJsonForEditor(
       d.HupijiaoAmountDiscount ?? '{}'
     ),
@@ -101,8 +101,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const [amountOptionsVisualMode, setAmountOptionsVisualMode] = useState(true)
-  const [amountDiscountVisualMode, setAmountDiscountVisualMode] =
-    useState(true)
+  const [amountDiscountVisualMode, setAmountDiscountVisualMode] = useState(true)
 
   const baselineRef = useRef<FormValues>(buildFormDefaults(defaultValues))
 
@@ -145,8 +144,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
     const initial = {
       HupijiaoPrice: baselineRef.current.HupijiaoPrice,
       HupijiaoAmountOptions: baselineRef.current.HupijiaoAmountOptions.trim(),
-      HupijiaoAmountDiscount:
-        baselineRef.current.HupijiaoAmountDiscount.trim(),
+      HupijiaoAmountDiscount: baselineRef.current.HupijiaoAmountDiscount.trim(),
     }
 
     const updates: Array<{ key: string; value: string | number }> = []
@@ -235,8 +233,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
       HupijiaoMinTopUp: baselineRef.current.HupijiaoMinTopUp,
     }
 
-    const updates: Array<{ key: string; value: string | number | boolean }> =
-      []
+    const updates: Array<{ key: string; value: string | number | boolean }> = []
 
     if (sanitized.HupijiaoEnabled !== initial.HupijiaoEnabled) {
       updates.push({
@@ -329,9 +326,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
               name='HupijiaoPrice'
               render={({ field }) => (
                 <FormItem className='max-w-md'>
-                  <FormLabel>
-                    {t('Price factor (RMB Alipay top-up)')}
-                  </FormLabel>
+                  <FormLabel>{t('Price factor (RMB Alipay top-up)')}</FormLabel>
                   <FormControl>
                     <Input
                       type='number'
@@ -420,9 +415,7 @@ export function HupijiaoSettingsSection({ defaultValues }: Props) {
                         variant='outline'
                         size='sm'
                         onClick={() =>
-                          setAmountDiscountVisualMode(
-                            !amountDiscountVisualMode
-                          )
+                          setAmountDiscountVisualMode(!amountDiscountVisualMode)
                         }
                         className='w-full sm:w-auto'
                       >

@@ -11,7 +11,7 @@ import (
 )
 
 func isHupijiaoTopUpEnabled() bool {
-	return setting.HupijiaoEnabled &&
+	return isPaymentComplianceConfirmed() && setting.HupijiaoEnabled &&
 		strings.TrimSpace(setting.HupijiaoAppId) != "" &&
 		strings.TrimSpace(setting.HupijiaoAppSecret) != "" &&
 		strings.TrimSpace(setting.HupijiaoApiUrl) != ""

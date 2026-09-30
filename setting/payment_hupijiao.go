@@ -18,10 +18,9 @@ var (
 
 	// 虎皮椒专用充值定价（与支付网关通用配置独立；存 options 表 JSON 字符串）
 	// HupijiaoPrice：每 1 美元额度对应的人民币（元）；实付 = 美元额度 × k × 档位折扣（不参与通用分组充值倍率）。例 k=0.2 ⇒ 10 元最低档对应 50 刀。
-	HupijiaoPrice             float64 = 7.3
-	HupijiaoAmountOptions     string  // JSON 数组，如 [10,20,50]
-	HupijiaoAmountDiscount    string  // JSON 对象，键为充值档位，值为折扣系数
-	HupijiaoInviteRewardRatio float64 = 0.2
+	HupijiaoPrice          float64 = 7.3
+	HupijiaoAmountOptions  string  // JSON 数组，如 [10,20,50]
+	HupijiaoAmountDiscount string  // JSON 对象，键为充值档位，值为折扣系数
 )
 
 // GetHupijiaoPaymentAmountOptions 解析虎皮椒预设充值档位（展示单位，与全局 payment_setting 语义一致）。

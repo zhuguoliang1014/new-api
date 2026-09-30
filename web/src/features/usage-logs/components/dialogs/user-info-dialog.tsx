@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CalendarClock,
   ChevronDown,
@@ -24,10 +23,11 @@ import {
   Layers,
   Loader2,
 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
-import { formatQuota, formatCompactNumber } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
+import { Dialog } from '@/components/dialog'
+import { StatusBadge } from '@/components/status-badge'
 import {
   Collapsible,
   CollapsibleContent,
@@ -35,10 +35,12 @@ import {
 } from '@/components/ui/collapsible'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
-import { StatusBadge } from '@/components/status-badge'
-import { Dialog } from '@/components/dialog'
 import { getUserSubscriptions } from '@/features/subscriptions/api'
 import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
+import { formatQuota, formatCompactNumber } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
+import { cn } from '@/lib/utils'
+
 import { getUserInfo } from '../../api'
 import type { UserInfo } from '../../types'
 
@@ -48,13 +50,7 @@ interface UserInfoDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-function InfoItem({
-  label,
-  value,
-}: {
-  label: string
-  value: string | number
-}) {
+function InfoItem({ label, value }: { label: string; value: string | number }) {
   return (
     <div className='space-y-1.5'>
       <Label className='text-muted-foreground text-xs'>{label}</Label>
@@ -179,7 +175,7 @@ export function UserInfoDialog({
         if (userRes.success) {
           setUserInfo(userRes.data || null)
         } else {
-          toast.error(userRes.message || t('Failed to fetch user information'))
+          handleServerError(userRes, t('Failed to fetch user information'))
         }
         if (subsRes.success) {
           setSubscriptions(subsRes.data || [])
@@ -187,9 +183,7 @@ export function UserInfoDialog({
           setSubscriptions([])
         }
       } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('Failed to fetch user info:', error)
-        toast.error(t('Failed to fetch user information'))
+        handleServerError(error, t('Failed to fetch user information'))
       } finally {
         setIsLoading(false)
       }
@@ -242,11 +236,12 @@ export function UserInfoDialog({
       contentHeight='auto'
       bodyClassName='space-y-4'
     >
-      {isLoading ? (
+      {isLoading && (
         <div className='flex items-center justify-center py-8'>
           <Loader2 className='text-muted-foreground size-6 animate-spin' />
         </div>
-      ) : userInfo ? (
+      )}
+      {!isLoading && userInfo && (
         <div className='-mr-2 min-h-0 flex-1 space-y-4 overflow-y-auto py-1 pr-2'>
           {/* Basic Info */}
           <div className='grid grid-cols-2 gap-4'>
@@ -377,7 +372,8 @@ export function UserInfoDialog({
             </div>
           )}
         </div>
-      ) : (
+      )}
+      {!isLoading && !userInfo && (
         <div className='text-muted-foreground py-8 text-center text-sm'>
           {t('No user information available')}
         </div>
