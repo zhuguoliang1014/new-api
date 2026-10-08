@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -414,6 +415,12 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
+		// Initial billing runs before InitChannelMeta. The distributor has
+		// already stored the selected channel in the request context.
+		channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
+		if channelType == 0 {
+			channelType = relayInfo.GetChannelType()
+		}
 		subConsume := int64(preConsumedQuota)
 		if subConsume <= 0 {
 			subConsume = 1
@@ -424,7 +431,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 				requestId:   relayInfo.RequestId,
 				userId:      relayInfo.UserId,
 				modelName:   relayInfo.GetBillingModelName(),
-				channelType: relayInfo.ChannelType,
+				channelType: channelType,
 				amount:      subConsume,
 			},
 		}
