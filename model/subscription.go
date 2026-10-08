@@ -177,6 +177,11 @@ type SubscriptionPlan struct {
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
 
+	// AllowedChannelTypes restricts which channel types may consume this plan's quota.
+	// Stored as a comma-separated list of channel type integers (e.g. "1,3,14").
+	// Empty means no restriction — all channel types are allowed.
+	AllowedChannelTypes string `json:"allowed_channel_types" gorm:"type:varchar(512);default:''"`
+
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
 
@@ -203,6 +208,25 @@ type SubscriptionPlan struct {
 
 // IsWithinSaleWindow returns true if the plan is currently purchasable based on its time window.
 // A zero value for either bound means no restriction on that side.
+// AllowsChannelType reports whether a given channel type is permitted to consume
+// this plan's quota. An empty AllowedChannelTypes means all channel types are allowed.
+func (p *SubscriptionPlan) AllowsChannelType(channelType int) bool {
+	raw := strings.TrimSpace(p.AllowedChannelTypes)
+	if raw == "" {
+		return true
+	}
+	for part := range strings.SplitSeq(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if v, err := strconv.Atoi(part); err == nil && v == channelType {
+			return true
+		}
+	}
+	return false
+}
+
 func (p *SubscriptionPlan) IsWithinSaleWindow() bool {
 	ok, _ := p.CheckSaleWindow()
 	return ok
@@ -1437,7 +1461,10 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64) (*SubscriptionPreConsumeResult, error) {
+// channelType is the relay channel type (see constant/channel.go); pass 0 when unknown.
+// Subscriptions whose plan has a non-empty AllowedChannelTypes that does not include
+// channelType are skipped.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, channelType int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1488,6 +1515,9 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
 			if err != nil {
 				return err
+			}
+			if channelType != 0 && !plan.AllowsChannelType(channelType) {
+				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err

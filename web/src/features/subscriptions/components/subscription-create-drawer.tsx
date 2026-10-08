@@ -13,6 +13,8 @@ import { toast } from 'sonner'
 import { formatQuota } from '@/lib/format'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 import { DateTimePicker } from '@/components/datetime-picker'
+import { MultiSelect } from '@/components/multi-select'
+import { CHANNEL_TYPE_OPTIONS } from '@/features/channels/constants'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -690,6 +692,38 @@ export function SubscriptionCreateDrawer({
               <div className='text-muted-foreground rounded-md border border-dashed bg-amber-50/40 px-3 py-2 text-xs dark:bg-amber-500/5'>
                 {saleWindowHint}
               </div>
+            </section>
+
+            <section className='space-y-4 px-4 sm:px-6'>
+              <h3 className='text-sm font-medium'>渠道限制</h3>
+              <FormField
+                control={form.control}
+                name='allowed_channel_types'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>允许的渠道类型</FormLabel>
+                    <FormControl>
+                      <MultiSelect
+                        options={CHANNEL_TYPE_OPTIONS.map((o) => ({
+                          value: String(o.value),
+                          label: o.label,
+                        }))}
+                        selected={(field.value ?? []).map(String)}
+                        onChange={(vals) =>
+                          field.onChange(
+                            vals.map(Number).filter((n) => !isNaN(n))
+                          )
+                        }
+                        placeholder='允许所有渠道类型'
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      限制此套餐只能使用指定的渠道类型。留空表示允许所有渠道。
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             </section>
           </form>
         </Form>

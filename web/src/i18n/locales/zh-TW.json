@@ -6898,6 +6898,10 @@
     "Zhipu": "智譜",
     "Zhipu GLM": "智譜GLM",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Channel Restrictions": "渠道限制",
+    "Allowed channel types": "允許的渠道類型",
+    "All channel types allowed": "允許所有渠道類型",
+    "Restrict this plan to specific provider types. Leave empty to allow all providers.": "限制此套餐只能使用指定的渠道類型。留空表示允許所有渠道。"
   }
 }

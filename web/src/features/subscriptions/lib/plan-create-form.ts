@@ -29,6 +29,7 @@ export function getPlanCreateFormSchema(t: TFunction) {
     upgrade_group: z.string().optional(),
     starts_at: z.coerce.number().min(0).optional(),
     expires_at: z.coerce.number().min(0).optional(),
+    allowed_channel_types: z.array(z.number()).optional(),
   })
 }
 
@@ -53,6 +54,7 @@ export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
   upgrade_group: '',
   starts_at: 0,
   expires_at: 0,
+  allowed_channel_types: [],
 }
 
 export function planToCreateFormValues(
@@ -75,6 +77,14 @@ export function planToCreateFormValues(
     upgrade_group: plan.upgrade_group || '',
     starts_at: Number(plan.starts_at || 0),
     expires_at: Number(plan.expires_at || 0),
+    allowed_channel_types: plan.allowed_channel_types
+      ? plan.allowed_channel_types
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map(Number)
+          .filter((n) => !isNaN(n))
+      : [],
   }
 }
 
@@ -117,6 +127,10 @@ export function createFormValuesToPayload(
       upgrade_group: values.upgrade_group || '',
       starts_at: Number(values.starts_at || 0),
       expires_at: Number(values.expires_at || 0),
+      allowed_channel_types:
+        values.allowed_channel_types && values.allowed_channel_types.length > 0
+          ? values.allowed_channel_types.join(',')
+          : '',
     },
   }
 }
