@@ -6903,6 +6903,7 @@
     "Allowed model providers": "Allowed model providers",
     "Allow all model providers": "Allow all model providers",
     "Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.": "Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.",
-    "Matching subscriptions first, then wallet balance": "Matching subscriptions first, then wallet balance"
+    "Matching subscriptions first, then wallet balance": "Matching subscriptions first, then wallet balance",
+    "Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier.": "Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier."
   }
 }

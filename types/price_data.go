@@ -14,6 +14,11 @@ type GroupRatioInfo struct {
 }
 
 type PriceData struct {
+	// PreConsumeQuotaBeforeGroup retains the unrounded reservation before the
+	// group discount, so restricted subscriptions can reserve at rate 1 without
+	// dividing an already rounded amount (or dividing by a zero group ratio).
+	PreConsumeQuotaBeforeGroup *float64
+
 	FreeModel            bool
 	ModelPrice           float64
 	ModelRatio           float64

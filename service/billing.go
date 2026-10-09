@@ -38,6 +38,12 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	if apiErr != nil {
 		return apiErr
 	}
+	// A free wallet request needs no session. Do not put a typed nil pointer
+	// into the BillingSettler interface: callers use a nil check before settling.
+	if session == nil {
+		relayInfo.Billing = nil
+		return nil
+	}
 	relayInfo.Billing = session
 	return nil
 }

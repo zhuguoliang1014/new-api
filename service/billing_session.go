@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -193,7 +194,8 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 // PreConsume — 统一预扣费入口（含信任额度旁路）
 // ---------------------------------------------------------------------------
 
-// preConsume 执行预扣费：信任检查 -> 令牌预扣 -> 资金来源预扣。
+// preConsume reserves subscriptions first to determine their actual rate;
+// wallet reservations retain the token-first order.
 // 任一步骤失败时原子回滚已完成的步骤。
 func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIError {
 	effectiveQuota := quota
@@ -203,20 +205,50 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		s.trusted = true
 		effectiveQuota = 0
 		logger.LogInfo(c, fmt.Sprintf("用户 %d 额度充足, 信任且不需要预扣费 (funding=%s)", s.relayInfo.UserId, s.funding.Source()))
-	} else if effectiveQuota > 0 {
+	}
+
+	sub, isSubscription := s.funding.(*SubscriptionFunding)
+	if isSubscription {
+		if apiErr := s.preConsumeFunding(effectiveQuota); apiErr != nil {
+			return apiErr
+		}
+		effectiveQuota = int(sub.preConsumed)
+	}
+
+	if !s.trusted && effectiveQuota > 0 {
 		logger.LogInfo(c, fmt.Sprintf("用户 %d 需要预扣费 %s (funding=%s)", s.relayInfo.UserId, logger.FormatQuota(effectiveQuota), s.funding.Source()))
 	}
 
 	// ---- 1) 预扣令牌额度 ----
 	if effectiveQuota > 0 {
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
+			if isSubscription {
+				if refundErr := sub.Refund(); refundErr != nil {
+					return types.NewError(fmt.Errorf("token reservation failed: %v; subscription rollback failed: %w", err, refundErr), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+				}
+			}
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
 		s.tokenConsumed = effectiveQuota
 	}
 
-	// ---- 2) 预扣资金来源 ----
-	if err := s.funding.PreConsume(effectiveQuota); err != nil {
+	if !isSubscription {
+		if apiErr := s.preConsumeFunding(effectiveQuota); apiErr != nil {
+			return apiErr
+		}
+	}
+
+	s.preConsumedQuota = effectiveQuota
+
+	// ---- 同步 RelayInfo 兼容字段 ----
+	s.syncRelayInfo()
+
+	return nil
+}
+
+// preConsumeFunding also rolls back any token reservation if funding fails.
+func (s *BillingSession) preConsumeFunding(quota int) *types.NewAPIError {
+	if err := s.funding.PreConsume(quota); err != nil {
 		// 预扣费失败，回滚令牌额度
 		if s.tokenConsumed > 0 && !s.relayInfo.IsPlayground {
 			if rollbackErr := model.IncreaseTokenQuota(s.relayInfo.TokenId, s.relayInfo.TokenKey, s.tokenConsumed); rollbackErr != nil {
@@ -242,11 +274,6 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		}
 		return types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 	}
-
-	s.preConsumedQuota = effectiveQuota
-
-	// ---- 同步 RelayInfo 兼容字段 ----
-	s.syncRelayInfo()
 
 	return nil
 }
@@ -342,8 +369,8 @@ func (s *BillingSession) shouldTrust(c *gin.Context) bool {
 		return float64(s.relayInfo.UserQuota) > trustQuota
 	case BillingSourceSubscription:
 		// 订阅不能启用信任旁路。原因：
-		// 1. PreConsumeUserSubscription 要求 amount>0 来创建预扣记录并锁定订阅
-		// 2. SubscriptionFunding.PreConsume 忽略参数，始终用 s.amount 预扣
+		// 1. 订阅需要在事务内选择套餐并创建预扣记录
+		// 2. SubscriptionFunding.PreConsume 按套餐类型选择实际预扣金额
 		// 3. 若信任旁路将 effectiveQuota 设为 0，会导致 preConsumedQuota 与实际订阅预扣不一致
 		return false
 	default:
@@ -358,6 +385,17 @@ func (s *BillingSession) syncRelayInfo() {
 	info.BillingSource = s.funding.Source()
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
+		info.SubscriptionUsesUnitRatio = sub.useUnitGroupRatio
+		if sub.useUnitGroupRatio {
+			info.PriceData.GroupRatioInfo = hosttypes.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1}
+			info.PriceData.FreeModel = false
+			info.PriceData.QuotaToPreConsume = s.preConsumedQuota
+			info.PriceData.Quota = s.preConsumedQuota
+			if snap := info.TieredBillingSnapshot; snap != nil {
+				snap.GroupRatio = 1
+				snap.EstimatedQuotaAfterGroup = s.preConsumedQuota
+			}
+		}
 		info.SubscriptionId = sub.subscriptionId
 		info.SubscriptionPreConsumed = sub.preConsumed + int64(s.extraReserved)
 		info.SubscriptionPostDelta = 0
@@ -366,6 +404,7 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
 	} else {
+		info.SubscriptionUsesUnitRatio = false
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 	}
@@ -385,6 +424,9 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
+		if relayInfo.PriceData.FreeModel && preConsumedQuota == 0 {
+			return nil, nil
+		}
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
@@ -415,20 +457,34 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 
 	trySubscription := func() (*BillingSession, *types.NewAPIError) {
 		subConsume := int64(preConsumedQuota)
-		if subConsume <= 0 {
+		if subConsume <= 0 && !relayInfo.PriceData.FreeModel {
 			subConsume = 1
+		}
+		unitConsume := preConsumedQuota
+		var quotaErr error
+		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
+			unitConsume, quotaErr = common.QuotaRoundStrict(snap.EstimatedQuotaBeforeGroup)
+		} else if beforeGroup := relayInfo.PriceData.PreConsumeQuotaBeforeGroup; beforeGroup != nil {
+			unitConsume, quotaErr = common.QuotaFromFloatStrict(*beforeGroup)
+		}
+		if quotaErr != nil {
+			return nil, types.NewError(quotaErr, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
+		}
+		if unitConsume < 0 {
+			return nil, types.NewError(fmt.Errorf("negative unit-rate reservation"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
 		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId: relayInfo.RequestId,
-				userId:    relayInfo.UserId,
-				modelName: relayInfo.OriginModelName,
-				amount:    subConsume,
+				requestId:  relayInfo.RequestId,
+				userId:     relayInfo.UserId,
+				modelName:  relayInfo.OriginModelName,
+				amount:     subConsume,
+				unitAmount: int64(max(unitConsume, 1)),
 			},
 		}
-		// 必须传 subConsume 而非 preConsumedQuota，保证 SubscriptionFunding.amount、
-		// preConsume 参数和 FinalPreConsumedQuota 三者一致，避免订阅多扣费。
+		// preConsume uses the amount actually reserved by the selected plan
+		// for the token reservation and final billing-session state.
 		if apiErr := session.preConsume(c, int(subConsume)); apiErr != nil {
 			return nil, apiErr
 		}

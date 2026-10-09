@@ -65,6 +65,8 @@ func PrepareImageBillingForRequest(c *gin.Context, info *relaycommon.RelayInfo, 
 		if info.PriceData.UsePrice {
 			base = info.PriceData.ModelPrice * common.QuotaPerUnit
 		}
+		beforeGroup := info.PriceData.ApplyOtherRatiosToFloat(base)
+		info.PriceData.PreConsumeQuotaBeforeGroup = &beforeGroup
 		quota, err = common.QuotaFromFloatStrict(info.PriceData.ApplyOtherRatiosToFloat(base * info.PriceData.GroupRatioInfo.GroupRatio))
 	}
 	if err != nil {

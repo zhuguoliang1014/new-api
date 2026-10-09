@@ -741,6 +741,9 @@ export function SubscriptionCreateDrawer({
                     <FormDescription>
                       {t(
                         'Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.'
+                      )}{' '}
+                      {t(
+                        'Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier.'
                       )}
                     </FormDescription>
                     <FormMessage />

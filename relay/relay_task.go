@@ -326,12 +326,20 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if info.TieredBillingSnapshot == nil && !common.StringsContains(constant.TaskPricePatches, modelName) {
 		quotaWithRatios := info.PriceData.ApplyOtherRatiosToFloat(float64(info.PriceData.Quota))
 		quota, clamp := common.QuotaFromFloatChecked(quotaWithRatios)
+		if beforeGroup := info.PriceData.PreConsumeQuotaBeforeGroup; beforeGroup != nil {
+			amount := info.PriceData.ApplyOtherRatiosToFloat(*beforeGroup)
+			info.PriceData.PreConsumeQuotaBeforeGroup = &amount
+		}
 		info.PriceData.Quota = quota
 		noteTaskQuotaClamp(info, clamp)
 	}
 
 	// 7. 预扣费（仅首次 — 重试时 info.Billing 已存在，跳过）
-	if info.Billing == nil && !info.PriceData.FreeModel {
+	hasUnitCharge := info.PriceData.PreConsumeQuotaBeforeGroup != nil && *info.PriceData.PreConsumeQuotaBeforeGroup > 0
+	if snap := info.TieredBillingSnapshot; snap != nil {
+		hasUnitCharge = snap.EstimatedQuotaBeforeGroup > 0
+	}
+	if info.Billing == nil && (!info.PriceData.FreeModel || hasUnitCharge) {
 		info.ForcePreConsume = true
 		if apiErr := service.PreConsumeBilling(c, info.PriceData.Quota, info); apiErr != nil {
 			return nil, service.TaskErrorFromAPIError(apiErr)

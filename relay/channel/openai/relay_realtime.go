@@ -237,6 +237,9 @@ func preConsumeUsage(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.R
 	totalUsage.OutputTokenDetails.TextTokens += usage.OutputTokenDetails.TextTokens
 	totalUsage.OutputTokenDetails.AudioTokens += usage.OutputTokenDetails.AudioTokens
 	// clear usage
+	if info.Billing != nil {
+		return service.PreWssConsumeQuota(ctx, info, totalUsage)
+	}
 	err := service.PreWssConsumeQuota(ctx, info, usage)
 	return err
 }

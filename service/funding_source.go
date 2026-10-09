@@ -78,12 +78,14 @@ func (w *WalletFunding) Refund() error {
 // ---------------------------------------------------------------------------
 
 type SubscriptionFunding struct {
-	requestId      string
-	userId         int
-	modelName      string
-	amount         int64 // 预扣的订阅额度（subConsume）
-	subscriptionId int
-	preConsumed    int64
+	requestId         string
+	userId            int
+	modelName         string
+	unitAmount        int64
+	useUnitGroupRatio bool
+	amount            int64 // 通用套餐按分组倍率计算的预扣额度
+	subscriptionId    int
+	preConsumed       int64
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
 	AmountTotal     int64
 	AmountUsedAfter int64
@@ -94,11 +96,12 @@ type SubscriptionFunding struct {
 func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription }
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
-	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, 0)
+	// The selected plan determines whether to reserve amount or unitAmount.
+	res, err := model.PreConsumeUserSubscriptionWithGroupQuota(s.requestId, s.userId, s.modelName, s.amount, s.unitAmount)
 	if err != nil {
 		return err
 	}
+	s.useUnitGroupRatio = res.UseUnitGroupRatio
 	s.subscriptionId = res.UserSubscriptionId
 	s.preConsumed = res.PreConsumed
 	s.AmountTotal = res.AmountTotal

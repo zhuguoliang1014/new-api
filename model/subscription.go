@@ -1294,6 +1294,7 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 }
 
 type SubscriptionPreConsumeResult struct {
+	UseUnitGroupRatio  bool
 	UserSubscriptionId int
 	PreConsumed        int64
 	AmountTotal        int64
@@ -1463,14 +1464,23 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 // Restricted plans are matched against the requested model family, not transport.
 // The last argument is retained for compatibility and is intentionally ignored.
 func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, _ int) (*SubscriptionPreConsumeResult, error) {
+	if amount <= 0 {
+		return nil, errors.New("amount must be > 0")
+	}
+	return PreConsumeUserSubscriptionWithGroupQuota(requestId, userId, modelName, amount, amount)
+}
+
+// PreConsumeUserSubscriptionWithGroupQuota selects and reserves in one transaction.
+// Restricted plans use unitAmount; unrestricted plans retain the group discount.
+func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, modelName string, groupAmount, unitAmount int64) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
 	if strings.TrimSpace(requestId) == "" {
 		return nil, errors.New("requestId is empty")
 	}
-	if amount <= 0 {
-		return nil, errors.New("amount must be > 0")
+	if groupAmount < 0 || unitAmount <= 0 {
+		return nil, errors.New("group amount must be non-negative and unit amount must be positive")
 	}
 	now := GetDBTimestamp()
 
@@ -1490,6 +1500,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&sub).Error; err != nil {
 				return err
 			}
+			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			if err != nil {
+				return err
+			}
+			returnValue.UseUnitGroupRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = existing.PreConsumed
 			returnValue.AmountTotal = sub.AmountTotal
@@ -1520,6 +1535,11 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
+			useUnitRatio := strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			amount := groupAmount
+			if useUnitRatio {
+				amount = unitAmount
+			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
@@ -1527,6 +1547,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 					continue
 				}
 			}
+			returnValue.UseUnitGroupRatio = useUnitRatio
 			record := &SubscriptionPreConsumeRecord{
 				RequestId:          requestId,
 				UserId:             userId,
@@ -1560,7 +1581,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			return nil
 		}
-		return fmt.Errorf("subscription quota insufficient, need=%d", amount)
+		return fmt.Errorf("subscription quota insufficient, group=%d unit=%d", groupAmount, unitAmount)
 	})
 	if err != nil {
 		return nil, err
@@ -1586,7 +1607,7 @@ func RefundSubscriptionPreConsume(requestId string) error {
 			record.Status = "refunded"
 			return tx.Save(&record).Error
 		}
-		if err := PostConsumeUserSubscriptionDelta(record.UserSubscriptionId, -record.PreConsumed); err != nil {
+		if err := postConsumeUserSubscriptionDeltaTx(tx, record.UserSubscriptionId, -record.PreConsumed); err != nil {
 			return err
 		}
 		record.Status = "refunded"
@@ -1685,19 +1706,23 @@ func PostConsumeUserSubscriptionDelta(userSubscriptionId int, delta int64) error
 		return nil
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
-		var sub UserSubscription
-		if err := lockForUpdate(tx).
-			Where("id = ?", userSubscriptionId).
-			First(&sub).Error; err != nil {
-			return err
-		}
-		newUsed := max(sub.AmountUsed+delta, 0)
-		if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
-			return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
-		}
-		sub.AmountUsed = newUsed
-		return tx.Save(&sub).Error
+		return postConsumeUserSubscriptionDeltaTx(tx, userSubscriptionId, delta)
 	})
+}
+
+func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, delta int64) error {
+	var sub UserSubscription
+	if err := lockForUpdate(tx).
+		Where("id = ?", userSubscriptionId).
+		First(&sub).Error; err != nil {
+		return err
+	}
+	newUsed := max(sub.AmountUsed+delta, 0)
+	if sub.AmountTotal > 0 && newUsed > sub.AmountTotal {
+		return fmt.Errorf("subscription used exceeds total, used=%d total=%d", newUsed, sub.AmountTotal)
+	}
+	sub.AmountUsed = newUsed
+	return tx.Save(&sub).Error
 }
 
 // CountUserPendingSubscriptionOrders 统计用户指定支付方式的待支付订阅订单数量（防刷单）

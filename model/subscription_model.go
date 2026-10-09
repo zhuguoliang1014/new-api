@@ -55,7 +55,7 @@ func SubscriptionModelProvider(modelName string) int {
 		prefixes []string
 	}{
 		{constant.ChannelTypeAnthropic, []string{"claude-"}},
-		{constant.ChannelTypeOpenAI, []string{"gpt-", "chatgpt-", "o1-", "o3-", "o4-", "codex-"}},
+		{constant.ChannelTypeOpenAI, []string{"gpt", "chatgpt-", "o1-", "o3-", "o4-", "codex-"}},
 		{constant.ChannelTypeGemini, []string{"gemini-", "gemma-", "learnlm-", "imagen-", "veo-"}},
 		{constant.ChannelTypeDeepSeek, []string{"deepseek-"}},
 		{constant.ChannelTypeMoonshot, []string{"moonshot-", "kimi-"}},

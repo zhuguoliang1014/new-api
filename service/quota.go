@@ -85,6 +85,27 @@ func calculateAudioQuota(info QuotaInfo) (int, *common.QuotaClamp) {
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
+	if relayInfo.Billing != nil {
+		// With a billing session, usage is cumulative. Reserve through that
+		// session so subscription funding and its frozen group rate are retained.
+		quota, clamp := calculateAudioQuota(QuotaInfo{
+			InputDetails:  TokenDetails{TextTokens: usage.InputTokenDetails.TextTokens, AudioTokens: usage.InputTokenDetails.AudioTokens},
+			OutputDetails: TokenDetails{TextTokens: usage.OutputTokenDetails.TextTokens, AudioTokens: usage.OutputTokenDetails.AudioTokens},
+			ModelName:     relayInfo.OriginModelName, UsePrice: relayInfo.PriceData.UsePrice,
+			ModelPrice: relayInfo.PriceData.ModelPrice, ModelRatio: relayInfo.PriceData.ModelRatio,
+			GroupRatio: relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+		})
+		if ok, tieredQuota, _ := TryTieredSettle(relayInfo, billingexpr.TokenParams{
+			P: float64(usage.InputTokens), C: float64(usage.OutputTokens), Len: float64(usage.InputTokens),
+		}); ok {
+			quota, clamp = tieredQuota, nil
+		}
+		noteQuotaClamp(relayInfo, clamp)
+		if relayInfo.QuotaClamp != nil {
+			return relayInfo.QuotaClamp
+		}
+		return relayInfo.Billing.Reserve(quota)
+	}
 	if relayInfo.UsePrice {
 		return nil
 	}
@@ -194,6 +215,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		},
 		ModelName:  modelName,
 		UsePrice:   usePrice,
+		ModelPrice: modelPrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
 	}

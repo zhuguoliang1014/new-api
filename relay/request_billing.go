@@ -59,7 +59,11 @@ func PrepareRequestBilling(c *gin.Context, info *relaycommon.RelayInfo) *types.N
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 	}
-	if priceData.FreeModel {
+	hasUnitCharge := priceData.PreConsumeQuotaBeforeGroup != nil && *priceData.PreConsumeQuotaBeforeGroup > 0
+	if snap := info.TieredBillingSnapshot; snap != nil {
+		hasUnitCharge = snap.EstimatedQuotaBeforeGroup > 0
+	}
+	if priceData.FreeModel && !hasUnitCharge {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", info.OriginModelName))
 		return nil
 	}
