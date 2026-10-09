@@ -16,6 +16,11 @@ export default defineConfig(({ envMode }) => {
     'http://localhost:3000'
 
   const isProd = envMode === 'production'
+  const releaseVersion =
+    process.env.VITE_REACT_APP_VERSION ||
+    env.rawPublicVars.VITE_REACT_APP_VERSION ||
+    'local'
+  const releaseAssetPath = `static/releases/${releaseVersion.replaceAll(/[^a-zA-Z0-9._-]/g, '_')}`
   const devProxy = Object.fromEntries(
     (['/api', '/v1', '/mj', '/pg'] as const).map((key) => [
       key,
@@ -77,6 +82,13 @@ export default defineConfig(({ envMode }) => {
       target: 'web',
       distPath: {
         root: 'dist',
+        // Keep entrypoints and lazy chunks out of caches from earlier releases.
+        ...(isProd && {
+          js: `${releaseAssetPath}/js`,
+          jsAsync: `${releaseAssetPath}/js/async`,
+          css: `${releaseAssetPath}/css`,
+          cssAsync: `${releaseAssetPath}/css/async`,
+        }),
       },
       // Rely on Rsbuild default legalComments ("linked" → per-chunk *.LICENSE.txt) in all modes.
       // Do not set "none" in production: that strips minifier-preserved third-party notices and
