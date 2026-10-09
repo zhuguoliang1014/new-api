@@ -463,6 +463,7 @@ func TestTaskBillingOtherSeparatesPluginAndRootDiagnostics(t *testing.T) {
 	other := taskBillingOther(task).Snapshot()
 
 	assert.Equal(t, "task_public", other["task_id"])
+	assert.NotContains(t, other, "billing_ratio_source", "historical tasks must not invent a rate source")
 	adminInfo, ok := other["admin_info"].(map[string]any)
 	require.True(t, ok)
 	pluginInfo, ok := adminInfo["task_plugin"].(map[string]any)

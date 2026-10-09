@@ -1530,6 +1530,7 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 				return err
 			}
 			if !plan.AllowsModel(modelName) {
+				common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=model_mismatch", requestId, userId, modelName, sub.Id, plan.Id))
 				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
@@ -1544,6 +1545,7 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
+					common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=quota_insufficient required_quota=%d remaining_quota=%d unit_rate=%t", requestId, userId, modelName, sub.Id, plan.Id, amount, remain, useUnitRatio))
 					continue
 				}
 			}

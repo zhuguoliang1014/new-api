@@ -6908,6 +6908,9 @@
     "Allow all model providers": "允许所有模型厂商",
     "Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.": "按请求的模型归属匹配，不按渠道类型。依次跳过不匹配或额度不足的订阅，再使用账户余额。留空允许所有模型。",
     "Matching subscriptions first, then wallet balance": "优先使用匹配的订阅，均不满足时使用余额",
-    "Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier.": "专用套餐按 1 倍率扣费；不限模型的套餐和余额扣费仍使用 API Key 分组倍率。"
+    "Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier.": "专用套餐按 1 倍率扣费；不限模型的套餐和余额扣费仍使用 API Key 分组倍率。",
+    "Billing multiplier": "扣费倍率",
+    "Multiplier basis": "倍率依据",
+    "Restricted subscription": "专用套餐"
   }
 }

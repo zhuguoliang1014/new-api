@@ -232,3 +232,17 @@ describe('usage facts billing details', () => {
     expect(screen.getByText('Total Cost')).toBeInTheDocument()
   })
 })
+
+test('restricted subscription details show the charged rate instead of a stale group discount', () => {
+  const client = renderDetails({
+    billing_source: 'subscription',
+    billing_group_ratio: 1,
+    billing_ratio_source: 'subscription_unit',
+    group_ratio: 0.36,
+    user_group_ratio: 0.36,
+  })
+  expect(rowValue('Billing multiplier')).toBe('1.0000x')
+  expect(rowValue('Multiplier basis')).toBe('Restricted subscription')
+  expect(screen.queryByText('0.3600x')).not.toBeInTheDocument()
+  client.clear()
+})

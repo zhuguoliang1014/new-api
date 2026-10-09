@@ -192,6 +192,12 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) 
 	// billing_source: "wallet" or "subscription"
 	if relayInfo.BillingSource != "" {
 		other.SetPublic("billing_source", relayInfo.BillingSource)
+		other.SetPublic("billing_group_ratio", relayInfo.PriceData.GroupRatioInfo.GroupRatio)
+		source := "api_group"
+		if relayInfo.SubscriptionUsesUnitRatio {
+			source = "subscription_unit"
+		}
+		other.SetPublic("billing_ratio_source", source)
 	}
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other.SetPublic("billing_preference", relayInfo.UserSetting.BillingPreference)

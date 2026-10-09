@@ -40,6 +40,14 @@ type BillingSession struct {
 	mu               sync.Mutex
 }
 
+// logBillingEvent records quota units and identifiers without credentials or request bodies.
+func (s *BillingSession) logBillingEvent(event string, quota int, outcome string) {
+	info := s.relayInfo
+	common.SysLog(fmt.Sprintf("billing_audit event=%s request_id=%q user_id=%d model=%q funding=%s subscription_id=%d plan_id=%d group=%q effective_group_ratio=%g unit_rate=%t quota=%d reserved_quota=%d outcome=%s",
+		event, info.RequestId, info.UserId, info.OriginModelName, s.funding.Source(), info.SubscriptionId, info.SubscriptionPlanId, info.UsingGroup,
+		info.PriceData.GroupRatioInfo.GroupRatio, info.SubscriptionUsesUnitRatio, quota, s.preConsumedQuota, outcome))
+}
+
 // Settle 根据实际消耗额度进行结算。
 // 资金来源和令牌额度分两步提交：若资金来源已提交但令牌调整失败，
 // 会标记 fundingSettled 防止 Refund 对已提交的资金来源执行退款。
@@ -52,11 +60,13 @@ func (s *BillingSession) Settle(actualQuota int) error {
 	delta := actualQuota - s.preConsumedQuota
 	if delta == 0 {
 		s.settled = true
+		s.logBillingEvent("settled", actualQuota, "success")
 		return nil
 	}
 	// 1) 调整资金来源（仅在尚未提交时执行，防止重复调用）
 	if !s.fundingSettled {
 		if err := s.funding.Settle(delta); err != nil {
+			s.logBillingEvent("settled", actualQuota, "funding_failed")
 			return err
 		}
 		s.fundingSettled = true
@@ -80,6 +90,11 @@ func (s *BillingSession) Settle(actualQuota int) error {
 		s.relayInfo.SubscriptionPostDelta += int64(delta)
 	}
 	s.settled = true
+	outcome := "success"
+	if tokenErr != nil {
+		outcome = "token_adjustment_failed"
+	}
+	s.logBillingEvent("settled", actualQuota, outcome)
 	return tokenErr
 }
 
@@ -109,21 +124,26 @@ func (s *BillingSession) Refund(c *gin.Context) {
 	funding := s.funding
 
 	gopool.Go(func() {
+		outcome := "success"
 		// 1) 退还资金来源
 		if err := funding.Refund(); err != nil {
+			outcome = "funding_refund_failed"
 			common.SysLog("error refunding billing source: " + err.Error())
 		}
 		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
 			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
+				outcome = "extra_reservation_refund_failed"
 				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 			}
 		}
 		// 2) 退还令牌额度
 		if tokenConsumed > 0 && !isPlayground {
 			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
+				outcome = "token_refund_failed"
 				common.SysLog("error refunding token quota: " + err.Error())
 			}
 		}
+		s.logBillingEvent("refunded", tokenConsumed, outcome)
 	})
 }
 
@@ -187,6 +207,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 		s.trusted = false
 	}
 	s.syncRelayInfo()
+	s.logBillingEvent("reservation_increased", targetQuota, "success")
 	return nil
 }
 
@@ -224,8 +245,10 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 		if err := PreConsumeTokenQuota(s.relayInfo, effectiveQuota); err != nil {
 			if isSubscription {
 				if refundErr := sub.Refund(); refundErr != nil {
+					common.SysLog(fmt.Sprintf("billing_audit event=reservation_rollback request_id=%q user_id=%d subscription_id=%d quota=%d outcome=failed reason=token_reservation_failed", s.relayInfo.RequestId, s.relayInfo.UserId, sub.subscriptionId, sub.preConsumed))
 					return types.NewError(fmt.Errorf("token reservation failed: %v; subscription rollback failed: %w", err, refundErr), types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
 				}
+				common.SysLog(fmt.Sprintf("billing_audit event=reservation_rollback request_id=%q user_id=%d subscription_id=%d quota=%d outcome=success reason=token_reservation_failed", s.relayInfo.RequestId, s.relayInfo.UserId, sub.subscriptionId, sub.preConsumed))
 			}
 			return types.NewErrorWithStatusCode(err, types.ErrorCodePreConsumeTokenQuotaFailed, http.StatusForbidden, types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 		}
@@ -242,6 +265,7 @@ func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIErro
 
 	// ---- 同步 RelayInfo 兼容字段 ----
 	s.syncRelayInfo()
+	s.logBillingEvent("reserved", effectiveQuota, "success")
 
 	return nil
 }
@@ -496,6 +520,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
 	if !hasSubscription {
+		logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_fallback request_id=%q user_id=%d model=%q reason=no_active_subscription", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
 		return tryWallet()
 	}
 	session, apiErr := trySubscription()
@@ -505,5 +530,6 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	if apiErr.GetErrorCode() != types.ErrorCodeInsufficientUserQuota {
 		return nil, apiErr
 	}
+	logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_fallback request_id=%q user_id=%d model=%q reason=no_eligible_subscription_with_sufficient_quota", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
 	return tryWallet()
 }

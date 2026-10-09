@@ -189,6 +189,8 @@ export interface LogOtherData {
   model_ratio?: number
   completion_ratio?: number
   model_price?: number
+  billing_group_ratio?: number
+  billing_ratio_source?: 'subscription_unit' | 'api_group'
   group_ratio?: number
   user_group_ratio?: number
   cache_ratio?: number

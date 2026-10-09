@@ -36,6 +36,7 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	}
 	session, apiErr := NewBillingSession(c, relayInfo, preConsumedQuota)
 	if apiErr != nil {
+		logger.LogWarn(c, "billing_audit event=reservation_failed request_id=%q user_id=%d model=%q error_code=%s", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName, apiErr.GetErrorCode())
 		return apiErr
 	}
 	// A free wallet request needs no session. Do not put a typed nil pointer

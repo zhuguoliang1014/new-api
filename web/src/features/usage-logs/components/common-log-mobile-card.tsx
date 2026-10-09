@@ -32,6 +32,7 @@ import dayjs from '@/lib/dayjs'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
+import { getBillingRatio } from '../lib/billing-source'
 import { formatModelName, parseLogOther } from '../lib/format'
 import {
   getLogTypeConfig,
@@ -72,10 +73,8 @@ export function CommonLogMobileCard<TData>(props: {
   const model = formatModelName(log)
   const config = getLogTypeConfig(log.type)
   const group = log.group || other?.group || ''
-  const groupRatio =
-    other?.user_group_ratio != null && other.user_group_ratio !== -1
-      ? other.user_group_ratio
-      : other?.group_ratio
+  const billingRatio = getBillingRatio(other)
+  const groupRatio = billingRatio.value
   const fields: Record<FieldName, LogField> = {
     model: {
       label: t('Model'),
@@ -279,11 +278,14 @@ export function CommonLogMobileCard<TData>(props: {
             )
           })}
           {groupRatio != null &&
-            groupRatio !== 1 &&
+            (groupRatio !== 1 || billingRatio.restricted) &&
             Number.isFinite(groupRatio) &&
             props.cells.has('token_name') && (
               <div className='text-muted-foreground col-span-2 [overflow-wrap:anywhere]'>
-                {t('Group Ratio')}: {groupRatio}×
+                {billingRatio.restricted
+                  ? t('Restricted subscription')
+                  : t(billingRatio.labelKey)}
+                : {groupRatio}×
               </div>
             )}
         </div>

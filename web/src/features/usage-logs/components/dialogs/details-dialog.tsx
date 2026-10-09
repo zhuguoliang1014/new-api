@@ -68,6 +68,7 @@ import { cn } from '@/lib/utils'
 
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
+import { getBillingRatio } from '../../lib/billing-source'
 import {
   parseLogOther,
   getParamOverrideActionLabel,
@@ -227,14 +228,18 @@ function BillingBreakdown(props: {
     }
   }
 
-  const userGR = other.user_group_ratio
-  const isUserGR = userGR != null && Number.isFinite(userGR) && userGR !== -1
-  const effectiveGR = isUserGR ? userGR : other.group_ratio
-  if (effectiveGR != null && Number.isFinite(effectiveGR)) {
+  const billingRatio = getBillingRatio(other)
+  if (billingRatio.value != null) {
     rows.push({
-      label: isUserGR ? t('User Exclusive Ratio') : t('Group Ratio'),
-      value: `${formatRatio(effectiveGR)}x`,
+      label: t(billingRatio.labelKey),
+      value: `${formatRatio(billingRatio.value)}x`,
     })
+    if (billingRatio.restricted) {
+      rows.push({
+        label: t('Multiplier basis'),
+        value: t('Restricted subscription'),
+      })
+    }
   }
 
   if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {

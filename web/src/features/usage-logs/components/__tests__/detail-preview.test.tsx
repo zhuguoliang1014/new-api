@@ -36,6 +36,7 @@ import {
 import type { UsageLog } from '../../data/schema'
 import type { LogOtherData } from '../../types'
 import { useCommonLogsColumns } from '../columns/common-logs-columns'
+import { UsageLogsProvider } from '../usage-logs-provider'
 
 vi.mock('@lobehub/icons', () => ({}))
 vi.hoisted(() => {
@@ -73,7 +74,11 @@ function makeLog(other: LogOtherData): UsageLog {
   }
 }
 
-function DetailPreview(props: { other: LogOtherData; isAdmin: boolean }) {
+function DetailPreview(props: {
+  other: LogOtherData
+  isAdmin: boolean
+  columnId?: string
+}) {
   const table = useReactTable({
     data: [makeLog(props.other)],
     columns: useCommonLogsColumns(props.isAdmin, false),
@@ -82,7 +87,7 @@ function DetailPreview(props: { other: LogOtherData; isAdmin: boolean }) {
   const cell = table
     .getRowModel()
     .rows[0].getAllCells()
-    .find((item) => item.column.id === 'content')
+    .find((item) => item.column.id === (props.columnId ?? 'content'))
   if (!cell) throw new Error('The log must have a content column')
   return flexRender(cell.column.columnDef.cell, cell.getContext())
 }
@@ -380,3 +385,27 @@ test.each(['missing schema', 'unsupported expression', 'unknown tier'])(
     expect(preview.textContent).toBe('Dynamic Pricing · No matching results')
   }
 )
+
+test('token column identifies restricted subscription rate even when legacy group fields contain 0.36', () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={client}>
+        <UsageLogsProvider>
+          <DetailPreview
+            isAdmin={false}
+            columnId='token_name'
+            other={{
+              billing_source: 'subscription',
+              billing_group_ratio: 1,
+              billing_ratio_source: 'subscription_unit',
+              group_ratio: 0.36,
+              user_group_ratio: 0.36,
+            }}
+          />
+        </UsageLogsProvider>
+      </QueryClientProvider>
+    </I18nextProvider>
+  )
+  expect(screen.getByText('Restricted subscription · 1x')).toBeVisible()
+  expect(screen.queryByText(/0\.36x/)).not.toBeInTheDocument()
+})

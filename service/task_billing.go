@@ -77,6 +77,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		setTaskImageCount(other, info.PriceData.OtherRatios()["image_count"])
 	}
 	appendTaskLogInfo(task, other)
+	appendBillingInfo(info, other)
 	attachQuotaSaturation(c, info, other)
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
@@ -153,6 +154,16 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 			other.SetPublic("model_ratio", bc.ModelRatio)
 		}
 		other.SetPublic("group_ratio", bc.GroupRatio)
+		other.SetPublic("billing_group_ratio", bc.GroupRatio)
+		other.SetPublic("billing_source", task.PrivateData.BillingSource)
+		// Historical tasks did not record the reason for their rate.
+		if bc.SubscriptionUsesUnitRatio != nil {
+			source := "api_group"
+			if *bc.SubscriptionUsesUnitRatio {
+				source = "subscription_unit"
+			}
+			other.SetPublic("billing_ratio_source", source)
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				if !other.SetPublic(k, v) {

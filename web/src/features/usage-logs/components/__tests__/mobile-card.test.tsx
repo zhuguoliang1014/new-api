@@ -337,3 +337,22 @@ it('shows loading placeholders without displaying stale log fields', () => {
     screen.queryByRole('button', { name: /^Model:/ })
   ).not.toBeInTheDocument()
 })
+
+it('mobile log shows the restricted subscription multiplier rather than the API group discount', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        other: JSON.stringify({
+          billing_source: 'subscription',
+          billing_group_ratio: 1,
+          billing_ratio_source: 'subscription_unit',
+          group_ratio: 0.36,
+          user_group_ratio: 0.36,
+        }),
+      },
+    ],
+  })
+  expect(screen.getByText('Restricted subscription: 1×')).toBeVisible()
+  expect(screen.queryByText(/0\.36×/)).not.toBeInTheDocument()
+})

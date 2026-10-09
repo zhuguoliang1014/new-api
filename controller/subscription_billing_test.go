@@ -458,12 +458,24 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							require.NoError(t, service.SettleBilling(c, info, expectedReserve))
 							task := model.Task{TaskID: info.RequestId, UserId: user.Id, ChannelId: channel.Id, Quota: expectedReserve, Group: info.UsingGroup,
 								PrivateData: model.TaskPrivateData{BillingSource: info.BillingSource, SubscriptionId: info.SubscriptionId, TokenId: token.Id,
-									BillingContext: &model.TaskBillingContext{GroupRatio: wantedRate, ModelRatio: 1, OriginModelName: tc.model}}}
+									BillingContext: &model.TaskBillingContext{SubscriptionUsesUnitRatio: common.GetPointer(info.SubscriptionUsesUnitRatio), GroupRatio: wantedRate, ModelRatio: 1, OriginModelName: tc.model}}}
 							require.NoError(t, db.Create(&task).Error)
 							t.Cleanup(func() { require.NoError(t, db.Delete(&task).Error) })
 							require.True(t, service.RecalculateTaskQuotaByTokens(c, &task, 81))
 							require.NoError(t, db.First(&task, task.ID).Error)
 							assert.Equal(t, expectedCharge, task.Quota)
+							require.NotNil(t, task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
+							assert.Equal(t, info.SubscriptionUsesUnitRatio, *task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
+							var log model.Log
+							require.NoError(t, db.Where("user_id = ?", user.Id).First(&log).Error)
+							var other map[string]any
+							require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+							assert.Equal(t, wantedRate, other["billing_group_ratio"])
+							if info.SubscriptionUsesUnitRatio {
+								assert.Equal(t, "subscription_unit", other["billing_ratio_source"])
+							} else {
+								assert.Equal(t, "api_group", other["billing_ratio_source"])
+							}
 						} else {
 							if tc.realtime {
 								usage := &dto.RealtimeUsage{}
@@ -485,6 +497,12 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 								assert.NotContains(t, other, "billing_source")
 							} else {
 								assert.Equal(t, info.BillingSource, other["billing_source"])
+								assert.Equal(t, wantedRate, other["billing_group_ratio"])
+								if info.SubscriptionUsesUnitRatio {
+									assert.Equal(t, "subscription_unit", other["billing_ratio_source"])
+								} else {
+									assert.Equal(t, "api_group", other["billing_ratio_source"])
+								}
 							}
 						}
 					}

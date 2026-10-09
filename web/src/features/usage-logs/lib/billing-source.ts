@@ -21,6 +21,8 @@ import type {
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 
+import type { LogOtherData } from '../types'
+
 interface BillingSourceVisibilityInput {
   isAdmin: boolean
   /** Admin view only: every system plan. */
@@ -41,4 +43,33 @@ export function shouldShowBillingSource(
     return (input.plans ?? []).some((record) => record.plan?.enabled === true)
   }
   return (input.subscriptions?.length ?? 0) > 0
+}
+
+/** Use the rate recorded for this request; never infer it from today's plan or model. */
+export function getBillingRatio(other: LogOtherData | null): {
+  value: number | undefined
+  labelKey: 'Billing multiplier' | 'User Exclusive Ratio' | 'Group Ratio'
+  restricted: boolean
+} {
+  const recorded = other?.billing_group_ratio
+  const restricted =
+    other?.billing_source === 'subscription' &&
+    other.billing_ratio_source === 'subscription_unit'
+  if (recorded != null && Number.isFinite(recorded) && recorded >= 0) {
+    return { value: recorded, labelKey: 'Billing multiplier', restricted }
+  }
+  const userRatio = other?.user_group_ratio
+  if (userRatio != null && Number.isFinite(userRatio) && userRatio >= 0) {
+    return {
+      value: userRatio,
+      labelKey: 'User Exclusive Ratio',
+      restricted: false,
+    }
+  }
+  const groupRatio = other?.group_ratio
+  const value =
+    groupRatio != null && Number.isFinite(groupRatio) && groupRatio >= 0
+      ? groupRatio
+      : undefined
+  return { value, labelKey: 'Group Ratio', restricted: false }
 }

@@ -55,6 +55,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
+import { getBillingRatio } from '../../lib/billing-source'
 import {
   formatModelName,
   decodeBillingExprB64,
@@ -88,24 +89,6 @@ function formatRatioCompact(ratio: number | undefined): string {
   return ratio % 1 === 0
     ? String(ratio)
     : ratio.toFixed(4).replace(/\.?0+$/, '')
-}
-
-function getGroupRatio(other: LogOtherData | null): number | null {
-  const userGroupRatio = other?.user_group_ratio
-  if (
-    userGroupRatio != null &&
-    userGroupRatio !== -1 &&
-    Number.isFinite(userGroupRatio)
-  ) {
-    return userGroupRatio
-  }
-
-  const groupRatio = other?.group_ratio
-  if (groupRatio != null && groupRatio !== 1 && Number.isFinite(groupRatio)) {
-    return groupRatio
-  }
-
-  return null
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
@@ -345,16 +328,9 @@ function buildTypeDetailSegments(
         }
       }
     } else {
-      const userGroupRatio = other.user_group_ratio
-      const groupRatio = other.group_ratio
-      const isUserGroup =
-        userGroupRatio != null &&
-        Number.isFinite(userGroupRatio) &&
-        userGroupRatio !== -1
-      const effectiveRatio = isUserGroup ? userGroupRatio : groupRatio
-      const ratioLabel = isUserGroup
-        ? t('User Exclusive Ratio')
-        : t('Group Ratio')
+      const billingRatio = getBillingRatio(other)
+      const effectiveRatio = billingRatio.value
+      const ratioLabel = t(billingRatio.labelKey)
 
       if (effectiveRatio != null && Number.isFinite(effectiveRatio)) {
         segments.push({
@@ -655,7 +631,11 @@ export function useCommonLogsColumns(
         const displayName = sensitiveVisible ? tokenName : '••••'
         let group = log.group
         if (!group) group = other?.group || ''
-        const groupRatio = getGroupRatio(other)
+        const billingRatio = getBillingRatio(other)
+        const groupRatio =
+          billingRatio.restricted || billingRatio.value !== 1
+            ? billingRatio.value
+            : undefined
 
         return (
           <div className='flex max-w-[200px] flex-col gap-0.5'>
@@ -689,12 +669,20 @@ export function useCommonLogsColumns(
                     className='inline align-baseline text-xs leading-none [&>span]:leading-none'
                   />
                 ) : null}
-                {group && groupRatio != null ? ' ' : null}
-                {groupRatio != null ? (
+                {group && groupRatio != null && !billingRatio.restricted
+                  ? ' '
+                  : null}
+                {groupRatio != null && !billingRatio.restricted ? (
                   <span className='text-muted-foreground/60 relative top-px align-baseline tabular-nums'>
                     {formatRatioCompact(groupRatio)}x
                   </span>
                 ) : null}
+              </span>
+            )}
+            {billingRatio.restricted && groupRatio != null && (
+              <span className='text-muted-foreground text-xs [overflow-wrap:anywhere] tabular-nums'>
+                {t('Restricted subscription')} ·{' '}
+                {formatRatioCompact(groupRatio)}x
               </span>
             )}
           </div>
