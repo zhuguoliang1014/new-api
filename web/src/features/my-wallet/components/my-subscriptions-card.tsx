@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   DndContext,
   KeyboardSensor,
@@ -25,60 +24,28 @@ import {
   Layers,
   RefreshCw,
 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatQuota } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
-import { StatusBadge } from '@/components/status-badge'
 import {
   getPublicPlans,
   getSelfSubscriptionFull,
-  updateBillingPreference,
   updateSubscriptionPriorities,
 } from '@/features/subscriptions/api'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { formatQuota } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import { SubscriptionHistoryDialog } from './subscription-history-dialog'
-
-type BillingPreference =
-  | 'subscription_first'
-  | 'wallet_first'
-  | 'subscription_only'
-  | 'wallet_only'
-
-const BILLING_PREFS: BillingPreference[] = [
-  'subscription_first',
-  'wallet_first',
-  'subscription_only',
-  'wallet_only',
-]
-
-function prefLabel(pref: BillingPreference, t: (key: string) => string) {
-  switch (pref) {
-    case 'subscription_first':
-      return t('Subscription First')
-    case 'wallet_first':
-      return t('Wallet First')
-    case 'subscription_only':
-      return t('Subscription Only')
-    case 'wallet_only':
-      return t('Wallet Only')
-  }
-}
 
 function SubscriptionRow({
   record,
@@ -106,6 +73,15 @@ function SubscriptionRow({
   const isExpired = (subscription.end_time || 0) < now
   const isCancelled = subscription.status === 'cancelled'
   const isActive = subscription.status === 'active' && !isExpired
+  let statusLabel = t('Expired')
+  let endLabel = t('Expired at')
+  if (isActive) {
+    statusLabel = t('Active')
+    endLabel = t('Until')
+  } else if (isCancelled) {
+    statusLabel = t('Cancelled')
+    endLabel = t('Cancelled at')
+  }
   const totalAmount = Number(subscription.amount_total || 0)
   const usedAmount = Number(subscription.amount_used || 0)
   const remainingAmount =
@@ -135,7 +111,7 @@ function SubscriptionRow({
         {draggable ? (
           <button
             type='button'
-            className='text-muted-foreground/60 hover:bg-muted/50 hover:text-muted-foreground flex w-8 shrink-0 cursor-grab items-center justify-center rounded-l-lg touch-none active:cursor-grabbing'
+            className='text-muted-foreground/60 hover:bg-muted/50 hover:text-muted-foreground flex w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-l-lg active:cursor-grabbing'
             aria-label={t('Drag to reorder')}
             {...attributes}
             {...listeners}
@@ -158,35 +134,17 @@ function SubscriptionRow({
                 {planTitle || t('Subscription')}
               </span>
             </div>
-            {isActive ? (
-              <StatusBadge
-                label={t('Active')}
-                variant='success'
-                copyable={false}
-              />
-            ) : isCancelled ? (
-              <StatusBadge
-                label={t('Cancelled')}
-                variant='neutral'
-                copyable={false}
-              />
-            ) : (
-              <StatusBadge
-                label={t('Expired')}
-                variant='neutral'
-                copyable={false}
-              />
-            )}
+            <StatusBadge
+              label={statusLabel}
+              variant={isActive ? 'success' : 'neutral'}
+              copyable={false}
+            />
           </div>
 
           <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
             <span className='text-muted-foreground inline-flex items-center gap-1'>
               <CalendarClock className='size-3.5' />
-              {isActive
-                ? t('Until')
-                : isCancelled
-                  ? t('Cancelled at')
-                  : t('Expired at')}{' '}
+              {endLabel}{' '}
               <span className='text-foreground/80'>
                 {new Date(subscription.end_time * 1000).toLocaleDateString()}
               </span>
@@ -242,8 +200,6 @@ export function MySubscriptionsCard({
   >([])
   const [activeOrder, setActiveOrder] = useState<number[]>([])
   const [plans, setPlans] = useState<PlanRecord[]>([])
-  const [billingPref, setBillingPref] =
-    useState<BillingPreference>('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -287,10 +243,6 @@ export function MySubscriptionsCard({
       setAllSubscriptions(all)
       setActiveOrder(order)
       initialOrderRef.current = order
-      setBillingPref(
-        (subRes.data.billing_preference as BillingPreference) ||
-          'subscription_first'
-      )
     }
     if (planRes.success) setPlans(planRes.data || [])
   }, [])
@@ -374,29 +326,13 @@ export function MySubscriptionsCard({
           toast.error(res.message || t('Update failed'))
         }
       })
-      .catch(() => toast.error(t('Request failed')))
       .finally(() => setSaving(false))
+      .catch(() => toast.error(t('Request failed')))
   }, [activeOrder, loading, t])
-
-  const handlePrefChange = async (pref: BillingPreference) => {
-    const previous = billingPref
-    setBillingPref(pref)
-    const res = await updateBillingPreference(pref)
-    if (res.success) {
-      toast.success(t('Updated successfully'))
-    } else {
-      setBillingPref(previous)
-      toast.error(res.message || t('Update failed'))
-    }
-  }
 
   const activeCount = activeSubscriptions.length
   const inactiveCount = inactive.length
   const draggable = activeOrder.length > 1
-  const hasActive = activeCount > 0
-  const isSubPref =
-    billingPref === 'subscription_first' || billingPref === 'subscription_only'
-  const displayPref = !hasActive && isSubPref ? 'wallet_first' : billingPref
 
   if (loading) {
     return (
@@ -417,9 +353,7 @@ export function MySubscriptionsCard({
     <TitledCard
       title={t('My Subscriptions')}
       description={
-        draggable
-          ? t('Drag subscriptions to set deduction order')
-          : undefined
+        draggable ? t('Drag subscriptions to set deduction order') : undefined
       }
       icon={<Layers className='h-4 w-4' />}
       action={
@@ -460,36 +394,9 @@ export function MySubscriptionsCard({
           <span className='text-muted-foreground hidden text-xs sm:inline'>
             {t('Deduction Mode')}
           </span>
-          <Select
-            items={BILLING_PREFS.map((pref) => ({
-              value: pref,
-              label: prefLabel(pref, t),
-            }))}
-            value={displayPref}
-            onValueChange={(value) =>
-              value !== null && void handlePrefChange(value as BillingPreference)
-            }
-          >
-            <SelectTrigger className='h-8 flex-1 text-xs sm:w-[150px] sm:flex-none'>
-              <SelectValue>{prefLabel(displayPref, t)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectGroup>
-                {BILLING_PREFS.map((pref) => {
-                  const disabled =
-                    !hasActive &&
-                    (pref === 'subscription_first' ||
-                      pref === 'subscription_only')
-                  return (
-                    <SelectItem key={pref} value={pref} disabled={disabled}>
-                      {prefLabel(pref, t)}
-                      {disabled ? ` (${t('No Active')})` : ''}
-                    </SelectItem>
-                  )
-                })}
-              </SelectGroup>
-            </SelectContent>
-          </Select>
+          <span className='text-muted-foreground text-xs'>
+            {t('Matching subscriptions first, then wallet balance')}
+          </span>
         </div>
       </div>
 

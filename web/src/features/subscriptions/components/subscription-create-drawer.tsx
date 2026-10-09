@@ -1,20 +1,12 @@
+import { zodResolver } from '@hookform/resolvers/zod'
+import { CalendarClock, Coins, RefreshCw, Sparkles, Tag } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useForm, type Resolver } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import {
-  CalendarClock,
-  Coins,
-  RefreshCw,
-  Sparkles,
-  Tag,
-} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { formatQuota } from '@/lib/format'
-import { useSystemConfigStore } from '@/stores/system-config-store'
+
 import { DateTimePicker } from '@/components/datetime-picker'
 import { MultiSelect } from '@/components/multi-select'
-import { CHANNEL_TYPE_OPTIONS } from '@/features/channels/constants'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -44,8 +36,15 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { formatQuota } from '@/lib/format'
+import { useSystemConfigStore } from '@/stores/system-config-store'
+
 import { createPlan, getGroups, updatePlan } from '../api'
-import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
+import {
+  getDurationUnitOptions,
+  getResetPeriodOptions,
+  SUBSCRIPTION_MODEL_PROVIDERS,
+} from '../constants'
 import {
   getPlanCreateFormSchema,
   PLAN_CREATE_FORM_DEFAULTS,
@@ -267,7 +266,9 @@ export function SubscriptionCreateDrawer({
                           {...field}
                           type='number'
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -320,7 +321,9 @@ export function SubscriptionCreateDrawer({
                           min={0}
                           placeholder='0.00'
                           onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -350,7 +353,9 @@ export function SubscriptionCreateDrawer({
                           min={0.01}
                           placeholder='0.00'
                           onChange={(e) =>
-                            field.onChange(parseFloat(e.target.value) || 0)
+                            field.onChange(
+                              Number.parseFloat(e.target.value) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -378,11 +383,15 @@ export function SubscriptionCreateDrawer({
                           type='number'
                           min={0}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
-                      <FormDescription>{t('0 means unlimited')}</FormDescription>
+                      <FormDescription>
+                        {t('0 means unlimited')}
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -400,12 +409,16 @@ export function SubscriptionCreateDrawer({
                           type='number'
                           min={0}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
                       <FormDescription>
-                        {t('Minimum sold count shown to users. Real count is used when higher.')}
+                        {t(
+                          'Minimum sold count shown to users. Real count is used when higher.'
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -523,7 +536,9 @@ export function SubscriptionCreateDrawer({
                             type='number'
                             min={1}
                             onChange={(e) =>
-                              field.onChange(parseInt(e.target.value, 10) || 0)
+                              field.onChange(
+                                Number.parseInt(e.target.value, 10) || 0
+                              )
                             }
                           />
                         </FormControl>
@@ -544,7 +559,9 @@ export function SubscriptionCreateDrawer({
                             type='number'
                             min={1}
                             onChange={(e) =>
-                              field.onChange(parseInt(e.target.value, 10) || 0)
+                              field.onChange(
+                                Number.parseInt(e.target.value, 10) || 0
+                              )
                             }
                           />
                         </FormControl>
@@ -611,7 +628,9 @@ export function SubscriptionCreateDrawer({
                           min={0}
                           disabled={resetPeriod !== 'custom'}
                           onChange={(e) =>
-                            field.onChange(parseInt(e.target.value, 10) || 0)
+                            field.onChange(
+                              Number.parseInt(e.target.value, 10) || 0
+                            )
                           }
                         />
                       </FormControl>
@@ -695,30 +714,34 @@ export function SubscriptionCreateDrawer({
             </section>
 
             <section className='space-y-4 px-4 sm:px-6'>
-              <h3 className='text-sm font-medium'>渠道限制</h3>
+              <h3 className='text-sm font-medium'>
+                {t('Model provider restrictions')}
+              </h3>
               <FormField
                 control={form.control}
                 name='allowed_channel_types'
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>允许的渠道类型</FormLabel>
+                    <FormLabel>{t('Allowed model providers')}</FormLabel>
                     <FormControl>
                       <MultiSelect
-                        options={CHANNEL_TYPE_OPTIONS.map((o) => ({
+                        options={SUBSCRIPTION_MODEL_PROVIDERS.map((o) => ({
                           value: String(o.value),
                           label: o.label,
                         }))}
                         selected={(field.value ?? []).map(String)}
                         onChange={(vals) =>
                           field.onChange(
-                            vals.map(Number).filter((n) => !isNaN(n))
+                            vals.map(Number).filter((n) => !Number.isNaN(n))
                           )
                         }
-                        placeholder='允许所有渠道类型'
+                        placeholder={t('Allow all model providers')}
                       />
                     </FormControl>
                     <FormDescription>
-                      限制此套餐只能使用指定的渠道类型。留空表示允许所有渠道。
+                      {t(
+                        'Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

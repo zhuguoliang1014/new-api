@@ -23,7 +23,7 @@ import (
 )
 
 // External DSNs must point to isolated test databases, never application data.
-func TestSubscriptionBillingSelectedChannel(t *testing.T) {
+func TestSubscriptionBillingModelProviders(t *testing.T) {
 	for _, dialect := range []struct {
 		name common.DatabaseType
 		env  string
@@ -72,20 +72,25 @@ func TestSubscriptionBillingSelectedChannel(t *testing.T) {
 			t.Logf("database: %s", version)
 
 			for i, tc := range []struct {
-				name, preference, allowed, source string
-				channel, metadataChannel          int
-				wallet                            int
-				overflow, rejected                bool
+				name, preference, allowed, source, model  string
+				channel, metadataChannel                  int
+				wallet                                    int
+				priorPlans, exhausted, overflow, rejected bool
 			}{
-				{name: "subscription first before metadata initialization", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
-				{name: "disallowed channel rolls back token reservation", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, rejected: true},
-				{name: "unrestricted plan before metadata initialization", preference: "subscription_only", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceSubscription},
-				{name: "current context overrides stale relay metadata", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, rejected: true},
-				{name: "initialized metadata when context has no channel", preference: "subscription_only", allowed: "1", metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
-				{name: "wallet only before metadata initialization", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceWallet},
-				{name: "empty wallet falls back to matching subscription", preference: "wallet_first", allowed: "1", channel: constant.ChannelTypeOpenAI, source: BillingSourceSubscription},
-				{name: "disallowed subscription uses permitted wallet overflow", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, overflow: true, source: BillingSourceWallet},
-				{name: "disallowed subscription cannot use forbidden wallet overflow", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, rejected: true},
+				{name: "GPT before metadata initialization", model: "gpt-4o", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
+				{name: "Claude on OpenAI transport skips GPT plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "GPT on different transport still uses GPT plan", model: "gpt-4o", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceSubscription},
+				{name: "Claude matches Anthropic plan on compatible transport", model: "anthropic/claude-sonnet-4-5", preference: "wallet_first", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
+				{name: "unrestricted plan accepts unknown model", model: "custom-model", preference: "subscription_only", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceSubscription},
+				{name: "stale metadata cannot change model ownership", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "unknown model never borrows transport ownership", model: "unknown-model", preference: "subscription_only", allowed: "1", metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "empty wallet still uses matching subscription", model: "gpt-4o", preference: "wallet_first", allowed: "1", channel: constant.ChannelTypeOpenAI, source: BillingSourceSubscription},
+				{name: "legacy overflow restriction cannot block balance fallback", model: "claude-sonnet-4-5", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, rejected: false, source: BillingSourceWallet},
+				{name: "mismatched subscription and insufficient wallet reject without charging", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 50, rejected: true},
+				{name: "unknown model with empty wallet rejects", model: "unknown-model", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeOpenAI, rejected: true},
+				{name: "skip mismatched and exhausted subscriptions before matching later plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, source: BillingSourceSubscription},
+				{name: "all matching subscriptions exhausted falls back to wallet", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, exhausted: true, source: BillingSourceWallet},
+				{name: "all subscriptions and wallet insufficient rejects without charging", model: "claude-sonnet-4-5", preference: "wallet_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 50, priorPlans: true, exhausted: true, rejected: true},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					user := model.User{Username: fmt.Sprintf("billing_channel_%d", i), AffCode: fmt.Sprintf("bc%d", i), Quota: tc.wallet, Status: common.UserStatusEnabled}
@@ -103,7 +108,33 @@ func TestSubscriptionBillingSelectedChannel(t *testing.T) {
 					})
 					now := model.GetDBTimestamp()
 					sub := model.UserSubscription{UserId: user.Id, PlanId: plan.Id, AmountTotal: 1000, Status: "active", StartTime: now - 60, EndTime: now + 3600, AllowWalletOverflow: tc.overflow}
+					if tc.exhausted {
+						sub.AmountTotal = 50
+					}
 					require.NoError(t, db.Create(&sub).Error)
+					var priorSubs []model.UserSubscription
+					if tc.priorPlans {
+						for j, allowed := range []string{"1", "14"} {
+							priorPlan := model.SubscriptionPlan{Title: "prior plan", AllowedChannelTypes: allowed, QuotaResetPeriod: model.SubscriptionResetNever}
+							require.NoError(t, db.Create(&priorPlan).Error)
+							model.InvalidateSubscriptionPlanCache(priorPlan.Id)
+							t.Cleanup(func() {
+								model.InvalidateSubscriptionPlanCache(priorPlan.Id)
+								require.NoError(t, db.Delete(&priorPlan).Error)
+							})
+							priorSub := model.UserSubscription{UserId: user.Id, PlanId: priorPlan.Id, AmountTotal: 1000, Status: "active", StartTime: now - 60, EndTime: now + 3600, UserPriority: 30 - j}
+							if j == 1 {
+								priorSub.AmountTotal = 50
+							}
+							require.NoError(t, db.Create(&priorSub).Error)
+							priorSubs = append(priorSubs, priorSub)
+							t.Cleanup(func() {
+								require.NoError(t, db.Where("user_subscription_id = ?", priorSub.Id).Delete(&model.SubscriptionPreConsumeRecord{}).Error)
+								require.NoError(t, db.Delete(&priorSub).Error)
+							})
+						}
+					}
+
 					t.Cleanup(func() {
 						require.NoError(t, db.Where("user_subscription_id = ?", sub.Id).Delete(&model.SubscriptionPreConsumeRecord{}).Error)
 						require.NoError(t, db.Delete(&sub).Error)
@@ -115,7 +146,7 @@ func TestSubscriptionBillingSelectedChannel(t *testing.T) {
 					}
 					info := &relaycommon.RelayInfo{
 						RequestId: fmt.Sprintf("billing-channel-%d", i), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key,
-						OriginModelName: "billing-test", ForcePreConsume: true,
+						OriginModelName: tc.model, ForcePreConsume: true,
 						UserSetting: dto.UserSetting{BillingPreference: tc.preference},
 					}
 					if tc.metadataChannel != 0 {
@@ -149,6 +180,10 @@ func TestSubscriptionBillingSelectedChannel(t *testing.T) {
 						} else {
 							wantWallet -= 80
 						}
+					}
+					for _, prior := range priorSubs {
+						require.NoError(t, db.First(&prior, prior.Id).Error)
+						assert.Zero(t, prior.AmountUsed, "skipped subscriptions must not be charged")
 					}
 					assert.Equal(t, wantSub, sub.AmountUsed)
 					assert.Equal(t, wantToken, token.RemainQuota)

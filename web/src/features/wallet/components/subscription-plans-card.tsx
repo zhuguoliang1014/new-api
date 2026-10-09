@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { toast } from 'sonner'
 
 import {
   StatusBadge,
@@ -29,14 +28,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
@@ -48,7 +39,6 @@ import {
 import {
   getPublicPlans,
   getSelfSubscriptionFull,
-  updateBillingPreference,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
@@ -76,24 +66,6 @@ function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
   )
 }
 
-function getBillingPreferenceLabel(
-  preference: string,
-  t: (key: string) => string
-): string {
-  switch (preference) {
-    case 'subscription_first':
-      return t('Subscription First')
-    case 'wallet_first':
-      return t('Wallet First')
-    case 'subscription_only':
-      return t('Subscription Only')
-    case 'wallet_only':
-      return t('Wallet Only')
-    default:
-      return preference
-  }
-}
-
 export function SubscriptionPlansCard({
   topupInfo,
   onAvailabilityChange,
@@ -109,8 +81,6 @@ export function SubscriptionPlansCard({
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
-  const [billingPreference, setBillingPreference] =
-    useState('subscription_first')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
 
@@ -142,9 +112,6 @@ export function SubscriptionPlansCard({
     try {
       const res = requireServerSuccess(await getSelfSubscriptionFull())
       if (res.success && res.data) {
-        setBillingPreference(
-          res.data.billing_preference || 'subscription_first'
-        )
         setActiveSubscriptions(res.data.subscriptions || [])
         setAllSubscriptions(res.data.all_subscriptions || [])
       }
@@ -171,32 +138,9 @@ export function SubscriptionPlansCard({
     }
   }
 
-  const handlePreferenceChange = async (pref: string) => {
-    const previous = billingPreference
-    setBillingPreference(pref)
-    try {
-      const res = await updateBillingPreference(pref)
-      if (res.success) {
-        toast.success(t('Updated successfully'))
-        const normalized = res.data?.billing_preference || pref
-        setBillingPreference(normalized)
-      } else {
-        handleServerError(res, t('Update failed'))
-        setBillingPreference(previous)
-      }
-    } catch (error) {
-      handleServerError(error, t('Request failed'))
-      setBillingPreference(previous)
-    }
-  }
-
   const hasActive = activeSubscriptions.length > 0
   const hasAny = allSubscriptions.length > 0
   const isAvailable = loading || plans.length > 0 || hasAny
-  const disablePref = !hasActive
-  const isSubPref =
-    billingPreference === 'subscription_first' ||
-    billingPreference === 'subscription_only'
 
   const planPurchaseCountMap = useMemo(() => {
     const map = new Map<number, number>()
@@ -304,68 +248,9 @@ export function SubscriptionPlansCard({
               </span>
             </div>
             <div className='flex w-full items-center gap-2 sm:w-auto'>
-              <Select
-                items={[
-                  {
-                    value: 'subscription_first',
-                    label: (
-                      <>
-                        {getBillingPreferenceLabel('subscription_first', t)}
-                        {disablePref ? ` (${t('No Active')})` : ''}
-                      </>
-                    ),
-                  },
-                  {
-                    value: 'wallet_first',
-                    label: getBillingPreferenceLabel('wallet_first', t),
-                  },
-                  {
-                    value: 'subscription_only',
-                    label: (
-                      <>
-                        {getBillingPreferenceLabel('subscription_only', t)}
-                        {disablePref ? ` (${t('No Active')})` : ''}
-                      </>
-                    ),
-                  },
-                  {
-                    value: 'wallet_only',
-                    label: getBillingPreferenceLabel('wallet_only', t),
-                  },
-                ]}
-                value={billingPreference}
-                onValueChange={(v) => v !== null && handlePreferenceChange(v)}
-              >
-                <SelectTrigger className='h-8 flex-1 text-xs sm:w-[140px] sm:flex-none'>
-                  <SelectValue>
-                    {getBillingPreferenceLabel(billingPreference, t)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    <SelectItem
-                      value='subscription_first'
-                      disabled={disablePref}
-                    >
-                      {getBillingPreferenceLabel('subscription_first', t)}
-                      {disablePref ? ` (${t('No Active')})` : ''}
-                    </SelectItem>
-                    <SelectItem value='wallet_first'>
-                      {getBillingPreferenceLabel('wallet_first', t)}
-                    </SelectItem>
-                    <SelectItem
-                      value='subscription_only'
-                      disabled={disablePref}
-                    >
-                      {getBillingPreferenceLabel('subscription_only', t)}
-                      {disablePref ? ` (${t('No Active')})` : ''}
-                    </SelectItem>
-                    <SelectItem value='wallet_only'>
-                      {getBillingPreferenceLabel('wallet_only', t)}
-                    </SelectItem>
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <span className='text-muted-foreground text-xs'>
+                {t('Matching subscriptions first, then wallet balance')}
+              </span>
               <Button
                 variant='ghost'
                 size='icon'
@@ -379,20 +264,6 @@ export function SubscriptionPlansCard({
               </Button>
             </div>
           </div>
-
-          {disablePref && isSubPref && (
-            <p className='text-muted-foreground mt-2 text-xs'>
-              {billingPreference === 'subscription_only'
-                ? t(
-                    'Preference saved as {{pref}}, but no active subscription. Requests will be rejected.',
-                    { pref: t('Subscription Only') }
-                  )
-                : t(
-                    'Preference saved as {{pref}}, but no active subscription. Wallet will be used automatically.',
-                    { pref: t('Subscription First') }
-                  )}
-            </p>
-          )}
 
           {hasAny && (
             <>

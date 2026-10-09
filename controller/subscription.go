@@ -136,8 +136,7 @@ func GetSubscriptionPlans(c *gin.Context) {
 
 func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
-	settingMap, _ := model.GetUserSetting(userId, false)
-	pref := common.NormalizeBillingPreference(settingMap.BillingPreference)
+	pref := "subscription_first"
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
@@ -180,7 +179,7 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
-	pref := common.NormalizeBillingPreference(req.BillingPreference)
+	pref := "subscription_first"
 
 	user, err := model.GetUserById(userId, true)
 	if err != nil {
@@ -307,6 +306,12 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
+	if providerErr != nil {
+		common.ApiError(c, providerErr)
+		return
+	}
+	req.Plan.AllowedChannelTypes = providers
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -389,6 +394,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
+	if providerErr != nil {
+		common.ApiError(c, providerErr)
+		return
+	}
+	req.Plan.AllowedChannelTypes = providers
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorMsg(c, "自定义重置周期需大于0秒")
@@ -412,6 +423,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"allowed_channel_types":      req.Plan.AllowedChannelTypes,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"downgrade_group":            req.Plan.DowngradeGroup,

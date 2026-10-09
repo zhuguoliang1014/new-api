@@ -29,7 +29,7 @@ type FundingSource interface {
 
 // ErrInsufficientWalletQuota 钱包原子预扣失败（余额不足），未发生任何扣减。
 // BillingSession 据此映射为 ErrorCodeInsufficientUserQuota，
-// 使 wallet_first 等计费偏好可以回退到订阅。
+// 在订阅均不可用时向调用方报告余额不足。
 var ErrInsufficientWalletQuota = errors.New("wallet quota insufficient")
 
 type WalletFunding struct {
@@ -78,11 +78,10 @@ func (w *WalletFunding) Refund() error {
 // ---------------------------------------------------------------------------
 
 type SubscriptionFunding struct {
-	requestId   string
-	userId      int
-	modelName   string
-	channelType int   // relay channel type; 0 = no restriction
-	amount      int64 // 预扣的订阅额度（subConsume）
+	requestId      string
+	userId         int
+	modelName      string
+	amount         int64 // 预扣的订阅额度（subConsume）
 	subscriptionId int
 	preConsumed    int64
 	// 以下字段在 PreConsume 成功后填充，供 RelayInfo 同步使用
@@ -96,7 +95,7 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// amount 参数被忽略，使用内部 s.amount（已在构造时根据 preConsumedQuota 计算）
-	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, s.channelType)
+	res, err := model.PreConsumeUserSubscription(s.requestId, s.userId, s.modelName, 0, s.amount, 0)
 	if err != nil {
 		return err
 	}

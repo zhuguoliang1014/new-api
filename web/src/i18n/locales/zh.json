@@ -6902,6 +6902,11 @@
     "Channel Restrictions": "渠道限制",
     "Allowed channel types": "允许的渠道类型",
     "All channel types allowed": "允许所有渠道类型",
-    "Restrict this plan to specific provider types. Leave empty to allow all providers.": "限制此套餐只能使用指定的渠道类型。留空表示允许所有渠道。"
+    "Restrict this plan to specific provider types. Leave empty to allow all providers.": "限制此套餐只能使用指定的渠道类型。留空表示允许所有渠道。",
+    "Model provider restrictions": "模型厂商限制",
+    "Allowed model providers": "允许的模型厂商",
+    "Allow all model providers": "允许所有模型厂商",
+    "Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.": "按请求的模型归属匹配，不按渠道类型。依次跳过不匹配或额度不足的订阅，再使用账户余额。留空允许所有模型。",
+    "Matching subscriptions first, then wallet balance": "优先使用匹配的订阅，均不满足时使用余额"
   }
 }

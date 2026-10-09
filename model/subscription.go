@@ -177,9 +177,9 @@ type SubscriptionPlan struct {
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
 
-	// AllowedChannelTypes restricts which channel types may consume this plan's quota.
-	// Stored as a comma-separated list of channel type integers (e.g. "1,3,14").
-	// Empty means no restriction — all channel types are allowed.
+	// AllowedChannelTypes stores model-provider identifiers using legacy channel-type IDs.
+	// It matches the requested model family, never the selected transport (1=OpenAI, 14=Anthropic).
+	// Empty means no restriction — all model families are allowed.
 	AllowedChannelTypes string `json:"allowed_channel_types" gorm:"type:varchar(512);default:''"`
 
 	// Upgrade user group after purchase (empty = no change)
@@ -206,10 +206,8 @@ type SubscriptionPlan struct {
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
 }
 
-// IsWithinSaleWindow returns true if the plan is currently purchasable based on its time window.
-// A zero value for either bound means no restriction on that side.
-// AllowsChannelType reports whether a given channel type is permitted to consume
-// this plan's quota. An empty AllowedChannelTypes means all channel types are allowed.
+// AllowsChannelType checks a legacy provider ID stored in AllowedChannelTypes.
+// Call AllowsModel when deciding whether a request may use this plan.
 func (p *SubscriptionPlan) AllowsChannelType(channelType int) bool {
 	raw := strings.TrimSpace(p.AllowedChannelTypes)
 	if raw == "" {
@@ -227,6 +225,7 @@ func (p *SubscriptionPlan) AllowsChannelType(channelType int) bool {
 	return false
 }
 
+// IsWithinSaleWindow reports whether the plan is currently purchasable.
 func (p *SubscriptionPlan) IsWithinSaleWindow() bool {
 	ok, _ := p.CheckSaleWindow()
 	return ok
@@ -1461,10 +1460,9 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-// channelType is the relay channel type (see constant/channel.go); pass 0 when unknown.
-// Subscriptions whose plan has a non-empty AllowedChannelTypes that does not include
-// channelType are skipped.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, channelType int) (*SubscriptionPreConsumeResult, error) {
+// Restricted plans are matched against the requested model family, not transport.
+// The last argument is retained for compatibility and is intentionally ignored.
+func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, _ int) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1505,7 +1503,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			Where("user_id = ? AND status = ? AND end_time > ?", userId, "active", now).
 			Order("user_priority desc, end_time asc, id asc").
 			Find(&subs).Error; err != nil {
-			return errors.New("no active subscription")
+			return err
 		}
 		if len(subs) == 0 {
 			return errors.New("no active subscription")
@@ -1516,7 +1514,7 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 			if err != nil {
 				return err
 			}
-			if channelType != 0 && !plan.AllowsChannelType(channelType) {
+			if !plan.AllowsModel(modelName) {
 				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
