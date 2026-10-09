@@ -1,9 +1,10 @@
+import { ArrowRight, Crown, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Crown, RefreshCw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { formatQuota } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 import {
@@ -15,7 +16,6 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
-import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
 import {
   formatDuration,
   formatResetPeriod,
@@ -26,7 +26,18 @@ import type {
   SubscriptionPlan,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { toIntlLocale } from '@/i18n/languages'
+import {
+  formatCnyCurrencyAmount,
+  formatQuotaWithCurrency,
+} from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
+import { getLobeIcon } from '@/lib/lobe-icon'
+import { cn } from '@/lib/utils'
+import { useSystemConfigStore } from '@/stores/system-config-store'
+
 import type { MyWalletTopupInfo } from '../types'
+import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
 
 interface AvailablePlansCardProps {
   topupInfo: MyWalletTopupInfo | null
@@ -43,10 +54,7 @@ interface SaleWindow {
   endsIn: number
 }
 
-function computeSaleWindow(
-  plan: SubscriptionPlan,
-  nowSec: number
-): SaleWindow {
+function computeSaleWindow(plan: SubscriptionPlan, nowSec: number): SaleWindow {
   const startsAt = Number(plan.starts_at || 0)
   const expiresAt = Number(plan.expires_at || 0)
   const startsIn = startsAt > 0 ? startsAt - nowSec : 0
@@ -74,11 +82,11 @@ function formatRelativeDuration(totalSeconds: number): string {
   return `${hh}:${mm}:${ss}`
 }
 
-export function AvailablePlansCard({
-  topupInfo,
-  onPurchaseComplete,
-}: AvailablePlansCardProps) {
-  const { t } = useTranslation()
+export function AvailablePlansCard(props: AvailablePlansCardProps) {
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  // The quota formatter reads this store; subscribe to currency display changes.
+  useSystemConfigStore((state) => state.config.currency)
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
@@ -89,7 +97,7 @@ export function AvailablePlansCard({
   const [selectedPlan, setSelectedPlan] = useState<PlanRecord | null>(null)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
 
-  const hupijiaoEnabled = !!topupInfo?.enable_hupijiao_topup
+  const hupijiaoEnabled = !!props.topupInfo?.enable_hupijiao_topup
 
   const fetchPlans = useCallback(async () => {
     const [planRes, subRes] = await Promise.all([
@@ -156,11 +164,12 @@ export function AvailablePlansCard({
     return (
       <TitledCard
         title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' />}
+        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
+        contentClassName='@container'
       >
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2'>
-          {Array.from({ length: 2 }).map((_, i) => (
-            <Skeleton key={i} className='h-72 w-full rounded-xl' />
+        <div className='grid grid-cols-1 gap-4 @min-[36rem]:grid-cols-2 @min-[56rem]:grid-cols-3'>
+          {['first', 'second', 'third'].map((key) => (
+            <Skeleton key={key} className='h-80 w-full rounded-xl' />
           ))}
         </div>
       </TitledCard>
@@ -171,7 +180,7 @@ export function AvailablePlansCard({
     return (
       <TitledCard
         title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' />}
+        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
       >
         <p className='text-muted-foreground py-6 text-center text-sm'>
           {t('No plans available')}
@@ -185,23 +194,29 @@ export function AvailablePlansCard({
       <TitledCard
         title={t('Subscription Plans')}
         description={t('Subscribe to a plan for model access')}
-        icon={<Crown className='h-4 w-4' />}
+        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
         action={
           <Button
             variant='ghost'
             size='icon'
             className='h-8 w-8'
+            aria-label={t('Refresh')}
             onClick={handleRefresh}
             disabled={refreshing}
           >
             <RefreshCw
               className={cn('h-4 w-4', refreshing && 'animate-spin')}
+              aria-hidden='true'
             />
           </Button>
         }
-        contentClassName='space-y-0'
+        disableHoverEffect
+        contentClassName='@container bg-muted/15'
       >
-        <div className='grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-3'>
+        <div
+          data-slot='subscription-plan-grid'
+          className='grid grid-cols-1 items-stretch gap-4 @min-[36rem]:grid-cols-2 @min-[56rem]:grid-cols-3'
+        >
           {plans.map((p, index) => {
             const plan = p?.plan
             if (!plan) return null
@@ -210,6 +225,15 @@ export function AvailablePlansCard({
             const priceUsd = Number(plan.price_amount || 0)
             const priceCny = Number(plan.price_cny || 0)
             const hasCny = priceCny > 0
+            const priceLabel = hasCny
+              ? formatCnyCurrencyAmount(priceCny, {
+                  digitsLarge: 2,
+                  digitsSmall: 2,
+                  abbreviate: false,
+                  locale,
+                })
+              : `$${formatNumber(priceUsd, locale)}`
+            const duration = formatDuration(plan, t)
 
             const isPopular = index === 0 && plans.length > 1
             const limit = Number(plan.max_purchase_per_user || 0)
@@ -217,26 +241,36 @@ export function AvailablePlansCard({
             const reached = limit > 0 && count >= limit
             const soldCount = Number(p.sold_count || 0)
             const resetPeriod = formatResetPeriod(plan, t)
-            const hasReset = resetPeriod !== t('No Reset')
 
             const sale = computeSaleWindow(plan, nowSec)
             const isSaleable =
               sale.status !== 'upcoming' && sale.status !== 'ended'
             const purchasable = isSaleable && !reached && hupijiaoEnabled
+            const isRecommended = isPopular && purchasable
 
             const quotaLabel =
-              totalAmount > 0 ? formatQuota(totalAmount) : t('Unlimited')
+              totalAmount > 0
+                ? formatQuotaWithCurrency(totalAmount, {
+                    digitsLarge: 2,
+                    digitsSmall: 4,
+                    abbreviate: true,
+                    locale,
+                  })
+                : t('Unlimited')
 
-            // Bullet points (always 4 items for visual alignment)
-            const bullets: string[] = [
-              t('{{quota}} quota', { quota: quotaLabel }),
-              t('{{duration}} validity', { duration: formatDuration(plan, t) }),
-              hasReset
-                ? t('Resets {{period}}', { period: resetPeriod })
-                : t('No reset'),
-              limit > 0
-                ? t('Purchased {{count}} of {{limit}}', { count, limit })
-                : t('Unlimited purchases'),
+            const details = [
+              { label: t('Validity Period'), value: duration },
+              { label: t('Quota Reset'), value: resetPeriod },
+              {
+                label: t('Purchase Count'),
+                value:
+                  limit > 0
+                    ? t('Purchased {{count}} of {{limit}}', {
+                        count: formatNumber(count, locale),
+                        limit: formatNumber(limit, locale),
+                      })
+                    : t('Unlimited purchases'),
+              },
             ]
 
             // Footer hint (only for live/ended; upcoming countdown lives on the button)
@@ -247,127 +281,157 @@ export function AvailablePlansCard({
               footerHint = `${t('Ends in')} ${formatRelativeDuration(sale.endsIn)}`
             }
 
-            const buttonLabel = reached
-              ? t('Limit Reached')
-              : sale.status === 'upcoming'
-                ? `${t('Starts in')} ${formatRelativeDuration(sale.startsIn)}`
-                : sale.status === 'ended'
-                  ? t('Sale Ended')
-                  : t('Subscribe Now')
+            let buttonLabel = t('Subscribe Now')
+            if (reached) {
+              buttonLabel = t('Limit Reached')
+            } else if (sale.status === 'upcoming') {
+              buttonLabel = `${t('Starts in')} ${formatRelativeDuration(sale.startsIn)}`
+            } else if (sale.status === 'ended') {
+              buttonLabel = t('Sale Ended')
+            }
 
             return (
-              <div
+              <Card
                 key={plan.id}
+                role='article'
+                aria-labelledby={`subscription-plan-${plan.id}`}
+                data-card-hover='false'
                 className={cn(
-                  'group bg-card relative flex flex-col rounded-2xl border p-6 transition-all',
-                  isPopular && purchasable
-                    ? 'border-primary shadow-md ring-1 ring-primary/5'
-                    : 'hover:border-foreground/20 hover:shadow-sm'
+                  'relative min-w-0 gap-0 rounded-xl border py-0 shadow-sm ring-0 transition-[border-color,box-shadow] duration-200',
+                  isRecommended
+                    ? 'border-primary/30 from-primary/5 to-card bg-gradient-to-b before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary'
+                    : 'border-border/80 hover:border-foreground/20 hover:shadow-md'
                 )}
               >
-                {/* Recommended pill — top-right, only marker for popular */}
-                {isPopular && purchasable ? (
-                  <div className='bg-primary text-primary-foreground absolute -top-2.5 right-6 rounded-full px-3 py-0.5 text-[10px] font-semibold tracking-wider uppercase'>
-                    {t('Recommended')}
-                  </div>
-                ) : null}
-
-                {/* Title (fixed height: 1-line title + 2-line subtitle) */}
-                <div className='h-[4.5rem]'>
-                  <h4 className='line-clamp-1 text-lg font-semibold tracking-tight'>
-                    {plan.title || t('Subscription Plans')}
-                  </h4>
-                  <p className='text-muted-foreground mt-1 line-clamp-2 text-sm leading-snug'>
-                    {plan.subtitle || ' '}
-                  </p>
-                </div>
-
-                {/* Price (hero) */}
-                <div className='mt-2 mb-1'>
-                  <div className='flex items-baseline gap-1'>
-                    <span className='text-foreground/60 text-xl font-medium'>
-                      {hasCny ? '¥' : '$'}
-                    </span>
-                    <span className='text-5xl font-bold tracking-tight tabular-nums'>
-                      {hasCny
-                        ? Math.round(priceCny).toString()
-                        : priceUsd.toFixed(0)}
-                    </span>
-                    <span className='text-muted-foreground ml-1 text-sm'>
-                      / {formatDuration(plan, t)}
-                    </span>
-                  </div>
-                  {soldCount > 0 ? (
-                    <p className='text-muted-foreground mt-1 text-xs'>
-                      {t('Sold {{count}}', { count: soldCount })}
-                    </p>
-                  ) : (
-                    <p className='text-muted-foreground mt-1 text-xs'>&nbsp;</p>
-                  )}
-                </div>
-
-                {/* Feature bullets (fixed 4 items) */}
-                <ul className='mt-4 space-y-2.5 text-sm'>
-                  {bullets.map((item, i) => (
-                    <li key={i} className='flex items-start gap-2'>
-                      <Check
+                <CardContent className='flex h-full min-w-0 flex-col p-4 sm:p-5'>
+                  <div className='flex min-h-14 items-start justify-between gap-3'>
+                    <div className='flex min-w-0 flex-1 items-start gap-2.5'>
+                      <span
+                        data-slot='plan-provider-icon'
+                        aria-hidden='true'
                         className={cn(
-                          'mt-0.5 size-4 shrink-0',
-                          isPopular && purchasable
-                            ? 'text-primary'
-                            : 'text-muted-foreground/60'
+                          'mt-0.5 flex size-8 shrink-0 items-center justify-center',
+                          isRecommended ? 'text-primary' : 'text-foreground/80'
                         )}
-                      />
-                      <span className='text-foreground/80'>{item}</span>
-                    </li>
-                  ))}
-                </ul>
-
-                {/* CTA */}
-                <div className='mt-auto pt-4'>
-                  {!hupijiaoEnabled && isSaleable && !reached ? (
-                    <Tooltip>
-                      <TooltipTrigger render={<div />}>
-                        <Button
-                          variant='outline'
-                          className='h-11 w-full text-base'
-                          disabled
+                      >
+                        {getLobeIcon('OpenAI', 32)}
+                      </span>
+                      <div className='min-w-0'>
+                        <h3
+                          id={`subscription-plan-${plan.id}`}
+                          title={plan.title || t('Subscription Plans')}
+                          className='truncate text-lg font-semibold tracking-tight'
                         >
-                          {t('Online payment disabled by admin')}
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {t(
-                          'Contact the administrator to re-enable online payment.'
+                          {plan.title || t('Subscription Plans')}
+                        </h3>
+                        {plan.subtitle && (
+                          <p
+                            title={plan.subtitle}
+                            className='text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed break-words'
+                          >
+                            {plan.subtitle}
+                          </p>
                         )}
-                      </TooltipContent>
-                    </Tooltip>
-                  ) : (
-                    <Button
-                      variant={
-                        isPopular && purchasable ? 'default' : 'outline'
-                      }
-                      className={cn(
-                        'h-11 w-full text-base font-medium',
-                        sale.status === 'upcoming' && 'tabular-nums'
-                      )}
-                      disabled={!purchasable}
-                      onClick={() => {
-                        setSelectedPlan(p)
-                        setPurchaseOpen(true)
-                      }}
-                    >
-                      {buttonLabel}
-                    </Button>
-                  )}
+                      </div>
+                    </div>
+                    <div className='max-w-[45%] min-w-0 shrink-0 text-right'>
+                      <p className='text-xl leading-snug font-semibold tracking-tight break-all tabular-nums'>
+                        {priceLabel}
+                      </p>
+                      <p className='text-muted-foreground mt-1 text-xs whitespace-nowrap'>
+                        / {duration}
+                      </p>
+                    </div>
+                  </div>
 
-                  {footerHint ? (
-                    <p className='text-muted-foreground mt-1.5 text-center text-xs tabular-nums'>
-                      {footerHint}
+                  <div className='mt-4'>
+                    <div className='flex min-h-5 flex-wrap items-center justify-between gap-2'>
+                      <p className='text-muted-foreground text-xs'>
+                        {t('Available Quota')}
+                      </p>
+                      {isRecommended && (
+                        <StatusBadge
+                          label={t('Recommended')}
+                          variant='info'
+                          copyable={false}
+                          className='bg-primary text-primary-foreground rounded-md px-2 text-xs'
+                        />
+                      )}
+                    </div>
+                    <p className='mt-1.5 text-4xl leading-tight font-semibold tracking-tight break-all tabular-nums'>
+                      {quotaLabel}
                     </p>
-                  ) : null}
-                </div>
-              </div>
+                    {soldCount > 0 && (
+                      <p className='text-muted-foreground mt-1 text-xs'>
+                        {t('Sold {{count}}', {
+                          count: formatNumber(soldCount, locale),
+                        })}
+                      </p>
+                    )}
+                  </div>
+
+                  <dl className='mt-4 divide-y border-t'>
+                    {details.map((detail) => (
+                      <div
+                        key={detail.label}
+                        className='flex items-start justify-between gap-3 py-2.5 text-xs'
+                      >
+                        <dt className='text-muted-foreground min-w-0 break-words'>
+                          {detail.label}
+                        </dt>
+                        <dd className='max-w-[65%] text-right font-medium break-words'>
+                          {detail.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+
+                  <div className='mt-auto pt-4'>
+                    {!hupijiaoEnabled && isSaleable && !reached ? (
+                      <Tooltip>
+                        <TooltipTrigger render={<div />}>
+                          <Button
+                            variant='outline'
+                            className='h-auto min-h-11 w-full px-3 py-2 text-sm whitespace-normal'
+                            disabled
+                          >
+                            {t('Online payment disabled by admin')}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          {t(
+                            'Contact the administrator to re-enable online payment.'
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
+                    ) : (
+                      <Button
+                        variant={isRecommended ? 'default' : 'outline'}
+                        className={cn(
+                          'h-auto min-h-11 w-full justify-between gap-3 px-3 py-2 text-sm font-medium whitespace-normal',
+                          sale.status === 'upcoming' && 'tabular-nums'
+                        )}
+                        disabled={!purchasable}
+                        onClick={() => {
+                          setSelectedPlan(p)
+                          setPurchaseOpen(true)
+                        }}
+                      >
+                        <span className='min-w-0 flex-1'>{buttonLabel}</span>
+                        {purchasable && (
+                          <ArrowRight className='size-4' aria-hidden='true' />
+                        )}
+                      </Button>
+                    )}
+
+                    {footerHint ? (
+                      <p className='text-muted-foreground mt-1.5 text-center text-xs tabular-nums'>
+                        {footerHint}
+                      </p>
+                    ) : null}
+                  </div>
+                </CardContent>
+              </Card>
             )
           })}
         </div>
@@ -379,7 +443,7 @@ export function AvailablePlansCard({
           setPurchaseOpen(open)
           if (!open) {
             void fetchPlans()
-            onPurchaseComplete?.()
+            props.onPurchaseComplete?.()
           }
         }}
         plan={selectedPlan}
