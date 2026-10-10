@@ -52,6 +52,11 @@ export function getPlanFormSchema(t: TFunction) {
     creem_product_id: z.string().optional(),
     waffo_pancake_product_id: z.string().optional(),
     allowed_channel_types: z.array(z.number()).optional(),
+    billing_ratio: z.coerce
+      .number()
+      .positive(t('Billing multiplier must be greater than zero'))
+      .nullable()
+      .optional(),
   })
 }
 
@@ -79,6 +84,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   creem_product_id: '',
   waffo_pancake_product_id: '',
   allowed_channel_types: [],
+  billing_ratio: 1,
 }
 
 export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
@@ -103,6 +109,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     stripe_price_id: plan.stripe_price_id || '',
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
+    billing_ratio: plan.billing_ratio ?? 1,
     allowed_channel_types: plan.allowed_channel_types
       ? plan.allowed_channel_types
           .split(',')
@@ -133,6 +140,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',
+      billing_ratio: values.billing_ratio ?? null,
       allowed_channel_types:
         values.allowed_channel_types && values.allowed_channel_types.length > 0
           ? values.allowed_channel_types.join(',')

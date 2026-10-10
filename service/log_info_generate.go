@@ -194,8 +194,8 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) 
 		other.SetPublic("billing_source", relayInfo.BillingSource)
 		other.SetPublic("billing_group_ratio", relayInfo.PriceData.GroupRatioInfo.GroupRatio)
 		source := "api_group"
-		if relayInfo.SubscriptionUsesUnitRatio {
-			source = "subscription_unit"
+		if relayInfo.SubscriptionUsesPlanRatio {
+			source = "subscription_plan"
 		}
 		other.SetPublic("billing_ratio_source", source)
 	}

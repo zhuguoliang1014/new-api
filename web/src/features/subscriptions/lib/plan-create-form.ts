@@ -1,5 +1,6 @@
-import { z } from 'zod'
 import type { TFunction } from 'i18next'
+import { z } from 'zod'
+
 import type { PlanPayload, SubscriptionPlan } from '../types'
 
 // 简化版套餐表单：只包含自己新面板用得到的字段。
@@ -30,6 +31,11 @@ export function getPlanCreateFormSchema(t: TFunction) {
     starts_at: z.coerce.number().min(0).optional(),
     expires_at: z.coerce.number().min(0).optional(),
     allowed_channel_types: z.array(z.number()).optional(),
+    billing_ratio: z.coerce
+      .number()
+      .positive(t('Billing multiplier must be greater than zero'))
+      .nullable()
+      .optional(),
   })
 }
 
@@ -55,6 +61,7 @@ export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
   starts_at: 0,
   expires_at: 0,
   allowed_channel_types: [],
+  billing_ratio: 1,
 }
 
 export function planToCreateFormValues(
@@ -77,6 +84,7 @@ export function planToCreateFormValues(
     upgrade_group: plan.upgrade_group || '',
     starts_at: Number(plan.starts_at || 0),
     expires_at: Number(plan.expires_at || 0),
+    billing_ratio: plan.billing_ratio ?? 1,
     allowed_channel_types: plan.allowed_channel_types
       ? plan.allowed_channel_types
           .split(',')
@@ -127,6 +135,7 @@ export function createFormValuesToPayload(
       upgrade_group: values.upgrade_group || '',
       starts_at: Number(values.starts_at || 0),
       expires_at: Number(values.expires_at || 0),
+      billing_ratio: values.billing_ratio ?? null,
       allowed_channel_types:
         values.allowed_channel_types && values.allowed_channel_types.length > 0
           ? values.allowed_channel_types.join(',')

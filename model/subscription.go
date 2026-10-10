@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -181,6 +182,9 @@ type SubscriptionPlan struct {
 	// It matches the requested model family, never the selected transport (1=OpenAI, 14=Anthropic).
 	// Empty means no restriction — all model families are allowed.
 	AllowedChannelTypes string `json:"allowed_channel_types" gorm:"type:varchar(512);default:''"`
+
+	// BillingRatio applies only to model-restricted plans. NULL preserves the legacy 1x rate.
+	BillingRatio *float64 `json:"billing_ratio"`
 
 	// Upgrade user group after purchase (empty = no change)
 	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
@@ -1295,7 +1299,8 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 }
 
 type SubscriptionPreConsumeResult struct {
-	UseUnitGroupRatio  bool
+	UsePlanRatio       bool
+	BillingRatio       float64
 	UserSubscriptionId int
 	PreConsumed        int64
 	AmountTotal        int64
@@ -1408,9 +1413,11 @@ type SubscriptionPreConsumeRecord struct {
 	UserId             int    `json:"user_id" gorm:"index"`
 	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
 	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
-	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
-	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
+	// NULL is an older reservation; zero marks a new reservation using the API group.
+	BillingRatio *float64 `json:"billing_ratio"`
+	Status       string   `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
+	CreatedAt    int64    `json:"created_at" gorm:"bigint"`
+	UpdatedAt    int64    `json:"updated_at" gorm:"bigint;index"`
 }
 
 func (r *SubscriptionPreConsumeRecord) BeforeCreate(tx *gorm.DB) error {
@@ -1481,16 +1488,24 @@ func PreConsumeUserSubscription(requestId string, userId int, modelName string, 
 }
 
 // PreConsumeUserSubscriptionWithGroupQuota selects and reserves in one transaction.
-// Restricted plans use unitAmount; unrestricted plans retain the group discount.
+// Restricted plans apply their configured ratio; unrestricted plans retain the group discount.
 func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, modelName string, groupAmount, unitAmount int64) (*SubscriptionPreConsumeResult, error) {
+	if unitAmount <= 0 {
+		return nil, errors.New("unit amount must be positive")
+	}
+	return PreConsumeUserSubscriptionWithPricing(requestId, userId, modelName, groupAmount, float64(unitAmount), false)
+}
+
+// PreConsumeUserSubscriptionWithPricing applies the selected plan ratio before quota rounding.
+func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelName string, groupAmount int64, quotaBeforeGroup float64, roundQuota bool) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
 	if strings.TrimSpace(requestId) == "" {
 		return nil, errors.New("requestId is empty")
 	}
-	if groupAmount < 0 || unitAmount <= 0 {
-		return nil, errors.New("group amount must be non-negative and unit amount must be positive")
+	if groupAmount < 0 || quotaBeforeGroup < 0 || math.IsNaN(quotaBeforeGroup) || math.IsInf(quotaBeforeGroup, 0) {
+		return nil, errors.New("subscription reservation amounts must be finite and non-negative")
 	}
 	now := GetDBTimestamp()
 
@@ -1514,7 +1529,12 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 			if err != nil {
 				return err
 			}
-			returnValue.UseUnitGroupRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			returnValue.UsePlanRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			returnValue.BillingRatio = 1
+			if existing.BillingRatio != nil {
+				returnValue.UsePlanRatio = *existing.BillingRatio > 0
+				returnValue.BillingRatio = *existing.BillingRatio
+			}
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = existing.PreConsumed
 			returnValue.AmountTotal = sub.AmountTotal
@@ -1546,25 +1566,41 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
-			useUnitRatio := strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			usePlanRatio := strings.TrimSpace(plan.AllowedChannelTypes) != ""
 			amount := groupAmount
-			if useUnitRatio {
-				amount = unitAmount
+			billingRatio := 0.0
+			if usePlanRatio {
+				billingRatio, err = plan.EffectiveBillingRatio()
+				if err != nil {
+					return err
+				}
+				quota := quotaBeforeGroup * billingRatio
+				convert := common.QuotaFromFloatStrict
+				if roundQuota {
+					convert = common.QuotaRoundStrict
+				}
+				reserved, err := convert(quota)
+				if err != nil {
+					return err
+				}
+				amount = int64(max(reserved, 1))
 			}
 			usedBefore := sub.AmountUsed
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
-					common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=quota_insufficient required_quota=%d remaining_quota=%d unit_rate=%t", requestId, userId, modelName, sub.Id, plan.Id, amount, remain, useUnitRatio))
+					common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=quota_insufficient required_quota=%d remaining_quota=%d plan_rate=%t", requestId, userId, modelName, sub.Id, plan.Id, amount, remain, usePlanRatio))
 					continue
 				}
 			}
-			returnValue.UseUnitGroupRatio = useUnitRatio
+			returnValue.UsePlanRatio = usePlanRatio
+			returnValue.BillingRatio = billingRatio
 			record := &SubscriptionPreConsumeRecord{
 				RequestId:          requestId,
 				UserId:             userId,
 				UserSubscriptionId: sub.Id,
 				PreConsumed:        amount,
+				BillingRatio:       &billingRatio,
 				Status:             "consumed",
 			}
 			if err := tx.Create(record).Error; err != nil {
@@ -1572,6 +1608,21 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 				if err2 := tx.Where("request_id = ?", requestId).First(&dup).Error; err2 == nil {
 					if dup.Status == "refunded" {
 						return errors.New("subscription pre-consume already refunded")
+					}
+					sub = UserSubscription{}
+					if err := tx.Where("id = ?", dup.UserSubscriptionId).First(&sub).Error; err != nil {
+						return err
+					}
+					if dup.BillingRatio != nil {
+						returnValue.UsePlanRatio = *dup.BillingRatio > 0
+						returnValue.BillingRatio = *dup.BillingRatio
+					} else {
+						plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+						if err != nil {
+							return err
+						}
+						returnValue.UsePlanRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
+						returnValue.BillingRatio = 1
 					}
 					returnValue.UserSubscriptionId = sub.Id
 					returnValue.PreConsumed = dup.PreConsumed
@@ -1593,7 +1644,7 @@ func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, mode
 			returnValue.AmountUsedAfter = sub.AmountUsed
 			return nil
 		}
-		return fmt.Errorf("subscription quota insufficient, group=%d unit=%d", groupAmount, unitAmount)
+		return fmt.Errorf("subscription quota insufficient, group=%d before_group=%g", groupAmount, quotaBeforeGroup)
 	})
 	if err != nil {
 		return nil, err

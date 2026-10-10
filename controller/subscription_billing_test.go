@@ -3,6 +3,7 @@ package controller
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -274,6 +275,8 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 			for _, tc := range []struct {
 				name, model                                                                     string
 				plans                                                                           []planSpec
+				ratios                                                                          []float64
+				changeRatioAfterReserve                                                         bool
 				frozenPlans                                                                     []int
 				wallet                                                                          int
 				selected                                                                        int // -1 = wallet; rejected cases must leave all accounts unchanged.
@@ -281,6 +284,17 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				realtime, task, image, imageReserveRejected                                     bool
 				freezeAfterReserve, resumeBeforeReserve, taskRefund, taskExtra                  bool
 			}{
+				{name: "discounted plan applies configured ratio before rounding", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0},
+				{name: "plan surcharge ignores API group discount", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, specialGroup: true},
+				{name: "configured ratio shortage falls back to wallet", model: "gpt-4o", plans: []planSpec{{"1", 150, 20}}, ratios: []float64{2}, wallet: 1000, selected: -1},
+				{name: "selection checks each plan at its own ratio", model: "gpt-4o", plans: []planSpec{{"1", 150, 20}, {"1", 100, 10}}, ratios: []float64{2, 0.75}, selected: 1},
+				{name: "unrestricted plan ignores configured ratio", model: "gpt-4o", plans: []planSpec{general}, ratios: []float64{2}, selected: 0},
+				{name: "failed configured ratio reservation refunds exactly once", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, refund: true},
+				{name: "configured ratio token shortage rolls back", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, rejected: true, tokenInsufficient: true},
+				{name: "plan update cannot change in-flight retry or replay ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, retry: true, changeRatioAfterReserve: true},
+				{name: "realtime retains configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, realtime: true},
+				{name: "task retains configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, task: true, changeRatioAfterReserve: true},
+				{name: "images retain configured plan ratio for quantity changes", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, image: true},
 				{name: "GPT-only plan uses rate one", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "GPT prefix without dash", model: "gpt5-custom", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "Claude skips GPT plan", model: "claude-sonnet-4-5", plans: []planSpec{special}, wallet: 1000, selected: -1},
@@ -414,6 +428,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					var subs []model.UserSubscription
 					for i, spec := range tc.plans {
 						plan := model.SubscriptionPlan{Title: "rate plan", AllowedChannelTypes: spec.allowed, QuotaResetPeriod: model.SubscriptionResetNever}
+						if i < len(tc.ratios) {
+							plan.BillingRatio = &tc.ratios[i]
+						}
 						require.NoError(t, db.Create(&plan).Error)
 						model.InvalidateSubscriptionPlanCache(plan.Id)
 						t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id); require.NoError(t, db.Delete(&plan).Error) })
@@ -447,6 +464,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					}
 					if tc.selected >= 0 && tc.plans[tc.selected].allowed != "" {
 						wantedRate = 1
+						if tc.selected < len(tc.ratios) {
+							wantedRate = tc.ratios[tc.selected]
+						}
 					}
 					baseEstimate, baseActual := 101, 81
 					if tc.realtime {
@@ -461,23 +481,13 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					if tc.image {
 						baseActual = 200 // Two delivered images, three reserved before submission.
 					}
-					expectedCharge := baseActual
-					expectedReserve := baseEstimate
-					if wantedRate != 1 {
-						expectedCharge = 29
-						expectedReserve = 36
-						if baseActual == 100 {
-							expectedCharge = 36
-						}
-						if baseActual == 181 {
-							expectedCharge = 65
-						}
-						if baseActual == 200 {
-							expectedCharge = 72
-						}
+					expectedCharge := common.QuotaRound(float64(baseActual) * wantedRate)
+					if tc.task {
+						expectedCharge = common.QuotaFromFloat(float64(baseActual) * wantedRate)
 					}
-					if wantedRate == 0 {
-						expectedCharge, expectedReserve = 0, 0
+					expectedReserve := common.QuotaFromFloat(float64(baseEstimate) * wantedRate)
+					if strings.HasPrefix(mode, "tiered_") {
+						expectedReserve = common.QuotaRound(float64(baseEstimate) * wantedRate)
 					}
 					if tc.rejected {
 						require.NotNil(t, apiErr)
@@ -508,11 +518,20 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						} else if info.Billing != nil {
 							assert.Equal(t, service.BillingSourceWallet, info.BillingSource)
 						}
+						if tc.changeRatioAfterReserve {
+							planID := subs[tc.selected].PlanId
+							require.NoError(t, db.Model(&model.SubscriptionPlan{}).Where("id = ?", planID).Update("billing_ratio", 3).Error)
+							model.InvalidateSubscriptionPlanCache(planID)
+							replayed, err := model.PreConsumeUserSubscriptionWithGroupQuota(info.RequestId, user.Id, tc.model, 36, 101)
+							require.NoError(t, err)
+							assert.Equal(t, wantedRate, replayed.BillingRatio)
+							assert.EqualValues(t, expectedReserve, replayed.PreConsumed)
+						}
 						if tc.retry {
 							c.Set("auto_group", "retry-test")
 							info.PriceData.GroupRatioInfo = helper.HandleGroupRatio(c, info)
 							require.Nil(t, service.PrepareTieredBillingForSelectedGroup(c, info))
-							assert.Equal(t, 1.0, info.PriceData.GroupRatioInfo.GroupRatio)
+							assert.Equal(t, wantedRate, info.PriceData.GroupRatioInfo.GroupRatio)
 							assert.Equal(t, expectedReserve, info.FinalPreConsumedQuota)
 						}
 						if tc.image {
@@ -543,7 +562,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							require.NoError(t, service.SettleBilling(c, info, expectedReserve))
 							task := model.Task{TaskID: info.RequestId, UserId: user.Id, ChannelId: channel.Id, Quota: expectedReserve, Group: info.UsingGroup,
 								PrivateData: model.TaskPrivateData{BillingSource: info.BillingSource, SubscriptionId: info.SubscriptionId, TokenId: token.Id,
-									BillingContext: &model.TaskBillingContext{SubscriptionUsesUnitRatio: common.GetPointer(info.SubscriptionUsesUnitRatio), GroupRatio: wantedRate, ModelRatio: 1, OriginModelName: tc.model}}}
+									BillingContext: &model.TaskBillingContext{SubscriptionUsesPlanRatio: common.GetPointer(info.SubscriptionUsesPlanRatio), GroupRatio: wantedRate, ModelRatio: 1, OriginModelName: tc.model}}}
 							require.NoError(t, db.Create(&task).Error)
 							t.Cleanup(func() { require.NoError(t, db.Delete(&task).Error) })
 							service.LogTaskConsumption(c, info, &task)
@@ -557,8 +576,8 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							}
 							require.NoError(t, db.First(&task, task.ID).Error)
 							assert.Equal(t, expectedCharge, task.Quota)
-							require.NotNil(t, task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
-							assert.Equal(t, info.SubscriptionUsesUnitRatio, *task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
+							require.NotNil(t, task.PrivateData.BillingContext.SubscriptionUsesPlanRatio)
+							assert.Equal(t, info.SubscriptionUsesPlanRatio, *task.PrivateData.BillingContext.SubscriptionUsesPlanRatio)
 							var log model.Log
 							logQuery := db.Where("user_id = ?", user.Id)
 							if tc.taskRefund {
@@ -577,8 +596,8 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
 							assert.Equal(t, info.BillingSource, other["billing_source"])
 							assert.Equal(t, wantedRate, other["billing_group_ratio"])
-							if info.SubscriptionUsesUnitRatio {
-								assert.Equal(t, "subscription_unit", other["billing_ratio_source"])
+							if info.SubscriptionUsesPlanRatio {
+								assert.Equal(t, "subscription_plan", other["billing_ratio_source"])
 							} else {
 								assert.Equal(t, "api_group", other["billing_ratio_source"])
 							}
@@ -608,8 +627,8 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							} else {
 								assert.Equal(t, info.BillingSource, other["billing_source"])
 								assert.Equal(t, wantedRate, other["billing_group_ratio"])
-								if info.SubscriptionUsesUnitRatio {
-									assert.Equal(t, "subscription_unit", other["billing_ratio_source"])
+								if info.SubscriptionUsesPlanRatio {
+									assert.Equal(t, "subscription_plan", other["billing_ratio_source"])
 								} else {
 									assert.Equal(t, "api_group", other["billing_ratio_source"])
 								}
@@ -694,6 +713,197 @@ func TestSetSubscriptionFrozenValidatesRequestAndOwnership(t *testing.T) {
 				assert.InDelta(t, sub.EndTime+3600, saved.EndTime, 2)
 				assert.EqualValues(t, 250, saved.AmountUsed)
 			}
+		})
+	}
+}
+
+func TestSubscriptionBillingRatioValidationAndPersistence(t *testing.T) {
+	for _, tc := range []struct {
+		name, raw string
+		valid     bool
+		ratio     *float64
+	}{
+		{"unset", "null", true, nil},
+		{"discount", "0.75", true, common.GetPointer(0.75)},
+		{"surcharge", "2", true, common.GetPointer(2.0)},
+		{"zero", "0", false, nil},
+		{"negative", "-1", false, nil},
+		{"overflow", "1e999", false, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := subscriptionBillingDB(t)
+			confirmPaymentComplianceForTest(t)
+			plan := model.SubscriptionPlan{Title: "ratio validation", PriceAmount: 10, PriceCNY: 70, BillingRatio: common.GetPointer(1.5)}
+			require.NoError(t, db.Create(&plan).Error)
+			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+			for _, method := range []string{http.MethodPost, http.MethodPut} {
+				body := fmt.Sprintf(`{"plan":{"title":"ratio validation","price_amount":10,"price_cny":70,"allowed_channel_types":"1","billing_ratio":%s}}`, tc.raw)
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(method, "/api/subscription/admin/plans", strings.NewReader(body))
+				c.Request.Header.Set("Content-Type", "application/json")
+				if method == http.MethodPut {
+					c.Params = gin.Params{{Key: "id", Value: fmt.Sprint(plan.Id)}}
+					AdminUpdateSubscriptionPlan(c)
+				} else {
+					AdminCreateSubscriptionPlan(c)
+				}
+				var response struct {
+					Success bool                   `json:"success"`
+					Data    model.SubscriptionPlan `json:"data"`
+				}
+				require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+				require.Equal(t, tc.valid, response.Success, recorder.Body.String())
+				var persisted model.SubscriptionPlan
+				id := plan.Id
+				if tc.valid && method == http.MethodPost {
+					id = response.Data.Id
+				}
+				require.NoError(t, db.First(&persisted, id).Error)
+				want := plan.BillingRatio
+				if tc.valid {
+					want = tc.ratio
+				}
+				assert.Equal(t, want, persisted.BillingRatio)
+			}
+		})
+	}
+}
+
+func TestSubscriptionBillingRatioRejectsUnsafeCharges(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	plan := model.SubscriptionPlan{Title: "invalid rate", AllowedChannelTypes: "1", BillingRatio: common.GetPointer(math.MaxFloat64)}
+	require.NoError(t, db.Create(&plan).Error)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+	sub := model.UserSubscription{UserId: 987, PlanId: plan.Id, Status: "active", EndTime: model.GetDBTimestamp() + 3600}
+	require.NoError(t, db.Create(&sub).Error)
+	_, err := model.PreConsumeUserSubscriptionWithPricing("ratio-overflow", sub.UserId, "gpt-test", 36, 100, false)
+	require.Error(t, err)
+	require.NoError(t, db.First(&sub, sub.Id).Error)
+	assert.Zero(t, sub.AmountUsed)
+	var count int64
+	require.NoError(t, db.Model(&model.SubscriptionPreConsumeRecord{}).Count(&count).Error)
+	assert.Zero(t, count)
+	for _, invalid := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		plan.BillingRatio = &invalid
+		_, err := plan.EffectiveBillingRatio()
+		assert.Error(t, err)
+	}
+}
+
+// Schema copied from v1.0.0-rc.43 for the upgrade regression.
+type releasedRatioSubscriptionPlan struct {
+	Id int `json:"id"`
+
+	Title    string `json:"title" gorm:"type:varchar(128);not null"`
+	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
+
+	// Display money amount (follow existing code style: float64 for money)
+	PriceAmount float64 `json:"price_amount" gorm:"type:decimal(10,6);not null;default:0"`
+	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
+
+	DurationUnit  string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
+	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
+	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
+
+	Enabled   bool `json:"enabled" gorm:"default:true"`
+	SortOrder int  `json:"sort_order" gorm:"type:int;default:0"`
+
+	AllowBalancePay *bool `json:"allow_balance_pay"`
+
+	// Allow falling back to wallet balance after subscription quota is exhausted (empty = true)
+	AllowWalletOverflow *bool `json:"allow_wallet_overflow"`
+
+	StripePriceId         string `json:"stripe_price_id" gorm:"type:varchar(128);default:''"`
+	CreemProductId        string `json:"creem_product_id" gorm:"type:varchar(128);default:''"`
+	WaffoPancakeProductId string `json:"waffo_pancake_product_id" gorm:"type:varchar(128);default:''"`
+
+	// Max purchases per user (0 = unlimited)
+	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
+
+	// Upgrade user group after purchase (empty = no change)
+	UpgradeGroup string `json:"upgrade_group" gorm:"type:varchar(64);default:''"`
+
+	// Downgrade user group on expiry (empty = revert to the group held before purchase)
+	DowngradeGroup string `json:"downgrade_group" gorm:"type:varchar(64);default:''"`
+
+	// Total quota (amount in quota units, 0 = unlimited)
+	TotalAmount int64 `json:"total_amount" gorm:"type:bigint;not null;default:0"`
+
+	// Quota reset period for plan
+	QuotaResetPeriod        string `json:"quota_reset_period" gorm:"type:varchar(16);default:'never'"`
+	QuotaResetCustomSeconds int64  `json:"quota_reset_custom_seconds" gorm:"type:bigint;default:0"`
+
+	CreatedAt int64 `json:"created_at" gorm:"bigint"`
+	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
+}
+
+func (releasedRatioSubscriptionPlan) TableName() string { return "subscription_plans" }
+
+// Schema copied from v1.0.0-rc.43 for the upgrade regression.
+type releasedRatioSubscriptionPreConsumeRecord struct {
+	Id                 int    `json:"id"`
+	RequestId          string `json:"request_id" gorm:"type:varchar(64);uniqueIndex"`
+	UserId             int    `json:"user_id" gorm:"index"`
+	UserSubscriptionId int    `json:"user_subscription_id" gorm:"index"`
+	PreConsumed        int64  `json:"pre_consumed" gorm:"type:bigint;not null;default:0"`
+	Status             string `json:"status" gorm:"type:varchar(32);index"` // consumed/refunded
+	CreatedAt          int64  `json:"created_at" gorm:"bigint"`
+	UpdatedAt          int64  `json:"updated_at" gorm:"bigint;index"`
+}
+
+func (releasedRatioSubscriptionPreConsumeRecord) TableName() string {
+	return "subscription_pre_consume_records"
+}
+
+func TestSubscriptionBillingRatioMigration(t *testing.T) {
+	for _, upgrade := range []bool{false, true} {
+		t.Run(fmt.Sprintf("upgrade=%t", upgrade), func(t *testing.T) {
+			db := subscriptionBillingDB(t, true)
+			if upgrade {
+				require.NoError(t, db.Migrator().DropTable(&model.SubscriptionPreConsumeRecord{}, &model.SubscriptionPlan{}))
+				require.NoError(t, db.AutoMigrate(&releasedRatioSubscriptionPlan{}, &releasedRatioSubscriptionPreConsumeRecord{}))
+			}
+			// These rows are written by the released schema in upgrade mode.
+			plan := releasedRatioSubscriptionPlan{Title: "existing paid plan", PriceAmount: 9.75, DurationUnit: "day", DurationValue: 30, TotalAmount: 500000, Enabled: true}
+			record := releasedRatioSubscriptionPreConsumeRecord{RequestId: "existing-reservation", UserId: 12, UserSubscriptionId: 34, PreConsumed: 123, Status: "consumed"}
+			require.NoError(t, db.Create(&plan).Error)
+			require.NoError(t, db.Create(&record).Error)
+			t.Cleanup(func() {
+				require.NoError(t, db.Delete(&record).Error)
+				require.NoError(t, db.Delete(&plan).Error)
+			})
+			for range 2 {
+				require.NoError(t, db.AutoMigrate(&model.SubscriptionPlan{}, &model.SubscriptionPreConsumeRecord{}))
+				var persisted model.SubscriptionPlan
+				require.NoError(t, db.First(&persisted, plan.Id).Error)
+				assert.Nil(t, persisted.BillingRatio)
+				ratio, err := persisted.EffectiveBillingRatio()
+				require.NoError(t, err)
+				assert.Equal(t, 1.0, ratio)
+				assert.Equal(t, plan.Title, persisted.Title)
+				assert.Equal(t, plan.PriceAmount, persisted.PriceAmount)
+				assert.Equal(t, plan.TotalAmount, persisted.TotalAmount)
+				assert.True(t, persisted.Enabled)
+				assert.Equal(t, plan.DurationValue, persisted.DurationValue)
+				var reservation model.SubscriptionPreConsumeRecord
+				require.NoError(t, db.First(&reservation, record.Id).Error)
+				assert.Nil(t, reservation.BillingRatio)
+				assert.Equal(t, record.PreConsumed, reservation.PreConsumed)
+				assert.Equal(t, record.Status, reservation.Status)
+				for _, field := range []string{"UserId", "UserSubscriptionId", "Status", "UpdatedAt"} {
+					assert.True(t, db.Migrator().HasIndex(&model.SubscriptionPreConsumeRecord{}, field))
+				}
+				duplicate := model.SubscriptionPreConsumeRecord{RequestId: record.RequestId}
+				assert.Error(t, db.Create(&duplicate).Error, "request id must remain unique")
+			}
+			var version string
+			query := "SELECT version()"
+			if db.Dialector.Name() == "sqlite" {
+				query = "SELECT sqlite_version()"
+			}
+			require.NoError(t, db.Raw(query).Scan(&version).Error)
+			t.Logf("database=%s version=%s", db.Dialector.Name(), version)
 		})
 	}
 }

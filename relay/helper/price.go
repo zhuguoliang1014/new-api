@@ -53,7 +53,8 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 		relayInfo.UsingGroup = autoGroup.(string)
 	}
 
-	if relayInfo.SubscriptionUsesUnitRatio {
+	if relayInfo.SubscriptionUsesPlanRatio {
+		groupRatioInfo.GroupRatio = relayInfo.SubscriptionBillingRatio
 		return groupRatioInfo
 	}
 

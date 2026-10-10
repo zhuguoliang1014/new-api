@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -83,4 +84,16 @@ func (p *SubscriptionPlan) AllowsModel(modelName string) bool {
 	}
 	provider := SubscriptionModelProvider(modelName)
 	return provider != constant.ChannelTypeUnknown && p.AllowsChannelType(provider)
+}
+
+// EffectiveBillingRatio preserves 1x billing for plans created before ratios were configurable.
+func (p *SubscriptionPlan) EffectiveBillingRatio() (float64, error) {
+	if p.BillingRatio == nil {
+		return 1, nil
+	}
+	ratio := *p.BillingRatio
+	if ratio <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) {
+		return 0, fmt.Errorf("billing ratio must be finite and greater than zero")
+	}
+	return ratio, nil
 }

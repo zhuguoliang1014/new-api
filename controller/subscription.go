@@ -326,6 +326,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if _, err := req.Plan.EffectiveBillingRatio(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
 	if providerErr != nil {
 		common.ApiError(c, providerErr)
@@ -414,6 +418,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if _, err := req.Plan.EffectiveBillingRatio(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
 	if providerErr != nil {
 		common.ApiError(c, providerErr)
@@ -444,6 +452,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"allowed_channel_types":      req.Plan.AllowedChannelTypes,
+			"billing_ratio":              req.Plan.BillingRatio,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,
 			"downgrade_group":            req.Plan.DowngradeGroup,

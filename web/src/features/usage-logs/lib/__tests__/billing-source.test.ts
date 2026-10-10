@@ -116,6 +116,17 @@ describe('recorded billing multiplier', () => {
       restricted: true,
     },
     {
+      name: 'configured subscription ratio overrides stale group discount',
+      other: {
+        billing_source: 'subscription',
+        billing_ratio_source: 'subscription_plan',
+        billing_group_ratio: 0.75,
+        group_ratio: 0.36,
+      },
+      value: 0.75,
+      restricted: true,
+    },
+    {
       name: 'general subscription retains discount',
       other: {
         billing_source: 'subscription',

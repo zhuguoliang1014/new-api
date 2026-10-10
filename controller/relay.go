@@ -622,7 +622,7 @@ func executeTaskSubmissionWith(
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
-		SubscriptionUsesUnitRatio: common.GetPointer(relayInfo.SubscriptionUsesUnitRatio),
+		SubscriptionUsesPlanRatio: common.GetPointer(relayInfo.SubscriptionUsesPlanRatio),
 		ModelPrice:                relayInfo.PriceData.ModelPrice,
 		GroupRatio:                relayInfo.PriceData.GroupRatioInfo.GroupRatio,
 		ModelRatio:                relayInfo.PriceData.ModelRatio,

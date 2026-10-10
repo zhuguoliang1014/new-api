@@ -49,6 +49,7 @@ export const subscriptionPlanSchema = z.object({
   expires_at: z.number().optional(),
   waffo_pancake_product_id: z.string().optional(),
   allowed_channel_types: z.string().optional(),
+  billing_ratio: z.number().nullable().optional(),
 })
 
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>

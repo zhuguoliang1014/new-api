@@ -157,10 +157,10 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 		other.SetPublic("billing_group_ratio", bc.GroupRatio)
 		other.SetPublic("billing_source", task.PrivateData.BillingSource)
 		// Historical tasks did not record the reason for their rate.
-		if bc.SubscriptionUsesUnitRatio != nil {
+		if bc.SubscriptionUsesPlanRatio != nil {
 			source := "api_group"
-			if *bc.SubscriptionUsesUnitRatio {
-				source = "subscription_unit"
+			if *bc.SubscriptionUsesPlanRatio {
+				source = "subscription_plan"
 			}
 			other.SetPublic("billing_ratio_source", source)
 		}

@@ -54,7 +54,8 @@ export function getBillingRatio(other: LogOtherData | null): {
   const recorded = other?.billing_group_ratio
   const restricted =
     other?.billing_source === 'subscription' &&
-    other.billing_ratio_source === 'subscription_unit'
+    (other.billing_ratio_source === 'subscription_unit' ||
+      other.billing_ratio_source === 'subscription_plan')
   if (recorded != null && Number.isFinite(recorded) && recorded >= 0) {
     return { value: recorded, labelKey: 'Billing multiplier', restricted }
   }

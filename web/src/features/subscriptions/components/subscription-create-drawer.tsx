@@ -743,9 +743,35 @@ export function SubscriptionCreateDrawer({
                         'Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.'
                       )}{' '}
                       {t(
-                        'Restricted plans use a 1x group multiplier. Unrestricted plans and wallet charges use the API key group multiplier.'
+                        'Restricted plans use the plan billing multiplier, defaulting to 1x. Unrestricted plans and wallet charges use the API key group multiplier.'
                       )}
                     </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='billing_ratio'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Plan billing multiplier')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        {...field}
+                        type='number'
+                        step='any'
+                        placeholder='1'
+                        value={field.value ?? ''}
+                        onChange={(event) =>
+                          field.onChange(
+                            event.target.value === ''
+                              ? null
+                              : event.target.valueAsNumber
+                          )
+                        }
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

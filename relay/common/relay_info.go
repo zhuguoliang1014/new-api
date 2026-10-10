@@ -145,8 +145,9 @@ type RelayInfo struct {
 	BillingSource string
 	// SubscriptionId is the user_subscriptions.id used when BillingSource == "subscription"
 	SubscriptionId int
-	// SubscriptionUsesUnitRatio freezes the selected restricted plan's rate across retries.
-	SubscriptionUsesUnitRatio bool
+	// SubscriptionUsesPlanRatio freezes the selected restricted plan's rate across retries.
+	SubscriptionUsesPlanRatio bool
+	SubscriptionBillingRatio  float64
 	// SubscriptionPreConsumed is the amount pre-consumed on subscription item (quota units or 1)
 	SubscriptionPreConsumed int64
 	// SubscriptionPostDelta is the post-consume delta applied to amount_used (quota units; can be negative).

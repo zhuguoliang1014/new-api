@@ -43,9 +43,9 @@ type BillingSession struct {
 // logBillingEvent records quota units and identifiers without credentials or request bodies.
 func (s *BillingSession) logBillingEvent(event string, quota int, outcome string) {
 	info := s.relayInfo
-	common.SysLog(fmt.Sprintf("billing_audit event=%s request_id=%q user_id=%d model=%q funding=%s subscription_id=%d plan_id=%d group=%q effective_group_ratio=%g unit_rate=%t quota=%d reserved_quota=%d outcome=%s",
+	common.SysLog(fmt.Sprintf("billing_audit event=%s request_id=%q user_id=%d model=%q funding=%s subscription_id=%d plan_id=%d group=%q effective_group_ratio=%g plan_rate=%t quota=%d reserved_quota=%d outcome=%s",
 		event, info.RequestId, info.UserId, info.OriginModelName, s.funding.Source(), info.SubscriptionId, info.SubscriptionPlanId, info.UsingGroup,
-		info.PriceData.GroupRatioInfo.GroupRatio, info.SubscriptionUsesUnitRatio, quota, s.preConsumedQuota, outcome))
+		info.PriceData.GroupRatioInfo.GroupRatio, info.SubscriptionUsesPlanRatio, quota, s.preConsumedQuota, outcome))
 }
 
 // Settle 根据实际消耗额度进行结算。
@@ -409,14 +409,15 @@ func (s *BillingSession) syncRelayInfo() {
 	info.BillingSource = s.funding.Source()
 
 	if sub, ok := s.funding.(*SubscriptionFunding); ok {
-		info.SubscriptionUsesUnitRatio = sub.useUnitGroupRatio
-		if sub.useUnitGroupRatio {
-			info.PriceData.GroupRatioInfo = hosttypes.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1}
+		info.SubscriptionUsesPlanRatio = sub.usePlanRatio
+		info.SubscriptionBillingRatio = sub.billingRatio
+		if sub.usePlanRatio {
+			info.PriceData.GroupRatioInfo = hosttypes.GroupRatioInfo{GroupRatio: sub.billingRatio, GroupSpecialRatio: -1}
 			info.PriceData.FreeModel = false
 			info.PriceData.QuotaToPreConsume = s.preConsumedQuota
 			info.PriceData.Quota = s.preConsumedQuota
 			if snap := info.TieredBillingSnapshot; snap != nil {
-				snap.GroupRatio = 1
+				snap.GroupRatio = sub.billingRatio
 				snap.EstimatedQuotaAfterGroup = s.preConsumedQuota
 			}
 		}
@@ -428,7 +429,8 @@ func (s *BillingSession) syncRelayInfo() {
 		info.SubscriptionPlanId = sub.PlanId
 		info.SubscriptionPlanTitle = sub.PlanTitle
 	} else {
-		info.SubscriptionUsesUnitRatio = false
+		info.SubscriptionUsesPlanRatio = false
+		info.SubscriptionBillingRatio = 0
 		info.SubscriptionId = 0
 		info.SubscriptionPreConsumed = 0
 	}
@@ -484,27 +486,23 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		if subConsume <= 0 && !relayInfo.PriceData.FreeModel {
 			subConsume = 1
 		}
-		unitConsume := preConsumedQuota
-		var quotaErr error
+		quotaBeforeGroup := float64(preConsumedQuota)
+		roundQuota := false
 		if snap := relayInfo.TieredBillingSnapshot; snap != nil {
-			unitConsume, quotaErr = common.QuotaRoundStrict(snap.EstimatedQuotaBeforeGroup)
+			quotaBeforeGroup = snap.EstimatedQuotaBeforeGroup
+			roundQuota = true
 		} else if beforeGroup := relayInfo.PriceData.PreConsumeQuotaBeforeGroup; beforeGroup != nil {
-			unitConsume, quotaErr = common.QuotaFromFloatStrict(*beforeGroup)
-		}
-		if quotaErr != nil {
-			return nil, types.NewError(quotaErr, types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
-		}
-		if unitConsume < 0 {
-			return nil, types.NewError(fmt.Errorf("negative unit-rate reservation"), types.ErrorCodeModelPriceError, types.ErrOptionWithSkipRetry())
+			quotaBeforeGroup = *beforeGroup
 		}
 		session := &BillingSession{
 			relayInfo: relayInfo,
 			funding: &SubscriptionFunding{
-				requestId:  relayInfo.RequestId,
-				userId:     relayInfo.UserId,
-				modelName:  relayInfo.OriginModelName,
-				amount:     subConsume,
-				unitAmount: int64(max(unitConsume, 1)),
+				requestId:        relayInfo.RequestId,
+				userId:           relayInfo.UserId,
+				modelName:        relayInfo.OriginModelName,
+				amount:           subConsume,
+				quotaBeforeGroup: quotaBeforeGroup,
+				roundQuota:       roundQuota,
 			},
 		}
 		// preConsume uses the amount actually reserved by the selected plan

@@ -162,7 +162,8 @@ type TaskPluginAuthorSnapshot struct {
 
 // TaskBillingContext 记录任务提交时的计费参数，以便轮询阶段可以重新计算额度。
 type TaskBillingContext struct {
-	SubscriptionUsesUnitRatio *bool                        `json:"subscription_uses_unit_ratio,omitempty"`
+	// Keep the legacy JSON key so persisted tasks retain their rate-source metadata.
+	SubscriptionUsesPlanRatio *bool                        `json:"subscription_uses_unit_ratio,omitempty"`
 	ModelPrice                float64                      `json:"model_price,omitempty"`       // 模型单价
 	GroupRatio                float64                      `json:"group_ratio,omitempty"`       // 分组倍率
 	ModelRatio                float64                      `json:"model_ratio,omitempty"`       // 模型倍率

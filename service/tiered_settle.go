@@ -141,8 +141,8 @@ func refreshTieredBillingGroup(relayInfo *relaycommon.RelayInfo) (*billingexpr.B
 	if relayInfo == nil {
 		return nil, nil
 	}
-	if relayInfo.SubscriptionUsesUnitRatio {
-		relayInfo.PriceData.GroupRatioInfo = hosttypes.GroupRatioInfo{GroupRatio: 1, GroupSpecialRatio: -1}
+	if relayInfo.SubscriptionUsesPlanRatio {
+		relayInfo.PriceData.GroupRatioInfo = hosttypes.GroupRatioInfo{GroupRatio: relayInfo.SubscriptionBillingRatio, GroupSpecialRatio: -1}
 	}
 	snap := relayInfo.TieredBillingSnapshot
 	if snap == nil || snap.BillingMode != "tiered_expr" {
