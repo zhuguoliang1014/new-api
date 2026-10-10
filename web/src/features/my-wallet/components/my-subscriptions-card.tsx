@@ -16,6 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useMutation } from '@tanstack/react-query'
 import {
   CalendarClock,
   ChevronDown,
@@ -24,6 +25,8 @@ import {
   History,
   Layers,
   RefreshCw,
+  Snowflake,
+  Play,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -43,12 +46,16 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
   updateSubscriptionPriorities,
+  setSubscriptionFrozen,
 } from '@/features/subscriptions/api'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
+  SubscriptionFreezePolicy,
 } from '@/features/subscriptions/types'
 import { formatQuota } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import { SubscriptionHistoryDialog } from './subscription-history-dialog'
@@ -58,11 +65,17 @@ function SubscriptionRow({
   planTitle,
   draggable,
   nowSec,
+  freezeAllowed,
+  freezePending,
+  onFreeze,
 }: {
   record: UserSubscriptionRecord
   planTitle: string
   draggable: boolean
   nowSec: number
+  freezeAllowed: boolean
+  freezePending: boolean
+  onFreeze: (id: number, frozen: boolean) => void
 }) {
   const { t } = useTranslation()
   const subscription = record.subscription
@@ -79,9 +92,16 @@ function SubscriptionRow({
   const isExpired = (subscription.end_time || 0) < now
   const isCancelled = subscription.status === 'cancelled'
   const isActive = subscription.status === 'active' && !isExpired
+  const isFrozen = subscription.status === 'frozen'
+  let statusVariant: 'success' | 'info' | 'neutral' = 'neutral'
   let statusLabel = t('Expired')
   let endLabel = t('Expired at')
-  if (isActive) {
+  if (isFrozen) {
+    statusVariant = 'info'
+    statusLabel = t('Frozen')
+    endLabel = t('Frozen since')
+  } else if (isActive) {
+    statusVariant = 'success'
     statusLabel = t('Active')
     endLabel = t('Until')
   } else if (isCancelled) {
@@ -96,7 +116,11 @@ function SubscriptionRow({
     totalAmount > 0 ? Math.round((usedAmount / totalAmount) * 100) : 0
   const remainingDays = Math.max(
     0,
-    Math.ceil(((subscription.end_time || 0) - now) / 86400)
+    Math.ceil(
+      ((subscription.end_time || 0) -
+        (isFrozen ? subscription.frozen_at || now : now)) /
+        86400
+    )
   )
 
   return (
@@ -109,7 +133,8 @@ function SubscriptionRow({
       className={cn(
         'group bg-muted/20 relative min-w-0 rounded-lg border transition-shadow',
         isActive && 'border-border',
-        !isActive && 'border-dashed opacity-70',
+        !isActive && !isFrozen && 'border-dashed opacity-70',
+        isFrozen && 'border-dashed',
         isDragging && 'z-10 shadow-lg ring-1 ring-primary/40'
       )}
     >
@@ -127,7 +152,7 @@ function SubscriptionRow({
           </Button>
         ) : null}
 
-        <div className='grid min-w-0 flex-1 items-center gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] md:gap-6'>
+        <div className='grid min-w-0 flex-1 items-center gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] md:gap-6'>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <div className='min-w-0 flex-1'>
@@ -137,7 +162,7 @@ function SubscriptionRow({
               </div>
               <StatusBadge
                 label={statusLabel}
-                variant={isActive ? 'success' : 'neutral'}
+                variant={statusVariant}
                 copyable={false}
               />
             </div>
@@ -147,10 +172,14 @@ function SubscriptionRow({
                 <CalendarClock className='size-3.5' />
                 {endLabel}{' '}
                 <span className='text-foreground/80'>
-                  {new Date(subscription.end_time * 1000).toLocaleDateString()}
+                  {new Date(
+                    (isFrozen
+                      ? subscription.frozen_at || 0
+                      : subscription.end_time) * 1000
+                  ).toLocaleDateString()}
                 </span>
               </span>
-              {isActive ? (
+              {isActive || isFrozen ? (
                 <span className='text-foreground/90 font-medium tabular-nums'>
                   {t('{{count}} days remaining', { count: remainingDays })}
                 </span>
@@ -172,7 +201,7 @@ function SubscriptionRow({
                 aria-label={t('Available Quota')}
                 className='h-1.5'
               />
-              {isActive ? (
+              {isActive || isFrozen ? (
                 <div className='text-muted-foreground mt-1.5 text-xs'>
                   {t('Remaining')} {formatQuota(remainingAmount)}
                 </div>
@@ -184,6 +213,34 @@ function SubscriptionRow({
               {t('Unlimited')}
             </div>
           )}
+          {isActive || isFrozen ? (
+            <div className='flex justify-end'>
+              <Button
+                type='button'
+                variant='outline'
+                size='sm'
+                disabled={freezePending || (!isFrozen && !freezeAllowed)}
+                aria-label={
+                  isFrozen
+                    ? t('Resume {{plan}}', {
+                        plan: planTitle || t('Subscription'),
+                      })
+                    : t('Freeze {{plan}}', {
+                        plan: planTitle || t('Subscription'),
+                      })
+                }
+                aria-busy={freezePending}
+                onClick={() => onFreeze(id, !isFrozen)}
+              >
+                {isFrozen ? (
+                  <Play className='size-3.5' aria-hidden='true' />
+                ) : (
+                  <Snowflake className='size-3.5' aria-hidden='true' />
+                )}
+                {isFrozen ? t('Resume subscription') : t('Freeze subscription')}
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -212,6 +269,7 @@ export function MySubscriptionsCard({
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
+  const [freezePolicy, setFreezePolicy] = useState<SubscriptionFreezePolicy>()
   const initialOrderRef = useRef<number[]>([])
 
   useEffect(() => {
@@ -248,17 +306,69 @@ export function MySubscriptionsCard({
         .map((item) => item.subscription.id)
       setActiveSubscriptions(active)
       setAllSubscriptions(all)
+      setFreezePolicy(subRes.data.freeze_policy)
       setActiveOrder(order)
       initialOrderRef.current = order
     }
     if (planRes.success) setPlans(planRes.data || [])
   }, [])
 
+  const freezeMutation = useMutation({
+    mutationFn: async (input: { id: number; frozen: boolean }) => {
+      const response = await setSubscriptionFrozen(input.id, input.frozen)
+      requireServerSuccess(response)
+      return { input, subscription: response.data }
+    },
+    retry: false,
+    onSuccess: async (result) => {
+      if (result.subscription) {
+        const subscription = result.subscription
+        setAllSubscriptions((records) =>
+          records.map((record) =>
+            record.subscription.id === subscription.id
+              ? { ...record, subscription }
+              : record
+          )
+        )
+        setActiveSubscriptions((records) => {
+          const updated = records.filter(
+            (record) => record.subscription.id !== subscription.id
+          )
+          if (subscription.status === 'active') updated.push({ subscription })
+          return updated
+        })
+        setActiveOrder((order) =>
+          subscription.status === 'active'
+            ? [...new Set([...order, subscription.id])]
+            : order.filter((id) => id !== subscription.id)
+        )
+      }
+      toast.success(
+        result.input.frozen
+          ? t('Subscription frozen')
+          : t('Subscription resumed')
+      )
+      try {
+        await fetchData()
+      } catch (error) {
+        handleServerError(error)
+      }
+    },
+    onError: (error) => handleServerError(error),
+  })
+
+  const handleFreeze = (id: number, frozen: boolean) => {
+    if (freezeMutation.isPending) return
+    freezeMutation.mutate({ id, frozen })
+  }
+
   useEffect(() => {
     const init = async () => {
       setLoading(true)
       try {
         await fetchData()
+      } catch (error) {
+        handleServerError(error)
       } finally {
         setLoading(false)
       }
@@ -268,7 +378,7 @@ export function MySubscriptionsCard({
 
   useEffect(() => {
     if (refreshSignal === undefined || refreshSignal === 0) return
-    void fetchData()
+    void fetchData().catch(handleServerError)
   }, [refreshSignal, fetchData])
 
   const planTitleMap = useMemo(() => {
@@ -289,14 +399,22 @@ export function MySubscriptionsCard({
       activeSubscriptions.map((item) => item.subscription.id)
     )
     return allSubscriptions.filter(
-      (item) => !activeIds.has(item.subscription.id)
+      (item) =>
+        !activeIds.has(item.subscription.id) &&
+        item.subscription.status !== 'frozen'
     )
   }, [activeSubscriptions, allSubscriptions])
+
+  const frozenSubscriptions = allSubscriptions.filter(
+    (item) => item.subscription.status === 'frozen'
+  )
 
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
       await fetchData()
+    } catch (error) {
+      handleServerError(error)
     } finally {
       setRefreshing(false)
     }
@@ -313,7 +431,7 @@ export function MySubscriptionsCard({
   }
 
   useEffect(() => {
-    if (loading || activeOrder.length === 0) return
+    if (loading || freezeMutation.isPending || activeOrder.length === 0) return
     const unchanged =
       activeOrder.length === initialOrderRef.current.length &&
       activeOrder.every((id, index) => id === initialOrderRef.current[index])
@@ -335,7 +453,7 @@ export function MySubscriptionsCard({
       })
       .finally(() => setSaving(false))
       .catch(() => toast.error(t('Request failed')))
-  }, [activeOrder, loading, t])
+  }, [activeOrder, loading, freezeMutation.isPending, t])
 
   const activeCount = activeSubscriptions.length
   const inactiveCount = inactive.length
@@ -362,15 +480,26 @@ export function MySubscriptionsCard({
           title={
             <span className='flex flex-wrap items-center gap-2'>
               {t('My Subscriptions')}
-              <StatusBadge
-                copyable={false}
-                variant={activeCount > 0 ? 'success' : 'neutral'}
-                label={
-                  activeCount > 0
-                    ? `${activeCount} ${t('active')}`
-                    : t('No Active')
-                }
-              />
+              {(activeCount > 0 || frozenSubscriptions.length === 0) && (
+                <StatusBadge
+                  copyable={false}
+                  variant={activeCount > 0 ? 'success' : 'neutral'}
+                  label={
+                    activeCount > 0
+                      ? `${activeCount} ${t('active')}`
+                      : t('No Active')
+                  }
+                />
+              )}
+              {frozenSubscriptions.length > 0 && (
+                <StatusBadge
+                  copyable={false}
+                  variant='info'
+                  label={t('{{count}} frozen', {
+                    count: frozenSubscriptions.length,
+                  })}
+                />
+              )}
             </span>
           }
           description={t('Matching subscriptions first, then wallet balance')}
@@ -417,7 +546,7 @@ export function MySubscriptionsCard({
                 className='size-9'
                 aria-label={t('Refresh')}
                 onClick={handleRefresh}
-                disabled={refreshing || saving}
+                disabled={refreshing || saving || freezeMutation.isPending}
               >
                 <RefreshCw
                   className={cn('size-4', refreshing && 'animate-spin')}
@@ -446,6 +575,9 @@ export function MySubscriptionsCard({
                   }
                   draggable={false}
                   nowSec={nowSec}
+                  freezeAllowed={freezePolicy?.allowed === true}
+                  freezePending={freezeMutation.isPending}
+                  onFreeze={handleFreeze}
                 />
               )}
               <CollapsibleContent>
@@ -463,19 +595,58 @@ export function MySubscriptionsCard({
                           planTitleMap.get(record.subscription.plan_id) ||
                           ''
                         }
-                        draggable={draggable}
+                        draggable={
+                          draggable && !freezeMutation.isPending && !saving
+                        }
                         nowSec={nowSec}
+                        freezeAllowed={freezePolicy?.allowed === true}
+                        freezePending={freezeMutation.isPending}
+                        onFreeze={handleFreeze}
                       />
                     ))}
                 </div>
               </CollapsibleContent>
             </SortableContext>
           </DndContext>
-          {!firstSubscription && (
+          {frozenSubscriptions.length > 0 && (
+            <div className={cn('space-y-2', firstSubscription && 'mt-3')}>
+              {frozenSubscriptions.map((record) => (
+                <SubscriptionRow
+                  key={record.subscription.id}
+                  record={record}
+                  planTitle={
+                    record.plan_title ||
+                    planTitleMap.get(record.subscription.plan_id) ||
+                    ''
+                  }
+                  draggable={false}
+                  nowSec={nowSec}
+                  freezeAllowed={false}
+                  freezePending={freezeMutation.isPending}
+                  onFreeze={handleFreeze}
+                />
+              ))}
+            </div>
+          )}
+          {!firstSubscription && frozenSubscriptions.length === 0 && (
             <p className='text-muted-foreground bg-muted/30 rounded-lg px-4 py-3 text-sm'>
               {allSubscriptions.length > 0
                 ? t('No Active')
                 : t('No subscription records')}
+            </p>
+          )}
+          {(firstSubscription || frozenSubscriptions.length > 0) && (
+            <p className='text-muted-foreground mt-3 text-xs leading-relaxed'>
+              {t(
+                'Freeze on mainland China public holidays (including adjusted days off), based on Beijing time. Resume anytime; validity and quota reset dates shift by the frozen duration.'
+              )}
+              {freezePolicy && !freezePolicy.calendar_available && (
+                <span className='mt-1 block'>
+                  {t(
+                    'The holiday calendar is unavailable. Freezing is temporarily disabled; frozen subscriptions can still be resumed.'
+                  )}
+                </span>
+              )}
             </p>
           )}
         </TitledCard>

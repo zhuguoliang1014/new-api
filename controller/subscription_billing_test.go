@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,10 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 	oldConsume, oldExport := common.LogConsumeEnabled, common.DataExportEnabled
 	oldMain, oldLog := common.MainDatabaseType(), common.LogDatabaseType()
 	oldRedis, oldBatch, oldMemory := common.RedisEnabled, common.BatchUpdateEnabled, common.MemoryCacheEnabled
+	oldMaster := common.IsMasterNode
+	t.Setenv("LOG_SQL_DSN", "")
 	common.SetDatabaseTypes(dialect, dialect)
+	common.IsMasterNode = false
 	common.RedisEnabled, common.BatchUpdateEnabled, common.MemoryCacheEnabled = false, false, false
 	t.Cleanup(func() {
 		if useTransaction {
@@ -62,6 +66,10 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 		model.DB, model.LOG_DB = oldDB, oldLogDB
 		common.LogConsumeEnabled, common.DataExportEnabled = oldConsume, oldExport
 		common.SetDatabaseTypes(oldMain, oldLog)
+		require.NoError(t, model.InitLogDB())
+		model.LOG_DB = oldLogDB
+		common.SetDatabaseTypes(oldMain, oldLog)
+		common.IsMasterNode = oldMaster
 		common.RedisEnabled, common.BatchUpdateEnabled, common.MemoryCacheEnabled = oldRedis, oldBatch, oldMemory
 		require.NoError(t, sqlDB.Close())
 	})
@@ -71,6 +79,8 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 		require.NoError(t, db.Error)
 	}
 	model.DB, model.LOG_DB = db, db
+	// Reuse startup initialization for dialect-specific identifier quoting.
+	require.NoError(t, model.InitLogDB())
 	common.LogConsumeEnabled, common.DataExportEnabled = true, false
 	return db
 }
@@ -264,10 +274,12 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 			for _, tc := range []struct {
 				name, model                                                                     string
 				plans                                                                           []planSpec
+				frozenPlans                                                                     []int
 				wallet                                                                          int
 				selected                                                                        int // -1 = wallet; rejected cases must leave all accounts unchanged.
 				rejected, tokenInsufficient, refund, retry, specialGroup, freeGroup, emptyToken bool
-				realtime, task                                                                  bool
+				realtime, task, image, imageReserveRejected                                     bool
+				freezeAfterReserve, resumeBeforeReserve, taskRefund, taskExtra                  bool
 			}{
 				{name: "GPT-only plan uses rate one", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "GPT prefix without dash", model: "gpt5-custom", plans: []planSpec{special}, wallet: 1000, selected: 0},
@@ -299,9 +311,37 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "realtime wallet retains group rate", model: "gpt-4o", wallet: 1000, selected: -1, realtime: true},
 				{name: "task restricted plan retains frozen rate", model: "gpt-4o", plans: []planSpec{special}, selected: 0, task: true},
 				{name: "task unrestricted plan retains group rate", model: "gpt-4o", plans: []planSpec{general}, selected: 0, task: true},
+				{name: "frozen restricted plan falls back to wallet at group rate", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1},
+				{name: "frozen unrestricted plan falls back to wallet", model: "gpt-4o", plans: []planSpec{general}, frozenPlans: []int{0}, wallet: 1000, selected: -1},
+				{name: "frozen unlimited plan cannot fund requests", model: "gpt-4o", plans: []planSpec{{"", 0, 30}}, frozenPlans: []int{0}, wallet: 1000, selected: -1},
+				{name: "skip frozen higher priority restricted plan", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0}, selected: 1},
+				{name: "skip frozen higher priority unrestricted plan", model: "gpt-4o", plans: []planSpec{{"", 1000, 30}, special}, frozenPlans: []int{0}, selected: 1},
+				{name: "all frozen and empty wallet reject without charging", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0, 1}, selected: -1, rejected: true},
+				{name: "all frozen and insufficient wallet reject without charging", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0, 1}, wallet: 35, selected: -1, rejected: true},
+				{name: "frozen funded quota cannot rescue exhausted active plan", model: "gpt-4o", plans: []planSpec{special, {"", 20, 10}}, frozenPlans: []int{0}, wallet: 1000, selected: -1},
+				{name: "token shortage rolls back active plan without touching frozen plan", model: "gpt-4o", plans: []planSpec{{"", 1000, 30}, special}, frozenPlans: []int{0}, wallet: 1000, selected: 1, tokenInsufficient: true, rejected: true},
+				{name: "empty token blocks wallet fallback with frozen plans", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, tokenInsufficient: true, emptyToken: true, rejected: true},
+				{name: "failed wallet request refunds once without touching frozen plan", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, refund: true},
+				{name: "resumed plan becomes eligible with previous usage retained", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, selected: 0, resumeBeforeReserve: true},
+				{name: "request reserved before freeze settles on original plan through retry", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0, freezeAfterReserve: true, retry: true},
+				{name: "request reserved before freeze refunds original plan once", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0, freezeAfterReserve: true, refund: true},
+				{name: "realtime new session skips frozen plan", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, realtime: true},
+				{name: "realtime in-flight session settles after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, realtime: true},
+				{name: "task submission skips frozen plan", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, task: true},
+				{name: "in-flight task refunds excess reservation after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, task: true},
+				{name: "in-flight task charges additional usage after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, task: true, taskExtra: true},
+				{name: "failed in-flight task refunds once after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, task: true, taskRefund: true},
+				{name: "image request skips frozen plan and reserves wallet quantity", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, image: true},
+				{name: "image request skips frozen plan and reserves active plan quantity", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0}, selected: 1, image: true},
+				{name: "in-flight images retain original plan after freeze and count increase", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, image: true},
+				{name: "failed in-flight images refund original and extra reservations after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, image: true, refund: true},
+				{name: "image override cannot use frozen quota to cover wallet shortage", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 100, selected: -1, image: true, imageReserveRejected: true, refund: true},
 			} {
 				if tc.task && mode != "ratio" {
 					continue // Legacy token recalculation is not used for fixed or expression-priced tasks.
+				}
+				if tc.image && mode != "per_call" && mode != "tiered_fixed" {
+					continue // These cases exercise quantity-priced images.
 				}
 				t.Run(tc.name, func(t *testing.T) {
 					db := subscriptionBillingDB(t, true)
@@ -326,6 +366,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						expr := `tier("base", p * 2)`
 						if mode == "tiered_fixed" {
 							expr = `tier("request", fixed(0.0002))`
+							if tc.image {
+								expr += " * image_count"
+							}
 						}
 						modes, err := common.Marshal(map[string]string{tc.model: "tiered_expr"})
 						require.NoError(t, err)
@@ -369,20 +412,32 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					require.NoError(t, db.Create(&channel).Error)
 					t.Cleanup(func() { require.NoError(t, db.Delete(&channel).Error) })
 					var subs []model.UserSubscription
-					for _, spec := range tc.plans {
+					for i, spec := range tc.plans {
 						plan := model.SubscriptionPlan{Title: "rate plan", AllowedChannelTypes: spec.allowed, QuotaResetPeriod: model.SubscriptionResetNever}
 						require.NoError(t, db.Create(&plan).Error)
 						model.InvalidateSubscriptionPlanCache(plan.Id)
 						t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id); require.NoError(t, db.Delete(&plan).Error) })
 						now := model.GetDBTimestamp()
 						sub := model.UserSubscription{UserId: user.Id, PlanId: plan.Id, Status: "active", StartTime: now - 60, EndTime: now + 3600, AmountTotal: spec.quota, UserPriority: spec.priority}
+						if slices.Contains(tc.frozenPlans, i) {
+							sub.Status, sub.FrozenAt, sub.AmountUsed = "frozen", now-60, 17
+						}
 						require.NoError(t, db.Create(&sub).Error)
 						subs = append(subs, sub)
+					}
+					if tc.resumeBeforeReserve {
+						_, err := model.SetUserSubscriptionFrozen(user.Id, subs[tc.selected].Id, false)
+						require.NoError(t, err)
 					}
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 					info := &relaycommon.RelayInfo{RequestId: fmt.Sprintf("subscription-rate-%d", user.Id), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: "subscription-test", UserGroup: "subscription-user", ForcePreConsume: true, UserSetting: dto.UserSetting{QuotaWarningThreshold: -1}, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id, ChannelType: constant.ChannelTypeOpenAI}}
 					info.BillingRequestInput = &billingexpr.RequestInput{}
+					if tc.image {
+						info.ImageRequestCount = 1
+						info.BillingRequestInput.ImageCount = common.GetPointer(1)
+						c.Request.URL.Path = "/v1/images/generations"
+					}
 					price, err := helper.ModelPriceHelper(c, info, 101, &kittypes.TokenCountMeta{})
 					require.NoError(t, err)
 					apiErr := service.PreConsumeBilling(c, price.QuotaToPreConsume, info)
@@ -397,8 +452,14 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					if tc.realtime {
 						baseActual = 181
 					}
+					if tc.taskExtra {
+						baseActual = 181
+					}
 					if mode == "per_call" || mode == "tiered_fixed" {
 						baseEstimate, baseActual = 100, 100
+					}
+					if tc.image {
+						baseActual = 200 // Two delivered images, three reserved before submission.
 					}
 					expectedCharge := baseActual
 					expectedReserve := baseEstimate
@@ -410,6 +471,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						}
 						if baseActual == 181 {
 							expectedCharge = 65
+						}
+						if baseActual == 200 {
+							expectedCharge = 72
 						}
 					}
 					if wantedRate == 0 {
@@ -426,6 +490,12 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						require.Nil(t, info.Billing)
 					} else {
 						require.Nil(t, apiErr)
+						if tc.freezeAfterReserve {
+							// The holiday transition itself is exercised by the model
+							// tests. Here switch state at the real billing boundary.
+							require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", subs[tc.selected].Id).
+								Updates(map[string]any{"status": "frozen", "frozen_at": common.GetTimestamp()}).Error)
+						}
 						if wantedRate == 0 && tc.selected < 0 {
 							require.Nil(t, info.Billing)
 						} else {
@@ -445,6 +515,18 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							assert.Equal(t, 1.0, info.PriceData.GroupRatioInfo.GroupRatio)
 							assert.Equal(t, expectedReserve, info.FinalPreConsumedQuota)
 						}
+						if tc.image {
+							reserveErr := service.PrepareImageBillingForRequest(c, info, 3)
+							if tc.imageReserveRejected {
+								require.NotNil(t, reserveErr)
+								assert.Equal(t, kittypes.ErrorCodeInsufficientUserQuota, reserveErr.GetErrorCode())
+								assert.Equal(t, expectedReserve, info.Billing.GetPreConsumedQuota())
+							} else {
+								require.Nil(t, reserveErr)
+								assert.Equal(t, expectedReserve*3, info.Billing.GetPreConsumedQuota())
+								info.UpdateImageCount(2)
+							}
+						}
 						if tc.refund {
 							info.Billing.Refund(c)
 							info.Billing.Refund(c)
@@ -455,21 +537,45 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							expectedCharge = 0
 						} else if tc.task {
 							require.NoError(t, db.AutoMigrate(&model.Task{}))
+							info.TaskRelayInfo = &relaycommon.TaskRelayInfo{Action: "generate"}
+							// RelayTask records the submission's final quota before logging it.
+							info.PriceData.Quota = expectedReserve
 							require.NoError(t, service.SettleBilling(c, info, expectedReserve))
 							task := model.Task{TaskID: info.RequestId, UserId: user.Id, ChannelId: channel.Id, Quota: expectedReserve, Group: info.UsingGroup,
 								PrivateData: model.TaskPrivateData{BillingSource: info.BillingSource, SubscriptionId: info.SubscriptionId, TokenId: token.Id,
 									BillingContext: &model.TaskBillingContext{SubscriptionUsesUnitRatio: common.GetPointer(info.SubscriptionUsesUnitRatio), GroupRatio: wantedRate, ModelRatio: 1, OriginModelName: tc.model}}}
 							require.NoError(t, db.Create(&task).Error)
 							t.Cleanup(func() { require.NoError(t, db.Delete(&task).Error) })
-							require.True(t, service.RecalculateTaskQuotaByTokens(c, &task, 81))
+							service.LogTaskConsumption(c, info, &task)
+							if tc.taskRefund {
+								require.True(t, service.RefundTaskQuota(c, &task, "upstream failed while subscription frozen"))
+								require.True(t, service.RefundTaskQuota(c, &task, "duplicate failure notification"))
+								expectedCharge = 0
+							} else {
+								require.True(t, service.RecalculateTaskQuotaByTokens(c, &task, baseActual))
+								service.RecalculateTaskQuotaByTokens(c, &task, baseActual)
+							}
 							require.NoError(t, db.First(&task, task.ID).Error)
 							assert.Equal(t, expectedCharge, task.Quota)
 							require.NotNil(t, task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
 							assert.Equal(t, info.SubscriptionUsesUnitRatio, *task.PrivateData.BillingContext.SubscriptionUsesUnitRatio)
 							var log model.Log
-							require.NoError(t, db.Where("user_id = ?", user.Id).First(&log).Error)
+							logQuery := db.Where("user_id = ?", user.Id)
+							if tc.taskRefund {
+								logQuery = logQuery.Where("type = ?", model.LogTypeRefund)
+							}
+							require.NoError(t, logQuery.Order("id desc").First(&log).Error)
+							logQuota := expectedCharge - expectedReserve
+							if logQuota < 0 {
+								logQuota = -logQuota
+							}
+							assert.Equal(t, logQuota, log.Quota)
+							var logCount int64
+							require.NoError(t, db.Model(&model.Log{}).Where("user_id = ?", user.Id).Count(&logCount).Error)
+							assert.EqualValues(t, 2, logCount, "submission and one adjustment log, including after duplicate callbacks")
 							var other map[string]any
 							require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+							assert.Equal(t, info.BillingSource, other["billing_source"])
 							assert.Equal(t, wantedRate, other["billing_group_ratio"])
 							if info.SubscriptionUsesUnitRatio {
 								assert.Equal(t, "subscription_unit", other["billing_ratio_source"])
@@ -486,6 +592,10 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 								service.PostWssConsumeQuota(c, info, tc.model, usage, "")
 							} else {
 								service.PostTextConsumeQuota(c, info, &dto.Usage{PromptTokens: 81, TotalTokens: 81}, nil)
+							}
+							if tc.freezeAfterReserve {
+								require.NoError(t, info.Billing.Settle(expectedCharge))
+								info.Billing.Refund(c)
 							}
 							var log model.Log
 							require.NoError(t, db.Where("user_id = ?", user.Id).First(&log).Error)
@@ -514,15 +624,75 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					}
 					assert.Equal(t, tc.wallet-walletCharge, user.Quota)
 					assert.Equal(t, tokenQuota-expectedCharge, token.RemainQuota)
+					if tc.task {
+						assert.Equal(t, expectedCharge, user.UsedQuota)
+						assert.Equal(t, 1, user.RequestCount, "task completion/refund must not create additional requests")
+						require.NoError(t, db.First(&channel, channel.Id).Error)
+						assert.EqualValues(t, expectedCharge, channel.UsedQuota)
+					}
 					for i, sub := range subs {
 						require.NoError(t, db.First(&sub, sub.Id).Error)
-						used := 0
+						used := int(subs[i].AmountUsed)
 						if i == tc.selected {
-							used = expectedCharge
+							used += expectedCharge
 						}
 						assert.EqualValues(t, used, sub.AmountUsed)
+						if slices.Contains(tc.frozenPlans, i) && !tc.resumeBeforeReserve || tc.freezeAfterReserve && i == tc.selected {
+							assert.Equal(t, "frozen", sub.Status)
+						}
 					}
 				})
+			}
+		})
+	}
+}
+
+func TestSetSubscriptionFrozenValidatesRequestAndOwnership(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	require.NoError(t, db.Create(&model.User{Id: 41, Username: "freeze-api-user", Group: "default", AffCode: "freeze-api"}).Error)
+	require.NoError(t, db.Create(&model.User{Id: 42, Username: "freeze-foreign-user", Group: "default", AffCode: "freeze-foreign"}).Error)
+	now := model.GetDBTimestamp()
+	sub := model.UserSubscription{UserId: 41, PlanId: 1, Status: "frozen", FrozenAt: now - 3600, EndTime: now + 86400, AmountTotal: 1000, AmountUsed: 250}
+	require.NoError(t, db.Create(&sub).Error)
+	for _, tc := range []struct {
+		name, id, body string
+		userId         int
+		success        bool
+	}{
+		{"missing desired state", fmt.Sprint(sub.Id), `{}`, 41, false},
+		{"null desired state", fmt.Sprint(sub.Id), `{"frozen":null}`, 41, false},
+		{"wrong desired state type", fmt.Sprint(sub.Id), `{"frozen":"false"}`, 41, false},
+		{"malformed JSON", fmt.Sprint(sub.Id), `{"frozen":`, 41, false},
+		{"zero id", "0", `{"frozen":false}`, 41, false},
+		{"non-numeric id", "invalid", `{"frozen":false}`, 41, false},
+		{"invalid id", "-1", `{"frozen":false}`, 41, false},
+		{"missing authenticated user", fmt.Sprint(sub.Id), `{"frozen":false,"user_id":41}`, 0, false},
+		{"foreign subscription", fmt.Sprint(sub.Id), `{"frozen":false,"user_id":41}`, 42, false},
+		{"resume with untrusted client date", fmt.Sprint(sub.Id), `{"frozen":false,"now":9999999999,"date":"2026-10-01"}`, 41, true},
+		{"repeated resume", fmt.Sprint(sub.Id), `{"frozen":false}`, 41, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set("id", tc.userId)
+			c.Params = gin.Params{{Key: "id", Value: tc.id}}
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/subscription/self/1/freeze", strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			SetSubscriptionFrozen(c)
+			var response struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, tc.success, response.Success)
+			var saved model.UserSubscription
+			require.NoError(t, db.First(&saved, sub.Id).Error)
+			if !tc.success {
+				assert.Equal(t, "frozen", saved.Status)
+				assert.Equal(t, sub.EndTime, saved.EndTime)
+			} else {
+				assert.Equal(t, "active", saved.Status)
+				assert.InDelta(t, sub.EndTime+3600, saved.EndTime, 2)
+				assert.EqualValues(t, 250, saved.AmountUsed)
 			}
 		})
 	}

@@ -71,6 +71,7 @@ export const userSubscriptionSchema = z.object({
   source: z.string().optional(),
   start_time: z.number(),
   end_time: z.number(),
+  frozen_at: z.number().optional(),
   amount_total: z.number(),
   amount_used: z.number(),
   next_reset_time: z.number().optional(),
@@ -154,6 +155,14 @@ export interface SelfSubscriptionData {
   billing_preference: string
   subscriptions: UserSubscriptionRecord[]
   all_subscriptions: UserSubscriptionRecord[]
+  freeze_policy?: SubscriptionFreezePolicy
+}
+
+export interface SubscriptionFreezePolicy {
+  allowed: boolean
+  calendar_available: boolean
+  date: string
+  server_time: number
 }
 
 // ============================================================================

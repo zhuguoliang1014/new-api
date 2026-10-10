@@ -154,7 +154,27 @@ func GetSubscriptionSelf(c *gin.Context) {
 		"billing_preference": pref,
 		"subscriptions":      activeSubscriptions, // all active subscriptions
 		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"freeze_policy":      model.GetSubscriptionFreezePolicy(common.GetTimestamp()),
 	})
+}
+
+func SetSubscriptionFrozen(c *gin.Context) {
+	subId, err := strconv.Atoi(c.Param("id"))
+	var req struct {
+		Frozen *bool `json:"frozen" binding:"required"`
+	}
+	if err != nil || subId <= 0 || c.ShouldBindJSON(&req) != nil || req.Frozen == nil {
+		common.ApiErrorMsg(c, "参数错误")
+		return
+	}
+	userId := c.GetInt("id")
+	sub, err := model.SetUserSubscriptionFrozen(userId, subId, *req.Frozen)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	model.RecordLog(userId, model.LogTypeSystem, fmt.Sprintf("订阅冻结状态更新: 订阅 %d, 状态 %s", sub.Id, sub.Status))
+	common.ApiSuccess(c, sub)
 }
 
 func GetSubscriptionHistory(c *gin.Context) {

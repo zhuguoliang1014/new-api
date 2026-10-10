@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import i18next from 'i18next'
 import { afterEach, expect, test, vi } from 'vitest'
@@ -53,7 +54,11 @@ test.each([
             : [],
       },
     }))
-    render(<MySubscriptionsCard />)
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MySubscriptionsCard />
+      </QueryClientProvider>
+    )
     expect(await screen.findByText(expected)).toBeVisible()
     expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
   }

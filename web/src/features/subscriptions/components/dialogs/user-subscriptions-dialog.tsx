@@ -77,6 +77,11 @@ function SubscriptionStatusBadge(props: {
   const now = Date.now() / 1000
   const isExpired = (props.sub.end_time || 0) > 0 && props.sub.end_time < now
   const isActive = props.sub.status === 'active' && !isExpired
+  if (props.sub.status === 'frozen') {
+    return (
+      <StatusBadge label={props.t('Frozen')} variant='info' copyable={false} />
+    )
+  }
   if (isActive) {
     return (
       <StatusBadge
@@ -325,7 +330,15 @@ export function UserSubscriptionsDialog(props: Props) {
                           {t('Start')}: {formatTimestamp(sub.start_time)}
                         </div>
                         <div>
-                          {t('End')}: {formatTimestamp(sub.end_time)}
+                          {sub.status === 'frozen'
+                            ? t('Frozen since')
+                            : t('End')}
+                          :{' '}
+                          {formatTimestamp(
+                            sub.status === 'frozen'
+                              ? sub.frozen_at || 0
+                              : sub.end_time
+                          )}
                         </div>
                       </div>
                     )
@@ -375,7 +388,7 @@ export function UserSubscriptionsDialog(props: Props) {
                           </DropdownMenuShortcut>
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          disabled={!isActive}
+                          disabled={!isActive && sub.status !== 'frozen'}
                           onClick={() =>
                             setConfirmAction({
                               type: 'invalidate',

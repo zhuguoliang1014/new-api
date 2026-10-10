@@ -30,6 +30,7 @@ import type {
   SubscriptionPayResponse,
   SubscriptionPayRequest,
   SelfSubscriptionData,
+  UserSubscription,
 } from './types'
 
 // ============================================================================
@@ -224,7 +225,9 @@ export async function getSelfSubscriptions(): Promise<
 export async function getSelfSubscriptionFull(): Promise<
   ApiResponse<SelfSubscriptionData>
 > {
-  const res = await api.get('/api/subscription/self', { disableDuplicate: true })
+  const res = await api.get('/api/subscription/self', {
+    disableDuplicate: true,
+  })
   return res.data
 }
 
@@ -249,11 +252,24 @@ export async function updateSubscriptionPriorities(
   return res.data
 }
 
+export async function setSubscriptionFrozen(
+  id: number,
+  frozen: boolean
+): Promise<ApiResponse<UserSubscription>> {
+  const res = await api.put(`/api/subscription/self/${id}/freeze`, { frozen })
+  return res.data
+}
+
 export async function getSubscriptionHistory(
   page: number,
   pageSize: number
 ): Promise<
-  ApiResponse<{ page: number; page_size: number; total: number; items: UserSubscriptionRecord[] }>
+  ApiResponse<{
+    page: number
+    page_size: number
+    total: number
+    items: UserSubscriptionRecord[]
+  }>
 > {
   const res = await api.get(
     `/api/subscription/self/history?p=${page}&page_size=${pageSize}`

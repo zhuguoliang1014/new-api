@@ -324,7 +324,8 @@ type UserSubscription struct {
 
 	StartTime int64  `json:"start_time" gorm:"bigint"`
 	EndTime   int64  `json:"end_time" gorm:"bigint;index;index:idx_user_sub_active,priority:3"`
-	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/expired/cancelled
+	Status    string `json:"status" gorm:"type:varchar(32);index;index:idx_user_sub_active,priority:2"` // active/frozen/expired/cancelled
+	FrozenAt  int64  `json:"frozen_at" gorm:"type:bigint;not null;default:0"`
 
 	Source string `json:"source" gorm:"type:varchar(32);default:'order'"` // order/admin
 
@@ -1066,7 +1067,7 @@ func GetInactiveUserSubscriptionsPaginated(userId int, pageInfo *common.PageInfo
 	}
 	now := common.GetTimestamp()
 	query := DB.Model(&UserSubscription{}).
-		Where("user_id = ? AND (status != ? OR end_time <= ?)", userId, "active", now)
+		Where("user_id = ? AND status <> ? AND (status != ? OR end_time <= ?)", userId, "frozen", "active", now)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -1077,7 +1078,7 @@ func GetInactiveUserSubscriptionsPaginated(userId int, pageInfo *common.PageInfo
 	}
 
 	var subs []UserSubscription
-	err := DB.Where("user_id = ? AND (status != ? OR end_time <= ?)", userId, "active", now).
+	err := DB.Where("user_id = ? AND status <> ? AND (status != ? OR end_time <= ?)", userId, "frozen", "active", now).
 		Order("end_time desc, id desc").
 		Offset(pageInfo.GetStartIdx()).
 		Limit(pageInfo.GetPageSize()).
@@ -1428,6 +1429,9 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
+	if sub.Status == "frozen" {
+		return nil
+	}
 	if sub.NextResetTime > 0 && sub.NextResetTime > now {
 		return nil
 	}
@@ -1439,7 +1443,13 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 		baseUnix = sub.StartTime
 	}
 	base := time.Unix(baseUnix, 0)
-	next := calcNextResetTime(base, plan, sub.EndTime)
+	// A frozen subscription can resume with a postponed reset deadline that
+	// no longer falls on the usual calendar boundary. Honor that persisted
+	// deadline for the first reset, then calculate subsequent periods.
+	next := sub.NextResetTime
+	if next <= 0 {
+		next = calcNextResetTime(base, plan, sub.EndTime)
+	}
 	advanced := false
 	for next > 0 && next <= now {
 		advanced = true
@@ -1643,7 +1653,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 		err = DB.Transaction(func(tx *gorm.DB) error {
 			var locked UserSubscription
 			if err := lockForUpdate(tx).
-				Where("id = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, now).
+				Where("id = ? AND status = ? AND next_reset_time > 0 AND next_reset_time <= ?", subCopy.Id, "active", now).
 				First(&locked).Error; err != nil {
 				return nil
 			}
