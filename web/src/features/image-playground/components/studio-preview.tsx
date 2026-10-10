@@ -64,6 +64,45 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
     window.addEventListener('resize', fit)
     return () => window.removeEventListener('resize', fit)
   }, [dimensions])
+  useEffect(() => {
+    if (!dimensions || failed) return
+    const controls = transform.current
+    const viewport = controls?.instance.wrapperComponent
+    if (!controls || !viewport) return
+    let targetScale = controls.state.scale
+    let appliedScale = controls.state.scale
+    const zoomWithWheel = (event: WheelEvent) => {
+      if (
+        !Number.isFinite(event.deltaY) ||
+        event.deltaY === 0 ||
+        controls.instance.isPanning
+      ) {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      let delta = event.deltaY
+      if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) delta *= 16
+      if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+        delta *= viewport.clientHeight
+      }
+      // The built-in wheel step adds raw deltas to scale. Normalize units and
+      // cap each event to ~10% of the current scale, preserving fine trackpad input.
+      const factor = Math.exp(-Math.max(-100, Math.min(100, delta)) * 0.001)
+      if (controls.state.scale !== appliedScale) {
+        targetScale = controls.state.scale
+      }
+      // zoomToPoint rounds to 1%; retain smaller deltas across wheel events.
+      targetScale = Math.max(
+        controls.instance.setup.minScale,
+        Math.min(controls.instance.setup.maxScale, targetScale * factor)
+      )
+      void controls.zoomToPoint(targetScale, event.clientX, event.clientY, 0)
+      appliedScale = controls.state.scale
+    }
+    viewport.addEventListener('wheel', zoomWithWheel, { passive: false })
+    return () => viewport.removeEventListener('wheel', zoomWithWheel)
+  }, [dimensions, failed])
   const ready = Boolean(dimensions) && !failed
   return (
     <div
@@ -183,7 +222,7 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
           maxScale={4}
           centerOnInit
           doubleClick={{ disabled: true }}
-          wheel={{ step: 0.15 }}
+          wheel={{ disabled: true }}
           panning={{ velocityDisabled: true }}
           onTransform={(_ref, state) =>
             setZoom({ imageId: props.image.id, scale: state.scale })

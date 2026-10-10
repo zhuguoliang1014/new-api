@@ -159,6 +159,56 @@ it('switches images using controls and arrow keys, then fits each newly loaded o
   expect(screen.getByRole('img')).toHaveAttribute('src', images[0].src)
 })
 
+it.each([
+  { device: 'pixel wheel', deltaY: 120, deltaMode: 0 },
+  { device: 'line wheel', deltaY: 3, deltaMode: 1 },
+  { device: 'page wheel', deltaY: 1, deltaMode: 2 },
+  { device: 'accelerated wheel', deltaY: 1200, deltaMode: 0 },
+])(
+  'keeps a $device step gentle and reversible',
+  async ({ deltaY, deltaMode }) => {
+    render(<PreviewFixture />)
+    loadImage(screen.getByRole('img'), 3840, 2160)
+    await waitFor(() =>
+      expect(screen.getByLabelText('Zoom level')).toHaveTextContent('21%')
+    )
+    const image = screen.getByRole('img')
+    fireEvent.wheel(image, {
+      deltaY: -deltaY,
+      deltaMode,
+      clientX: 400,
+      clientY: 300,
+    })
+    const enlarged = Number.parseInt(
+      screen.getByLabelText('Zoom level').textContent ?? ''
+    )
+    expect(enlarged).toBeGreaterThan(21)
+    expect(enlarged).toBeLessThanOrEqual(23)
+    fireEvent.wheel(image, { deltaY, deltaMode, clientX: 400, clientY: 300 })
+    expect(screen.getByLabelText('Zoom level')).toHaveTextContent('21%')
+  }
+)
+
+it('keeps small trackpad deltas fine-grained and ignores horizontal scrolling', async () => {
+  render(<PreviewFixture />)
+  loadImage(screen.getByRole('img'), 1600, 1200)
+  await waitFor(() =>
+    expect(screen.getByLabelText('Zoom level')).toHaveTextContent('50%')
+  )
+  const image = screen.getByRole('img')
+  fireEvent.wheel(image, { deltaY: -1, clientX: 400, clientY: 300 })
+  expect(screen.getByLabelText('Zoom level')).toHaveTextContent('50%')
+  for (let tick = 0; tick < 19; tick++) {
+    fireEvent.wheel(image, { deltaY: -1, clientX: 400, clientY: 300 })
+  }
+  expect(screen.getByLabelText('Zoom level')).toHaveTextContent('51%')
+  fireEvent.wheel(image, { deltaX: 100, deltaY: 0 })
+  expect(screen.getByLabelText('Zoom level')).toHaveTextContent('51%')
+  fireEvent.click(screen.getByRole('button', { name: 'Original size' }))
+  fireEvent.wheel(image, { deltaY: -120, clientX: 400, clientY: 300 })
+  expect(screen.getByLabelText('Zoom level')).toHaveTextContent('111%')
+})
+
 it('keeps navigation available and disables zoom when a temporary image expires', async () => {
   render(<PreviewFixture />)
   await act(async () => fireEvent.error(screen.getByRole('img')))
