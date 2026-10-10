@@ -165,9 +165,8 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       <TitledCard
         title={t('Subscription Plans')}
         icon={<Crown className='h-4 w-4' aria-hidden='true' />}
-        contentClassName='@container'
       >
-        <div className='grid grid-cols-1 gap-4 @min-[36rem]:grid-cols-2 @min-[56rem]:grid-cols-3'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
           {['first', 'second', 'third'].map((key) => (
             <Skeleton key={key} className='h-80 w-full rounded-xl' />
           ))}
@@ -211,11 +210,11 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
           </Button>
         }
         disableHoverEffect
-        contentClassName='@container bg-muted/15'
+        contentClassName='bg-muted/15'
       >
         <div
           data-slot='subscription-plan-grid'
-          className='grid grid-cols-1 items-stretch gap-4 @min-[36rem]:grid-cols-2 @min-[56rem]:grid-cols-3'
+          className='grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3'
         >
           {plans.map((p, index) => {
             const plan = p?.plan
