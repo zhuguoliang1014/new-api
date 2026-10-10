@@ -1,155 +1,78 @@
-import { useEffect, useRef } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
-import { AlertTriangle, ImageIcon, KeyRound, RefreshCw } from 'lucide-react'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { getApiKeys, fetchTokenKey } from '@/features/keys/api'
-import type { ApiKey } from '@/features/keys/types'
-import { useImagePlaygroundStore } from './store'
 
-const STORAGE_KEY = 'image_playground_selected_key_id'
-const IMAGE_PLAYGROUND_BASE = 'https://aicloudroute.com/image/'
-const API_URL = 'https://aicloudroute.com/v1'
-const MODEL = 'gpt-image-2'
+import { ErrorState } from '@/components/error-state'
+import { useAuthStore } from '@/stores/auth-store'
 
-function isKeyUsable(key: ApiKey) {
-  return key.status === 1 && (key.unlimited_quota || key.remain_quota > 0)
+import { StudioComposer } from './components/studio-composer'
+import { StudioGallery } from './components/studio-gallery'
+import { useImageStudio } from './hooks/use-image-studio'
+
+import '@/styles/image-studio.css'
+
+export function ImagePlayground() {
+  const scope = useAuthStore((state) => state.auth.session?.sid)
+  // Remount transient dialogs/form state when the authenticated session changes.
+  return <ImageStudio key={scope} />
 }
 
-/**
- * Mounted inside AuthenticatedLayout, always in the DOM.
- * Hidden via CSS when not on the image-playground route.
- */
-export function ImagePlaygroundPanel() {
+function ImageStudio() {
   const { t } = useTranslation()
-  const { visible, iframeUrl, selectedId, loadingKey, setIframeUrl, setSelectedId, setLoadingKey } =
-    useImagePlaygroundStore()
-  const resolvedIdRef = useRef<number | null>(null)
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['image-playground-keys'],
-    queryFn: () => getApiKeys({ size: 100 }),
-    enabled: visible || selectedId !== null,
-  })
-
-  const usableKeys = (data?.data?.items ?? []).filter(isKeyUsable)
-
-  // Validate cached selection once keys load
-  useEffect(() => {
-    if (!data?.data) return
-    const stillValid = selectedId && usableKeys.some((k) => k.id === selectedId)
-    if (!stillValid) setSelectedId(usableKeys[0]?.id ?? null)
-  }, [data])
-
-  // Resolve real key whenever selectedId changes
-  useEffect(() => {
-    if (!selectedId || selectedId === resolvedIdRef.current) return
-    resolvedIdRef.current = selectedId
-    setIframeUrl(null)
-    setLoadingKey(true)
-    fetchTokenKey(selectedId)
-      .then((res) => {
-        if (res.success && res.data?.key) {
-          localStorage.setItem(STORAGE_KEY, String(selectedId))
-          const url = new URL(IMAGE_PLAYGROUND_BASE)
-          url.searchParams.set('apiUrl', API_URL)
-          url.searchParams.set('apiKey', `sk-${res.data.key}`)
-          url.searchParams.set('model', MODEL)
-          setIframeUrl(url.toString())
-        }
-      })
-      .finally(() => setLoadingKey(false))
-  }, [selectedId])
-
-  const handleSelect = (val: string | null) => {
-    if (val === null) return
-    resolvedIdRef.current = null
-    setSelectedId(Number(val))
-  }
-
-  const showNoKey = !isLoading && usableKeys.length === 0
-
+  const studio = useImageStudio()
   return (
-    <div className='flex h-full flex-col'>
-      {/* Warning banner */}
-      <div className='flex items-center gap-2 border-b bg-amber-50 px-4 py-1.5 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400'>
-        <AlertTriangle className='h-3.5 w-3.5 shrink-0' />
-        <span className='text-xs'>{t('Do not refresh the page while generating images, or the result will be lost.')}</span>
-      </div>
-
-      {/* Toolbar */}
-      <div className='flex items-center gap-2 border-b px-4 py-2'>
-        <ImageIcon className='text-muted-foreground h-4 w-4 shrink-0' />
-        <span className='text-muted-foreground text-sm'>{t('API Key')}:</span>
-        <Select
-          value={selectedId ? String(selectedId) : undefined}
-          onValueChange={handleSelect}
-        >
-          <SelectTrigger className='h-7 w-52 text-xs'>
-            <SelectValue placeholder={t('Select API Key')} />
-          </SelectTrigger>
-          <SelectContent>
-            {usableKeys.map((k) => (
-              <SelectItem key={k.id} value={String(k.id)}>
-                {k.name || `#${k.id}`}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {loadingKey && (
-          <RefreshCw className='text-muted-foreground h-3 w-3 animate-spin' />
-        )}
-      </div>
-
-      {/* Content */}
-      {showNoKey ? (
-        <div className='flex flex-1 flex-col items-center justify-center gap-4'>
-          <KeyRound className='text-muted-foreground h-10 w-10' />
-          <p className='text-muted-foreground text-sm'>
-            {t('You need an API Key to use Image Playground')}
-          </p>
-          <Button render={<Link to='/keys' />}>{t('Create API Key')}</Button>
+    <div className='image-studio'>
+      <header className='studio-header'>
+        <div className='studio-header-title'>
+          <div className='studio-logo'>
+            <ImageIcon size={22} aria-hidden='true' />
+          </div>
+          <div>
+            <h1>{t('Image Playground')}</h1>
+            <p>{t('An idea. A few words. An entirely new image.')}</p>
+          </div>
         </div>
-      ) : iframeUrl ? (
-        <iframe
-          key={iframeUrl}
-          src={iframeUrl}
-          className='min-h-0 flex-1 border-0'
-          allow='clipboard-read; clipboard-write'
-          title='Image Playground'
+        <span className='studio-header-tag'>
+          {t('Create without limits to your imagination')}
+        </span>
+      </header>
+      {studio.keysQuery.isError ? (
+        <ErrorState
+          title={t('Failed to load API keys')}
+          onRetry={() => void studio.keysQuery.refetch()}
         />
       ) : (
-        <div className='flex flex-1 items-center justify-center'>
-          <RefreshCw className='text-muted-foreground h-5 w-5 animate-spin' />
+        <div className='studio-workspace'>
+          <StudioComposer
+            keys={studio.keys}
+            keyId={studio.keyId}
+            keysLoading={studio.keysQuery.isLoading}
+            models={studio.modelsQuery.data ?? []}
+            modelsLoading={studio.modelsQuery.isLoading}
+            modelsError={studio.modelsQuery.isError}
+            retryModels={() => void studio.modelsQuery.refetch()}
+            onGenerate={studio.generate}
+          />
+          <StudioGallery />
         </div>
       )}
     </div>
   )
-}
-
-/**
- * Route page: just initializes state and marks the panel visible.
- * The actual iframe lives in ImagePlaygroundPanel above.
- */
-export function ImagePlayground() {
-  const { setVisible, setSelectedId } = useImagePlaygroundStore()
-
-  useEffect(() => {
-    // Restore cached key on mount
-    const cached = Number(localStorage.getItem(STORAGE_KEY))
-    if (cached) setSelectedId(cached)
-    setVisible(true)
-    return () => setVisible(false)
-  }, [])
-
-  // Render nothing — the panel in layout takes full space when visible
-  return null
 }

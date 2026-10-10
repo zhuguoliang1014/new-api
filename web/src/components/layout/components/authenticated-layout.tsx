@@ -21,10 +21,9 @@ import { SkipToMain } from '@/components/skip-to-main'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { LayoutProvider } from '@/context/layout-provider'
 import { SearchProvider } from '@/context/search-provider'
-import { ImagePlaygroundPanel } from '@/features/image-playground'
-import { useImagePlaygroundStore } from '@/features/image-playground/store'
 import { getCookie } from '@/lib/cookies'
 import { cn } from '@/lib/utils'
+
 import { AppHeader } from './app-header'
 import { AppSidebar } from './app-sidebar'
 
@@ -34,7 +33,6 @@ type AuthenticatedLayoutProps = {
 
 export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
   const defaultOpen = getCookie('sidebar_state') !== 'false'
-  const imagePanelVisible = useImagePlaygroundStore((s) => s.visible)
 
   return (
     <LayoutProvider>
@@ -54,12 +52,6 @@ export function AuthenticatedLayout(props: AuthenticatedLayoutProps) {
               )}
             >
               {props.children ?? <AnimatedOutlet />}
-              <div
-                className='absolute inset-0 z-10 bg-background'
-                style={imagePanelVisible ? undefined : { display: 'none', pointerEvents: 'none' }}
-              >
-                <ImagePlaygroundPanel />
-              </div>
             </SidebarInset>
           </div>
         </SidebarProvider>
