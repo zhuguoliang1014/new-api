@@ -18,6 +18,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   CalendarClock,
+  ChevronDown,
   CreditCard,
   GripVertical,
   History,
@@ -30,6 +31,11 @@ import { toast } from 'sonner'
 
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
@@ -101,7 +107,7 @@ function SubscriptionRow({
         transition,
       }}
       className={cn(
-        'group bg-background relative rounded-lg border transition-shadow',
+        'group bg-muted/20 relative min-w-0 rounded-lg border transition-shadow',
         isActive && 'border-border',
         !isActive && 'border-dashed opacity-70',
         isDragging && 'z-10 shadow-lg ring-1 ring-primary/40'
@@ -109,65 +115,65 @@ function SubscriptionRow({
     >
       <div className='flex items-stretch'>
         {draggable ? (
-          <button
+          <Button
             type='button'
-            className='text-muted-foreground/60 hover:bg-muted/50 hover:text-muted-foreground flex w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-l-lg active:cursor-grabbing'
+            variant='ghost'
+            className='text-muted-foreground h-auto w-11 shrink-0 cursor-grab touch-none self-stretch rounded-r-none active:cursor-grabbing'
             aria-label={t('Drag to reorder')}
             {...attributes}
             {...listeners}
           >
             <GripVertical className='size-4' />
-          </button>
-        ) : (
-          <div
-            className={cn(
-              'flex w-8 shrink-0 items-center justify-center',
-              !isActive && 'text-muted-foreground/40'
-            )}
-          />
-        )}
+          </Button>
+        ) : null}
 
-        <div className='min-w-0 flex-1 px-3 py-2.5 sm:px-3.5 sm:py-3'>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <div className='min-w-0 flex-1'>
-              <span className='truncate text-sm font-semibold'>
-                {planTitle || t('Subscription')}
-              </span>
+        <div className='grid min-w-0 flex-1 items-center gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] md:gap-6'>
+          <div className='min-w-0'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div className='min-w-0 flex-1'>
+                <span className='text-sm font-semibold break-words'>
+                  {planTitle || t('Subscription')}
+                </span>
+              </div>
+              <StatusBadge
+                label={statusLabel}
+                variant={isActive ? 'success' : 'neutral'}
+                copyable={false}
+              />
             </div>
-            <StatusBadge
-              label={statusLabel}
-              variant={isActive ? 'success' : 'neutral'}
-              copyable={false}
-            />
-          </div>
 
-          <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
-            <span className='text-muted-foreground inline-flex items-center gap-1'>
-              <CalendarClock className='size-3.5' />
-              {endLabel}{' '}
-              <span className='text-foreground/80'>
-                {new Date(subscription.end_time * 1000).toLocaleDateString()}
+            <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+              <span className='text-muted-foreground inline-flex items-center gap-1'>
+                <CalendarClock className='size-3.5' />
+                {endLabel}{' '}
+                <span className='text-foreground/80'>
+                  {new Date(subscription.end_time * 1000).toLocaleDateString()}
+                </span>
               </span>
-            </span>
-            {isActive ? (
-              <span className='text-foreground/90 font-medium tabular-nums'>
-                {t('{{count}} days remaining', { count: remainingDays })}
-              </span>
-            ) : null}
+              {isActive ? (
+                <span className='text-foreground/90 font-medium tabular-nums'>
+                  {t('{{count}} days remaining', { count: remainingDays })}
+                </span>
+              ) : null}
+            </div>
           </div>
 
           {totalAmount > 0 ? (
-            <div className='mt-2.5'>
-              <div className='text-muted-foreground/80 mb-1 flex items-center justify-between text-[11px]'>
+            <div className='min-w-0'>
+              <div className='text-muted-foreground mb-1.5 flex flex-wrap items-center justify-between gap-x-2 text-xs'>
                 <span className='inline-flex items-center gap-1'>
                   <CreditCard className='size-3' />
                   {formatQuota(usedAmount)} / {formatQuota(totalAmount)}
                 </span>
                 <span className='tabular-nums'>{usagePercent}%</span>
               </div>
-              <Progress value={usagePercent} className='h-1.5' />
+              <Progress
+                value={usagePercent}
+                aria-label={t('Available Quota')}
+                className='h-1.5'
+              />
               {isActive ? (
-                <div className='text-muted-foreground/60 mt-1 text-[11px]'>
+                <div className='text-muted-foreground mt-1.5 text-xs'>
                   {t('Remaining')} {formatQuota(remainingAmount)}
                 </div>
               ) : null}
@@ -204,6 +210,7 @@ export function MySubscriptionsCard({
   const [refreshing, setRefreshing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
   const initialOrderRef = useRef<number[]>([])
 
@@ -333,75 +340,93 @@ export function MySubscriptionsCard({
   const activeCount = activeSubscriptions.length
   const inactiveCount = inactive.length
   const draggable = activeOrder.length > 1
+  const showAllSubscriptions = expanded && draggable
 
   if (loading) {
     return (
       <TitledCard
         title={t('My Subscriptions')}
-        icon={<Layers className='h-4 w-4' />}
+        icon={<Layers className='h-4 w-4' aria-hidden='true' />}
       >
-        <div className='space-y-3'>
-          <Skeleton className='h-9 w-full' />
-          <Skeleton className='h-24 w-full' />
-          <Skeleton className='h-24 w-full' />
-        </div>
+        <Skeleton className='h-20 w-full' />
       </TitledCard>
     )
   }
 
-  return (
-    <TitledCard
-      title={t('My Subscriptions')}
-      description={
-        draggable ? t('Drag subscriptions to set deduction order') : undefined
-      }
-      icon={<Layers className='h-4 w-4' />}
-      action={
-        <Button
-          variant='ghost'
-          size='icon'
-          className='h-8 w-8'
-          onClick={handleRefresh}
-          disabled={refreshing || saving}
-        >
-          <RefreshCw className={cn('h-4 w-4', refreshing && 'animate-spin')} />
-        </Button>
-      }
-      contentClassName='space-y-3.5'
-    >
-      <div className='bg-muted/30 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2'>
-        <div className='flex flex-wrap items-center gap-2 text-xs'>
-          {activeCount > 0 ? (
-            <StatusBadge
-              copyable={false}
-              variant='success'
-              label={`${activeCount} ${t('active')}`}
-            />
-          ) : (
-            <StatusBadge
-              copyable={false}
-              variant='neutral'
-              label={t('No Active')}
-            />
-          )}
-          {inactiveCount > 0 ? (
-            <span className='text-muted-foreground'>
-              · {inactiveCount} {t('expired')}
-            </span>
-          ) : null}
-        </div>
-        <div className='flex w-full items-center gap-1.5 sm:w-auto'>
-          <span className='text-muted-foreground hidden text-xs sm:inline'>
-            {t('Deduction Mode')}
-          </span>
-          <span className='text-muted-foreground text-xs'>
-            {t('Matching subscriptions first, then wallet balance')}
-          </span>
-        </div>
-      </div>
+  const firstSubscription = orderedActive[0]
 
-      {allSubscriptions.length > 0 ? (
-        <div className='space-y-2'>
+  return (
+    <section aria-label={t('My Subscriptions')}>
+      <Collapsible open={showAllSubscriptions} onOpenChange={setExpanded}>
+        <TitledCard
+          title={
+            <span className='flex flex-wrap items-center gap-2'>
+              {t('My Subscriptions')}
+              <StatusBadge
+                copyable={false}
+                variant={activeCount > 0 ? 'success' : 'neutral'}
+                label={
+                  activeCount > 0
+                    ? `${activeCount} ${t('active')}`
+                    : t('No Active')
+                }
+              />
+            </span>
+          }
+          description={t('Matching subscriptions first, then wallet balance')}
+          icon={<Layers className='h-4 w-4' aria-hidden='true' />}
+          disableHoverEffect
+          headerClassName={cn(
+            'border-b-0 !pb-3 sm:!pb-3',
+            !draggable &&
+              inactiveCount === 0 &&
+              '[&>div]:flex-row [&>div>div:last-child]:w-auto'
+          )}
+          contentClassName='pt-0 sm:pt-0'
+          action={
+            <div className='flex flex-wrap items-center gap-1'>
+              {draggable && (
+                <CollapsibleTrigger
+                  render={<Button variant='outline' className='h-9 gap-2' />}
+                >
+                  {showAllSubscriptions
+                    ? t('Collapse')
+                    : t('Manage subscriptions')}
+                  <ChevronDown
+                    className={cn(
+                      'size-4',
+                      showAllSubscriptions && 'rotate-180'
+                    )}
+                    aria-hidden='true'
+                  />
+                </CollapsibleTrigger>
+              )}
+              {inactiveCount > 0 && (
+                <Button
+                  variant='ghost'
+                  className='h-9'
+                  onClick={() => setHistoryDialogOpen(true)}
+                >
+                  <History className='size-4' aria-hidden='true' />
+                  {t('Subscription History')} ({inactiveCount})
+                </Button>
+              )}
+              <Button
+                variant='ghost'
+                size='icon'
+                className='size-9'
+                aria-label={t('Refresh')}
+                onClick={handleRefresh}
+                disabled={refreshing || saving}
+              >
+                <RefreshCw
+                  className={cn('size-4', refreshing && 'animate-spin')}
+                  aria-hidden='true'
+                />
+              </Button>
+            </div>
+          }
+        >
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -411,43 +436,54 @@ export function MySubscriptionsCard({
               items={activeOrder}
               strategy={verticalListSortingStrategy}
             >
-              {orderedActive.map((record) => (
+              {!showAllSubscriptions && firstSubscription && (
                 <SubscriptionRow
-                  key={record.subscription.id}
-                  record={record}
+                  record={firstSubscription}
                   planTitle={
-                    record.plan_title ||
-                    planTitleMap.get(record.subscription.plan_id) ||
+                    firstSubscription.plan_title ||
+                    planTitleMap.get(firstSubscription.subscription.plan_id) ||
                     ''
                   }
-                  draggable={draggable}
+                  draggable={false}
                   nowSec={nowSec}
                 />
-              ))}
+              )}
+              <CollapsibleContent>
+                <p className='text-muted-foreground mb-3 text-xs'>
+                  {t('Drag subscriptions to set deduction order')}
+                </p>
+                <div className='space-y-2'>
+                  {showAllSubscriptions &&
+                    orderedActive.map((record) => (
+                      <SubscriptionRow
+                        key={record.subscription.id}
+                        record={record}
+                        planTitle={
+                          record.plan_title ||
+                          planTitleMap.get(record.subscription.plan_id) ||
+                          ''
+                        }
+                        draggable={draggable}
+                        nowSec={nowSec}
+                      />
+                    ))}
+                </div>
+              </CollapsibleContent>
             </SortableContext>
           </DndContext>
-          {inactiveCount > 0 && (
-            <Button
-              variant='outline'
-              size='sm'
-              className='w-full'
-              onClick={() => setHistoryDialogOpen(true)}
-            >
-              <History className='h-4 w-4' />
-              {t('Subscription History')} ({inactiveCount})
-            </Button>
+          {!firstSubscription && (
+            <p className='text-muted-foreground bg-muted/30 rounded-lg px-4 py-3 text-sm'>
+              {allSubscriptions.length > 0
+                ? t('No Active')
+                : t('No subscription records')}
+            </p>
           )}
-        </div>
-      ) : (
-        <div className='text-muted-foreground rounded-lg border border-dashed py-10 text-center text-sm'>
-          {t('No subscription records')}
-        </div>
-      )}
-
+        </TitledCard>
+      </Collapsible>
       <SubscriptionHistoryDialog
         open={historyDialogOpen}
         onOpenChange={setHistoryDialogOpen}
       />
-    </TitledCard>
+    </section>
   )
 }

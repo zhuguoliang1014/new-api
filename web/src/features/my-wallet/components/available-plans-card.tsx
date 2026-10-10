@@ -166,7 +166,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         title={t('Subscription Plans')}
         icon={<Crown className='h-4 w-4' aria-hidden='true' />}
       >
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3'>
+        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 min-[90rem]:grid-cols-4'>
           {['first', 'second', 'third'].map((key) => (
             <Skeleton key={key} className='h-80 w-full rounded-xl' />
           ))}
@@ -193,6 +193,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       <TitledCard
         title={t('Subscription Plans')}
         description={t('Subscribe to a plan for model access')}
+        headerClassName='[&>div]:flex-row [&>div>div:last-child]:w-auto'
         icon={<Crown className='h-4 w-4' aria-hidden='true' />}
         action={
           <Button
@@ -214,7 +215,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       >
         <div
           data-slot='subscription-plan-grid'
-          className='grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3'
+          className='grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 min-[90rem]:grid-cols-4'
         >
           {plans.map((p, index) => {
             const plan = p?.plan
@@ -303,8 +304,8 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                 )}
               >
                 <CardContent className='flex h-full min-w-0 flex-col p-4 sm:p-5'>
-                  <div className='flex min-h-14 items-start justify-between gap-3'>
-                    <div className='flex min-w-0 flex-1 items-start gap-2.5'>
+                  <div className='flex min-h-16 items-start gap-3'>
+                    <div className='flex min-w-0 flex-1 items-start gap-3'>
                       <span
                         data-slot='plan-provider-icon'
                         aria-hidden='true'
@@ -319,7 +320,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         <h3
                           id={`subscription-plan-${plan.id}`}
                           title={plan.title || t('Subscription Plans')}
-                          className='truncate text-lg font-semibold tracking-tight'
+                          className='text-lg leading-snug font-semibold tracking-tight break-words'
                         >
                           {plan.title || t('Subscription Plans')}
                         </h3>
@@ -333,17 +334,18 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         )}
                       </div>
                     </div>
-                    <div className='max-w-[45%] min-w-0 shrink-0 text-right'>
-                      <p className='text-xl leading-snug font-semibold tracking-tight break-all tabular-nums'>
-                        {priceLabel}
-                      </p>
-                      <p className='text-muted-foreground mt-1 text-xs whitespace-nowrap'>
-                        / {duration}
-                      </p>
-                    </div>
                   </div>
 
-                  <div className='mt-4'>
+                  <div className='mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
+                    <p className='text-3xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                      {priceLabel}
+                    </p>
+                    <p className='text-muted-foreground text-xs whitespace-nowrap'>
+                      / {duration}
+                    </p>
+                  </div>
+
+                  <div className='bg-muted/40 mt-4 rounded-lg p-3'>
                     <div className='flex min-h-5 flex-wrap items-center justify-between gap-2'>
                       <p className='text-muted-foreground text-xs'>
                         {t('Available Quota')}
@@ -357,7 +359,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         />
                       )}
                     </div>
-                    <p className='mt-1.5 text-4xl leading-tight font-semibold tracking-tight break-all tabular-nums'>
+                    <p className='mt-1.5 text-3xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                       {quotaLabel}
                     </p>
                     {soldCount > 0 && (

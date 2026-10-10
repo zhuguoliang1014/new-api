@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react'
+
+import type { MyWalletTopupInfo } from '../types'
 import { AvailablePlansCard } from './available-plans-card'
 import { MySubscriptionsCard } from './my-subscriptions-card'
-import type { MyWalletTopupInfo } from '../types'
 
 interface SubscriptionTabProps {
   topupInfo: MyWalletTopupInfo | null
@@ -19,12 +20,15 @@ export function SubscriptionTab({
   }, [onPurchaseComplete])
 
   return (
-    <div className='grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] xl:items-start'>
+    <div
+      data-slot='subscription-layout'
+      className='flex min-w-0 flex-col gap-4'
+    >
+      <MySubscriptionsCard refreshSignal={refreshSignal} />
       <AvailablePlansCard
         topupInfo={topupInfo}
         onPurchaseComplete={triggerRefresh}
       />
-      <MySubscriptionsCard refreshSignal={refreshSignal} />
     </div>
   )
 }

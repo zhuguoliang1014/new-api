@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
 import { Gift, Loader2, WalletCards } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatNumber } from '@/lib/format'
-import { cn } from '@/lib/utils'
+
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,6 +9,9 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 import { getDiscountLabel, getPaymentIcon } from '@/features/wallet/lib'
+import { formatNumber } from '@/lib/format'
+import { cn } from '@/lib/utils'
+
 import type { PresetAmount } from '../types'
 
 interface RechargeTabProps {
@@ -75,7 +77,7 @@ export function RechargeTab({
 
   const handleAmountChange = (value: string) => {
     setLocalAmount(value)
-    const numValue = parseInt(value) || 0
+    const numValue = Number.parseInt(value) || 0
     if (numValue >= 0) onTopupAmountChange(numValue)
   }
 
@@ -84,16 +86,82 @@ export function RechargeTab({
 
   return (
     <div id='wallet-add-funds' className='scroll-mt-4'>
-      <div className='grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start'>
-        <TitledCard
-          title={t('Add Funds')}
-          description={t('Pay in CNY (¥), receive USD ($) credit')}
-          icon={<WalletCards className='h-4 w-4' />}
-          contentClassName='space-y-4 sm:space-y-5'
+      <TitledCard
+        title={t('Add Funds')}
+        description={t('Pay in CNY (¥), receive USD ($) credit')}
+        icon={<WalletCards className='h-4 w-4' aria-hidden='true' />}
+        disableHoverEffect
+        contentClassName='space-y-5 sm:space-y-6'
+      >
+        <section
+          aria-label={t('Redemption Code')}
+          className='bg-muted/30 rounded-xl border p-3 sm:p-4'
         >
-          {loading ? (
-            <RechargeSkeleton />
-          ) : !hupijiaoEnabled ? (
+          {redemptionEnabled ? (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                if (!redeeming && redemptionCode.trim()) onRedeem()
+              }}
+              className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-6'
+            >
+              <div className='flex items-center gap-3'>
+                <Gift
+                  className='text-muted-foreground size-5 shrink-0'
+                  aria-hidden='true'
+                />
+                <div>
+                  <Label
+                    htmlFor='redemption-code'
+                    className='text-sm font-medium'
+                  >
+                    {t('Redemption Code')}
+                  </Label>
+                  <p className='text-muted-foreground mt-1 text-xs'>
+                    {t('Have a code? Redeem it for credit')}
+                  </p>
+                </div>
+              </div>
+              <div className='flex min-w-0 gap-2 md:w-1/2'>
+                <Input
+                  id='redemption-code'
+                  value={redemptionCode}
+                  onChange={(event) =>
+                    onRedemptionCodeChange(event.target.value)
+                  }
+                  placeholder={t('Enter your redemption code')}
+                  disabled={redeeming}
+                  className='bg-background h-11 min-w-0 flex-1'
+                />
+                <Button
+                  type='submit'
+                  disabled={redeeming || !redemptionCode.trim()}
+                  variant='outline'
+                  className='h-11 px-4'
+                >
+                  {redeeming && (
+                    <Loader2
+                      className='size-4 animate-spin'
+                      aria-hidden='true'
+                    />
+                  )}
+                  {t('Redeem')}
+                </Button>
+              </div>
+            </form>
+          ) : (
+            <Alert>
+              <AlertDescription>
+                {t(
+                  'Redemption codes are disabled until the administrator confirms compliance terms.'
+                )}
+              </AlertDescription>
+            </Alert>
+          )}
+        </section>
+        <div className='space-y-5 sm:space-y-6'>
+          {loading && <RechargeSkeleton />}
+          {!loading && !hupijiaoEnabled && (
             <Alert>
               <AlertDescription>
                 {t(
@@ -101,7 +169,8 @@ export function RechargeTab({
                 )}
               </AlertDescription>
             </Alert>
-          ) : (
+          )}
+          {!loading && hupijiaoEnabled && (
             <>
               {showPresets ? (
                 <div className='space-y-2.5 sm:space-y-3'>
@@ -121,11 +190,12 @@ export function RechargeTab({
                           key={preset.value}
                           variant='outline'
                           className={cn(
-                            'hover:border-foreground flex min-h-16 flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[72px] sm:p-4',
+                            'hover:border-primary/50 flex min-h-20 flex-col items-start rounded-lg px-3 py-2.5 text-left whitespace-normal sm:min-h-[72px] sm:p-4',
                             isSelected
-                              ? 'border-foreground bg-foreground/5'
+                              ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
                               : 'border-muted'
                           )}
+                          aria-pressed={isSelected}
                           onClick={() => onSelectPreset(preset)}
                         >
                           <div className='flex w-full items-center justify-between'>
@@ -145,7 +215,8 @@ export function RechargeTab({
                             {hasDiscount && saved > 0 ? (
                               <span className='text-green-600'>
                                 {' '}
-                                · {t('Save {{amount}}', {
+                                ·{' '}
+                                {t('Save {{amount}}', {
                                   amount: formatCny(saved),
                                 })}
                               </span>
@@ -165,7 +236,7 @@ export function RechargeTab({
                 >
                   {t('Custom Amount (USD)')}
                 </Label>
-                <div className='grid grid-cols-[minmax(0,1fr)_minmax(140px,0.6fr)] gap-2 lg:items-center'>
+                <div className='grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(180px,0.6fr)] sm:items-center'>
                   <div className='relative'>
                     <span className='text-muted-foreground pointer-events-none absolute inset-y-0 left-3 flex items-center text-base font-medium sm:text-lg'>
                       $
@@ -177,10 +248,10 @@ export function RechargeTab({
                       onChange={(e) => handleAmountChange(e.target.value)}
                       min={minTopup}
                       placeholder={String(minTopup)}
-                      className='h-9 pl-7 text-base sm:h-10 sm:text-lg'
+                      className='h-11 pl-7 text-base'
                     />
                   </div>
-                  <div className='bg-muted/30 flex min-h-9 items-center justify-between gap-2 rounded-md border px-3'>
+                  <div className='bg-muted/30 flex min-h-11 items-center justify-between gap-2 rounded-md border px-3'>
                     <span className='text-muted-foreground truncate text-xs'>
                       {t('Amount to pay:')}
                     </span>
@@ -207,10 +278,9 @@ export function RechargeTab({
                   {t('Payment Method')}
                 </Label>
                 <Button
-                  variant='outline'
                   onClick={onAlipayClick}
                   disabled={belowMin || !!paymentLoading || topupAmount <= 0}
-                  className='h-10 w-full justify-center gap-2 rounded-lg sm:w-auto sm:px-6'
+                  className='h-11 w-full justify-center gap-2 rounded-lg sm:w-auto sm:min-w-48 sm:px-6'
                 >
                   {paymentLoading === 'alipay' ? (
                     <Loader2 className='h-4 w-4 animate-spin' />
@@ -222,51 +292,8 @@ export function RechargeTab({
               </div>
             </>
           )}
-        </TitledCard>
-
-        {redemptionEnabled ? (
-          <TitledCard
-            title={t('Redemption Code')}
-            description={t('Have a code? Redeem it for credit')}
-            icon={<Gift className='h-4 w-4' />}
-            contentClassName='space-y-3'
-          >
-            <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-2'>
-              <Input
-                id='redemption-code'
-                value={redemptionCode}
-                onChange={(e) => onRedemptionCodeChange(e.target.value)}
-                placeholder={t('Enter your redemption code')}
-                className='h-9 min-w-0'
-              />
-              <Button
-                onClick={onRedeem}
-                disabled={redeeming || !redemptionCode.trim()}
-                variant='outline'
-                className='h-9 px-4'
-              >
-                {redeeming ? (
-                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                ) : null}
-                {t('Redeem')}
-              </Button>
-            </div>
-          </TitledCard>
-        ) : (
-          <TitledCard
-            title={t('Redemption Code')}
-            icon={<Gift className='h-4 w-4' />}
-          >
-            <Alert>
-              <AlertDescription>
-                {t(
-                  'Redemption codes are disabled until the administrator confirms compliance terms.'
-                )}
-              </AlertDescription>
-            </Alert>
-          </TitledCard>
-        )}
-      </div>
+        </div>
+      </TitledCard>
     </div>
   )
 }
@@ -277,8 +304,8 @@ function RechargeSkeleton() {
       <div className='space-y-3'>
         <Skeleton className='h-3 w-16' />
         <div className='grid grid-cols-2 gap-3 sm:grid-cols-3'>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className='h-[72px] rounded-lg' />
+          {['one', 'two', 'three', 'four', 'five', 'six'].map((key) => (
+            <Skeleton key={key} className='h-[72px] rounded-lg' />
           ))}
         </div>
       </div>

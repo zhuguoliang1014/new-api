@@ -121,7 +121,7 @@ afterEach(() => {
   useSystemConfigStore.getState().setConfig(originalConfig)
 })
 
-it('lays out cards by container width and keeps price cycles and action rows compact', async () => {
+it('lays out cards by viewport width and keeps price cycles and action rows compact', async () => {
   const { container } = await renderPlans([
     plan(),
     plan({ id: 2, title: '凌云版', price_cny: 1000, total_amount: 1925000000 }),
@@ -131,8 +131,11 @@ it('lays out cards by container width and keeps price cycles and action rows com
     container.querySelector('[data-slot="subscription-plan-grid"]')
   ).toHaveClass(
     'grid-cols-1',
-    '@min-[36rem]:grid-cols-2',
-    '@min-[56rem]:grid-cols-3'
+    'sm:grid-cols-2',
+    'md:grid-cols-1',
+    'lg:grid-cols-2',
+    'xl:grid-cols-3',
+    'min-[90rem]:grid-cols-4'
   )
   const card = screen.getByRole('article', { name: '苍穹版' })
   expect(within(card).getByText('¥2,000')).toBeVisible()
@@ -164,7 +167,7 @@ it('keeps long plan names, descriptions and details contained without losing the
   await renderPlans([plan({ title, subtitle })])
   const card = screen.getByRole('article', { name: title })
   expect(within(card).getByRole('heading', { name: title })).toHaveClass(
-    'truncate'
+    'break-words'
   )
   expect(within(card).getByRole('heading', { name: title })).toHaveAttribute(
     'title',
