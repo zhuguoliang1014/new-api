@@ -58,6 +58,45 @@ const parameters = {
 }
 
 describe('image relay contracts', () => {
+  it.each([false, true])(
+    'preserves a 4K portrait request without falling back to auto (editing: %s)',
+    async (editing) => {
+      const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+        data: { data: [{ b64_json: 'aW1hZ2U=' }] },
+      })
+      const files = editing
+        ? [new File(['image'], 'reference.png', { type: 'image/png' })]
+        : []
+      await generateImages(
+        7,
+        { ...parameters, size: '2304x3456', quality: 'high' },
+        files,
+        new AbortController().signal
+      )
+      const body = post.mock.calls[0][1]
+      if (editing) {
+        expect((body as FormData).get('size')).toBe('2304x3456')
+        expect((body as FormData).get('quality')).toBe('high')
+      } else {
+        expect(body).toMatchObject({ size: '2304x3456', quality: 'high' })
+      }
+    }
+  )
+
+  it('rejects a 4K request for a legacy model before spending quota', async () => {
+    const post = vi.spyOn(imageRelayClient, 'post')
+    await expect(
+      generateImages(
+        7,
+        { ...parameters, model: 'gpt-image-1', size: '2304x3456' },
+        [],
+        new AbortController().signal
+      )
+    ).rejects.toThrow()
+    expect(fetchTokenKey).not.toHaveBeenCalled()
+    expect(post).not.toHaveBeenCalled()
+  })
+
   it('generates through the same-origin relay with only the selected token in a header', async () => {
     const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
       data: { data: [{ b64_json: 'aW1hZ2U=', revised_prompt: 'A lake' }] },
@@ -147,8 +186,8 @@ describe('image relay contracts', () => {
         ...parameters,
         model: 'dall-e-3',
         count: 4,
-        size: '1536x1024',
-        quality: 'high',
+        size: '1792x1024',
+        quality: 'hd',
         background: 'transparent',
         format: 'jpeg',
       },
@@ -159,6 +198,8 @@ describe('image relay contracts', () => {
       model: 'dall-e-3',
       prompt: parameters.prompt,
       n: 1,
+      size: '1792x1024',
+      quality: 'hd',
       response_format: 'b64_json',
     })
   })

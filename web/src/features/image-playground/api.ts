@@ -136,11 +136,14 @@ export async function generateImages(
 ): Promise<ImageOutput[]> {
   // The workbench deliberately offers 1–4 images; server dto.MaxImageN (128)
   // remains the canonical security and accounting bound for every API caller.
-  const parameters = normalizeImageParameters(
-    imageParametersSchema.parse(input)
-  )
+  const parsed = imageParametersSchema.parse(input)
+  const options = getImageModelOptions(parsed.model)
+  // Never silently downgrade an explicit resolution before a billable request.
+  if (!options.sizes.includes(parsed.size)) {
+    throw new Error(t('This model does not support the selected image size.'))
+  }
+  const parameters = normalizeImageParameters(parsed)
   validateReferenceFiles(references)
-  const options = getImageModelOptions(parameters.model)
   if (references.length && !options.supportsReferences) {
     throw new Error(t('Choose a model that supports reference images.'))
   }

@@ -38,14 +38,16 @@ import {
 } from '../lib/images'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageOutput, ImageRecord } from '../types'
+import { ImageSizeDetails, type ImageDimensions } from './image-size-details'
 
 export function ImageArtwork(props: {
   image: ImageOutput
   onPreview?: () => void
-  large?: boolean
+  requestedSize?: string
 }) {
   const { t } = useTranslation()
   const [failed, setFailed] = useState(false)
+  const [dimensions, setDimensions] = useState<ImageDimensions | null>(null)
   if (failed) {
     return (
       <ErrorState
@@ -68,35 +70,39 @@ export function ImageArtwork(props: {
       />
     )
   }
-  if (props.large) {
-    return (
-      <img
-        className='studio-preview-image'
-        src={props.image.src}
-        alt={t('Generated image')}
-        onError={() => setFailed(true)}
-        referrerPolicy='no-referrer'
-      />
-    )
-  }
   return (
-    <Button
-      variant='ghost'
-      className='studio-image-button'
-      aria-label={t('Image Preview')}
-      onClick={props.onPreview}
-    >
-      <img
-        src={props.image.src}
-        alt={t('Generated image')}
-        loading='lazy'
-        referrerPolicy='no-referrer'
-        onError={() => setFailed(true)}
+    <>
+      <Button
+        variant='ghost'
+        className='studio-image-button'
+        aria-label={t('Image Preview')}
+        onClick={props.onPreview}
+      >
+        <img
+          src={props.image.src}
+          alt={t('Generated image')}
+          loading='lazy'
+          referrerPolicy='no-referrer'
+          onError={() => setFailed(true)}
+          onLoad={(event) => {
+            const image = event.currentTarget
+            if (image.naturalWidth && image.naturalHeight) {
+              setDimensions({
+                width: image.naturalWidth,
+                height: image.naturalHeight,
+              })
+            }
+          }}
+        />
+        <span className='studio-image-expand'>
+          <Maximize2 size={16} aria-hidden='true' />
+        </span>
+      </Button>
+      <ImageSizeDetails
+        dimensions={dimensions}
+        requestedSize={props.requestedSize}
       />
-      <span className='studio-image-expand'>
-        <Maximize2 size={16} aria-hidden='true' />
-      </span>
-    </Button>
+    </>
   )
 }
 

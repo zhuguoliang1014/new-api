@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import { imageAspectPresets, imageSizeValues } from './lib/sizes'
+
 export const imageParametersSchema = z.object({
   prompt: z
     .string()
@@ -25,16 +27,7 @@ export const imageParametersSchema = z.object({
     .min(1, 'Describe the image you want to create.')
     .max(32000),
   model: z.string().trim().min(1, 'Select an image model.').max(200),
-  size: z.enum([
-    'auto',
-    '256x256',
-    '512x512',
-    '1024x1024',
-    '1536x1024',
-    '1024x1536',
-    '1792x1024',
-    '1024x1792',
-  ]),
+  size: z.enum(imageSizeValues),
   quality: z.enum(['auto', 'low', 'medium', 'high', 'standard', 'hd']),
   count: z.number().int().min(1).max(4),
   format: z.enum(['png', 'jpeg', 'webp']),
@@ -71,9 +64,16 @@ export const defaultImageParameters: ImageParameters = {
 
 export function getImageModelOptions(model: string) {
   const isGptImage = /^gpt-image-/i.test(model)
+  const supportsFlexibleSizes = /^gpt-image-2(?:[.-]|$)/i.test(model)
   const isDalle3 = /^dall-e-3$/i.test(model)
   const isDalle2 = /^dall-e-2$/i.test(model)
   let sizes = ['auto', '1024x1024', '1536x1024', '1024x1536']
+  if (supportsFlexibleSizes) {
+    sizes = [
+      'auto',
+      ...imageAspectPresets.flatMap((preset) => Object.values(preset.sizes)),
+    ]
+  }
   let qualities = ['auto']
   if (isGptImage) qualities = ['auto', 'low', 'medium', 'high']
   if (isDalle3) {
@@ -83,6 +83,7 @@ export function getImageModelOptions(model: string) {
   if (isDalle2) sizes = ['auto', '256x256', '512x512', '1024x1024']
   return {
     isGptImage,
+    supportsFlexibleSizes,
     sizes,
     qualities,
     maxCount: isDalle3 ? 1 : 4,

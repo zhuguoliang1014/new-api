@@ -256,8 +256,11 @@ it('keeps committed Chinese text and multiline edits when output settings change
   expect(prompt).toHaveFocus()
   fireEvent.change(prompt, { target: { value: '画一只猫' } })
   fireEvent.compositionEnd(prompt, { data: '画一只猫' })
-  fireEvent.change(screen.getByRole('combobox', { name: 'Image size' }), {
-    target: { value: '1536x1024' },
+  fireEvent.change(screen.getByRole('combobox', { name: 'Resolution' }), {
+    target: { value: '1K' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Aspect ratio' }), {
+    target: { value: '3:2' },
   })
   expect(prompt).toHaveValue('画一只猫')
   fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗边' } })
@@ -583,5 +586,87 @@ it('keeps the original creation settings when another image finishes during an o
   )
   expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
     'An older forest'
+  )
+})
+
+it.each([
+  { resolution: '4K', ratio: '2:3', size: '2304x3456' },
+  { resolution: '4K', ratio: '16:9', size: '3840x2160' },
+  { resolution: '4K', ratio: '1:1', size: '2880x2880' },
+  { resolution: '2K', ratio: '21:9', size: '2560x1088' },
+])(
+  'sends the exact $size dimensions when $resolution and $ratio are selected',
+  async ({ resolution, ratio, size }) => {
+    showStudio()
+    await ready()
+    expect(
+      screen.getByRole('combobox', { name: 'Aspect ratio' })
+    ).toBeDisabled()
+    fireEvent.change(screen.getByRole('combobox', { name: 'Resolution' }), {
+      target: { value: resolution },
+    })
+    fireEvent.change(screen.getByRole('combobox', { name: 'Aspect ratio' }), {
+      target: { value: ratio },
+    })
+    expect(
+      screen.getByText(`Requested: ${size.replace('x', ' × ')}`)
+    ).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+      target: { value: 'A mountain' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+    await waitFor(() =>
+      expect(generateImages).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ size }),
+        [],
+        expect.any(AbortSignal)
+      )
+    )
+  }
+)
+
+it('resets unsupported 4K selection visibly when switching to a legacy model', async () => {
+  vi.mocked(getImageModels).mockResolvedValue(['gpt-image-2', 'gpt-image-1'])
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Resolution' }), {
+    target: { value: '4K' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Image model' }), {
+    target: { value: 'gpt-image-1' },
+  })
+  expect(
+    screen.queryByRole('combobox', { name: 'Resolution' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Image size' })).toHaveValue(
+    'auto'
+  )
+  expect(
+    screen.getByRole('option', { name: '2:3 · 1024 × 1536' })
+  ).toBeInTheDocument()
+})
+
+it('opens reference thumbnails in the zoomable preview and preserves the uploaded file', async () => {
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByLabelText(/Reference images/), {
+    target: {
+      files: [new File(['one'], 'reference.png', { type: 'image/png' })],
+    },
+  })
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Preview reference reference.png' })
+  )
+  const dialog = await screen.findByRole('dialog')
+  expect(
+    within(dialog).getByRole('button', { name: 'Zoom in' })
+  ).toBeInTheDocument()
+  expect(within(dialog).getByRole('img')).toHaveAttribute(
+    'src',
+    'blob:reference'
+  )
+  expect(useImagePlaygroundStore.getState().references[0].file.name).toBe(
+    'reference.png'
   )
 })

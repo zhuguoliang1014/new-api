@@ -28,6 +28,12 @@ import {
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
+import {
+  getImageAspectRatio,
+  getImageSizePreset,
+  imageAspectPresets,
+  type ImageResolution,
+} from '../lib/sizes'
 import { useImagePlaygroundStore } from '../store'
 import { getImageModelOptions, type ImageParameters } from '../types'
 
@@ -65,6 +71,8 @@ export function StudioParameters() {
   const busy = useImagePlaygroundStore((state) => Boolean(state.job))
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
   const modelOptions = getImageModelOptions(parameters.model)
+  const sizePreset = getImageSizePreset(parameters.size)
+  const aspect = sizePreset?.preset ?? imageAspectPresets[0]
   const labels: Record<string, string> = {
     auto: t('Auto'),
     low: t('Low'),
@@ -81,19 +89,67 @@ export function StudioParameters() {
   return (
     <>
       <div className='studio-parameter-grid'>
-        <ParameterSelect
-          id='studio-size'
-          label={t('Image size')}
-          value={parameters.size}
-          options={modelOptions.sizes.map((value) => ({
-            value,
-            label: value === 'auto' ? t('Auto') : value.replace('x', ' × '),
-          }))}
-          disabled={busy}
-          onChange={(size) =>
-            setParameters({ size: size as ImageParameters['size'] })
-          }
-        />
+        {modelOptions.supportsFlexibleSizes ? (
+          <>
+            <ParameterSelect
+              id='studio-resolution'
+              label={t('Resolution')}
+              value={sizePreset?.resolution ?? 'auto'}
+              options={['auto', '1K', '2K', '4K'].map((value) => ({
+                value,
+                label: value === 'auto' ? t('Auto') : value,
+              }))}
+              disabled={busy}
+              onChange={(value) =>
+                setParameters({
+                  size:
+                    value === 'auto'
+                      ? 'auto'
+                      : aspect.sizes[value as ImageResolution],
+                })
+              }
+            />
+            <ParameterSelect
+              id='studio-aspect'
+              label={t('Aspect ratio')}
+              value={aspect.ratio}
+              options={imageAspectPresets.map((preset) => ({
+                value: preset.ratio,
+                label:
+                  preset.ratio === '21:9'
+                    ? t('{{ratio}} (approx.)', { ratio: preset.ratio })
+                    : preset.ratio,
+              }))}
+              disabled={busy || parameters.size === 'auto'}
+              onChange={(ratio) => {
+                const preset = imageAspectPresets.find(
+                  (item) => item.ratio === ratio
+                )
+                if (preset && sizePreset) {
+                  setParameters({ size: preset.sizes[sizePreset.resolution] })
+                }
+              }}
+            />
+          </>
+        ) : (
+          <ParameterSelect
+            id='studio-size'
+            label={t('Image size')}
+            value={parameters.size}
+            options={modelOptions.sizes.map((value) => {
+              if (value === 'auto') return { value, label: t('Auto') }
+              const [width, height] = value.split('x').map(Number)
+              return {
+                value,
+                label: `${getImageAspectRatio(width, height)} · ${value.replace('x', ' × ')}`,
+              }
+            })}
+            disabled={busy}
+            onChange={(size) =>
+              setParameters({ size: size as ImageParameters['size'] })
+            }
+          />
+        )}
         <ParameterSelect
           id='studio-count'
           label={t('Image count')}
@@ -126,6 +182,23 @@ export function StudioParameters() {
           />
         )}
       </div>
+      {modelOptions.supportsFlexibleSizes && (
+        <div className='studio-size-summary'>
+          <strong>
+            {t('Requested: {{size}}', {
+              size:
+                parameters.size === 'auto'
+                  ? t('Auto')
+                  : parameters.size.replace('x', ' × '),
+            })}
+          </strong>
+          <p>
+            {t(
+              '4K presets use up to 8.3 MP. Exact dimensions depend on the aspect ratio; quality is a separate setting.'
+            )}
+          </p>
+        </div>
+      )}
       {modelOptions.isGptImage && (
         <Collapsible className='studio-advanced'>
           <CollapsibleTrigger

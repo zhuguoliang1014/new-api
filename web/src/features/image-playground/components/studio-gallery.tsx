@@ -17,12 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Clock3, RotateCcw, Trash2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
-import { Dialog } from '@/components/dialog'
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
@@ -31,10 +31,17 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { getImageAuthScope } from '../api'
 import { deleteImageRecord } from '../lib/history'
 import { useImagePlaygroundStore } from '../store'
-import type { ImageOutput, ImageRecord } from '../types'
+import type { ImageRecord } from '../types'
+import { DownloadCreationButton } from './download-creation-button'
 import { GenerationProgress } from './generation-progress'
 import { ImageArtwork, ImageActions } from './studio-image'
 import { StudioInspiration } from './studio-inspiration'
+
+const StudioPreview = lazy(() =>
+  import('./studio-preview').then((module) => ({
+    default: module.StudioPreview,
+  }))
+)
 
 export function StudioGallery() {
   const { t, i18n } = useTranslation()
@@ -46,7 +53,7 @@ export function StudioGallery() {
     (state) => state.storageUnavailable
   )
   const [preview, setPreview] = useState<{
-    image: ImageOutput
+    index: number
     record: ImageRecord
   } | null>(null)
   const [deleting, setDeleting] = useState<ImageRecord | null>(null)
@@ -143,11 +150,12 @@ export function StudioGallery() {
           <div
             className={`studio-results-grid${record.images.length === 1 ? ' studio-results-single' : ''}`}
           >
-            {record.images.map((image) => (
+            {record.images.map((image, index) => (
               <div className='studio-result-card' key={image.id}>
                 <ImageArtwork
                   image={image}
-                  onPreview={() => setPreview({ image, record })}
+                  requestedSize={record.parameters.size}
+                  onPreview={() => setPreview({ index, record })}
                 />
                 <ImageActions image={image} record={record} />
               </div>
@@ -156,6 +164,9 @@ export function StudioGallery() {
           <div className='studio-result-prompt'>
             <p>{record.parameters.prompt}</p>
             <div className='studio-result-tools'>
+              {record.images.length > 1 && (
+                <DownloadCreationButton key={record.id} record={record} />
+              )}
               <CopyButton
                 value={record.parameters.prompt}
                 size='sm'
@@ -243,37 +254,26 @@ export function StudioGallery() {
           </div>
         </div>
       )}
-      <Dialog
-        open={Boolean(preview)}
-        onOpenChange={(open) => {
-          if (!open) setPreview(null)
-        }}
-        title={t('Image Preview')}
-        contentClassName='studio-preview-dialog sm:max-w-5xl'
-        description={t('View the generated image')}
-        footer={
-          preview ? (
-            <ImageActions
-              image={preview.image}
-              record={preview.record}
-              onReferenceUsed={() => setPreview(null)}
-            />
-          ) : undefined
-        }
-      >
-        {preview && (
-          <ImageArtwork key={preview.image.id} image={preview.image} large />
-        )}
-        {preview?.image.revisedPrompt && (
-          <div className='studio-result-prompt'>
-            <strong>{t('Revised prompt')}</strong>
-            <p>{preview.image.revisedPrompt}</p>
-            <CopyButton value={preview.image.revisedPrompt} size='sm'>
-              {t('Copy prompt')}
-            </CopyButton>
-          </div>
-        )}
-      </Dialog>
+      {preview && (
+        <Suspense fallback={<LoadingState />}>
+          <StudioPreview
+            images={preview.record.images}
+            index={preview.index}
+            requestedSize={preview.record.parameters.size}
+            onClose={() => setPreview(null)}
+            onIndexChange={(index) =>
+              setPreview((current) => (current ? { ...current, index } : null))
+            }
+            footer={(image) => (
+              <ImageActions
+                image={image}
+                record={preview.record}
+                onReferenceUsed={() => setPreview(null)}
+              />
+            )}
+          />
+        </Suspense>
+      )}
       <ConfirmDialog
         open={Boolean(deleting)}
         onOpenChange={(open) => {
