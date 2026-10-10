@@ -131,6 +131,9 @@ it('requires a prompt, fills an inspiration idea, and generates an actionable cr
   showStudio()
   await ready()
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: '画一只猫' },
+  })
   fireEvent.click(screen.getByRole('button', { name: /Product photography/ }))
   expect(
     (
@@ -147,6 +150,135 @@ it('requires a prompt, fills an inspiration idea, and generates an actionable cr
   )
   fireEvent.click(screen.getByRole('button', { name: 'Image Preview' }))
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
+})
+
+it.each([
+  {
+    signal: 'an active composition session',
+    compositionStarted: true,
+    isComposing: false,
+    keyCode: 13,
+  },
+  {
+    signal: 'the native composition flag',
+    compositionStarted: false,
+    isComposing: true,
+    keyCode: 13,
+  },
+  {
+    signal: 'the legacy IME key code',
+    compositionStarted: false,
+    isComposing: false,
+    keyCode: 229,
+  },
+])(
+  'ignores IME confirmation with $signal and allows the shortcut after composition',
+  async ({ compositionStarted, isComposing, keyCode }) => {
+    showStudio()
+    await ready()
+    const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
+    fireEvent.change(prompt, { target: { value: '画一只猫' } })
+    if (compositionStarted) fireEvent.compositionStart(prompt)
+    await act(async () => {
+      fireEvent.keyDown(prompt, {
+        key: 'Enter',
+        ctrlKey: true,
+        isComposing,
+        keyCode,
+      })
+    })
+    expect(generateImages).not.toHaveBeenCalled()
+    expect(prompt).toHaveValue('画一只猫')
+
+    fireEvent.compositionEnd(prompt, { data: '猫' })
+    fireEvent.keyDown(prompt, { key: 'Enter', ctrlKey: true, keyCode: 13 })
+    await waitFor(() =>
+      expect(generateImages).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ prompt: '画一只猫' }),
+        [],
+        expect.any(AbortSignal)
+      )
+    )
+    expect(generateImages).toHaveBeenCalledTimes(1)
+  }
+)
+
+it('preserves the caret while composing Chinese in the middle of a prompt', async () => {
+  showStudio()
+  await ready()
+  const prompt = screen.getByRole('textbox', {
+    name: 'Image prompt',
+  }) as HTMLTextAreaElement
+  fireEvent.change(prompt, { target: { value: '画  风景' } })
+  prompt.focus()
+  prompt.setSelectionRange(2, 2)
+  fireEvent.compositionStart(prompt)
+  fireEvent.input(prompt, {
+    target: { value: '画 ni 风景', selectionStart: 4, selectionEnd: 4 },
+    inputType: 'insertCompositionText',
+    data: 'ni',
+    isComposing: true,
+  })
+  expect(prompt).toHaveValue('画 ni 风景')
+  expect(prompt).toHaveFocus()
+  expect(prompt.selectionStart).toBe(4)
+  expect(prompt.selectionEnd).toBe(4)
+
+  fireEvent.input(prompt, {
+    target: { value: '画 你的 风景', selectionStart: 4, selectionEnd: 4 },
+    inputType: 'insertCompositionText',
+    data: '你的',
+    isComposing: true,
+  })
+  fireEvent.compositionEnd(prompt, { data: '你的' })
+  expect(prompt).toHaveValue('画 你的 风景')
+  expect(prompt.selectionStart).toBe(4)
+  fireEvent.keyDown(prompt, { key: 'Enter', metaKey: true })
+  await waitFor(() =>
+    expect(generateImages).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ prompt: '画 你的 风景' }),
+      [],
+      expect.any(AbortSignal)
+    )
+  )
+})
+
+it('keeps committed Chinese text and multiline edits when output settings change', async () => {
+  showStudio()
+  await ready()
+  const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
+  prompt.focus()
+  fireEvent.compositionStart(prompt)
+  fireEvent.change(prompt, { target: { value: 'hua' } })
+  expect(prompt).toHaveValue('hua')
+  expect(prompt).toHaveFocus()
+  fireEvent.change(prompt, { target: { value: '画一只猫' } })
+  fireEvent.compositionEnd(prompt, { data: '画一只猫' })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Image size' }), {
+    target: { value: '1536x1024' },
+  })
+  expect(prompt).toHaveValue('画一只猫')
+  fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗边' } })
+  fireEvent.keyDown(prompt, { key: 'Enter' })
+  expect(generateImages).not.toHaveBeenCalled()
+  fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗' } })
+  fireEvent.change(prompt, { target: { value: '' } })
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() =>
+    expect(generateImages).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        prompt: '画一只猫\n坐在窗',
+        size: '1536x1024',
+      }),
+      [],
+      expect.any(AbortSignal)
+    )
+  )
 })
 
 it('disables submission during a pending request and keeps its result after leaving and returning', async () => {
@@ -448,5 +580,8 @@ it('keeps the original creation settings when another image finishes during an o
     expect(useImagePlaygroundStore.getState().parameters.prompt).toBe(
       'An older forest'
     )
+  )
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+    'An older forest'
   )
 })

@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
 import { ArrowUpRight, Loader2, Sparkles } from 'lucide-react'
+import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -63,6 +64,7 @@ export function StudioComposer(props: StudioComposerProps) {
   const parameters = useImagePlaygroundStore((state) => state.parameters)
   const job = useImagePlaygroundStore((state) => state.job)
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
+  const isComposingRef = useRef(false)
   const form = useForm<ImageParameters>({
     resolver: zodResolver(imageParametersSchema),
     values: parameters,
@@ -188,9 +190,18 @@ export function StudioComposer(props: StudioComposerProps) {
                     id='studio-prompt'
                     disabled={busy}
                     maxLength={32000}
-                    onChange={(event) =>
+                    onChange={(event) => {
+                      // Update the controlled field synchronously so React does
+                      // not restore its previous value and cancel the IME.
+                      field.onChange(event)
                       setParameters({ prompt: event.target.value })
-                    }
+                    }}
+                    onCompositionStart={() => {
+                      isComposingRef.current = true
+                    }}
+                    onCompositionEnd={() => {
+                      isComposingRef.current = false
+                    }}
                     placeholder={t(
                       'A subject, a setting, a mood… What do you want to see?'
                     )}
@@ -206,9 +217,15 @@ export function StudioComposer(props: StudioComposerProps) {
                     }}
                     onKeyDown={(event) => {
                       if (
+                        isComposingRef.current ||
+                        event.nativeEvent.isComposing ||
+                        event.nativeEvent.keyCode === 229
+                      ) {
+                        return
+                      }
+                      if (
                         event.key === 'Enter' &&
-                        (event.metaKey || event.ctrlKey) &&
-                        !event.nativeEvent.isComposing
+                        (event.metaKey || event.ctrlKey)
                       ) {
                         event.preventDefault()
                         if (canGenerate) {
