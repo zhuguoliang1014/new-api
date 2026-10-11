@@ -41,7 +41,10 @@ export type ImageRecord = {
   id: string
   ownerId: number
   createdAt: number
+  /** User-authored prompt and settings, without the built-in style template. */
   parameters: ImageParameters
+  /** Undefined only for history saved before style and prompt were separated. */
+  styleId?: string | null
   images: ImageOutput[]
   referenceCount: number
 }

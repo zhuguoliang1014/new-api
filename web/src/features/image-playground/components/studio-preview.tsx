@@ -298,6 +298,7 @@ export function StudioPreview(props: {
   onClose: () => void
   requestedSize?: string
   title?: string
+  prompt?: string
   footer?: (image: ImageOutput) => ReactNode
 }) {
   const { t } = useTranslation()
@@ -380,11 +381,15 @@ export function StudioPreview(props: {
           </div>
         )}
         <ZoomableImage image={image} requestedSize={props.requestedSize} />
-        {image.revisedPrompt && (
+        {props.prompt && (
           <div className='studio-result-prompt'>
-            <strong>{t('Revised prompt')}</strong>
-            <p>{image.revisedPrompt}</p>
-            <CopyButton value={image.revisedPrompt} size='sm'>
+            <strong>{t('Image prompt')}</strong>
+            <p>{props.prompt}</p>
+            <CopyButton
+              value={props.prompt}
+              size='sm'
+              aria-label={t('Copy prompt')}
+            >
               {t('Copy prompt')}
             </CopyButton>
           </div>

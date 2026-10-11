@@ -39,6 +39,7 @@ import {
 import { ImagePlayground } from '../index'
 import { readImageHistory, saveImageRecord } from '../lib/history'
 import * as imageFiles from '../lib/images'
+import { applyStyleTemplate, stylePresets } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 
 vi.mock('@/lib/api', async (original) => ({
@@ -347,7 +348,13 @@ it('keeps the draft intact while applying a selected style to generation', async
     screen.getByRole('button', { name: /Product photography/ })
   ).toHaveAttribute('aria-pressed', 'true')
   expect(saveImageRecord).toHaveBeenCalledWith(
-    expect.objectContaining({ ownerId: 1, referenceCount: 0, images: [image] })
+    expect.objectContaining({
+      ownerId: 1,
+      referenceCount: 0,
+      images: [image],
+      styleId: 'product',
+      parameters: expect.objectContaining({ prompt: '画一只猫' }),
+    })
   )
   fireEvent.click(screen.getByRole('button', { name: 'Image Preview' }))
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
@@ -1027,7 +1034,7 @@ it('returns to automatic sizing from the dock after choosing a ratio and resolut
   )
 })
 
-it('reuses a styled creation without applying the same style twice', async () => {
+it('reuses the user prompt and selected style without applying the template twice', async () => {
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -1036,22 +1043,104 @@ it('reuses a styled creation without applying the same style twice', async () =>
   fireEvent.click(screen.getByRole('button', { name: 'Product photography' }))
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Reuse settings' }))
-  expect(screen.getByRole('button', { name: 'No style' })).toHaveAttribute(
-    'aria-pressed',
-    'true'
+  expect(
+    screen.getByRole('button', { name: 'Product photography' })
+  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+    'A perfume bottle'
   )
-  const reusedPrompt = (
-    screen.getByRole('textbox', { name: 'Image prompt' }) as HTMLTextAreaElement
-  ).value
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() =>
-    expect(generateImages).toHaveBeenLastCalledWith(
-      expect.objectContaining({ prompt: reusedPrompt }),
-      [],
-      expect.any(AbortSignal)
-    )
+  await waitFor(() => expect(generateImages).toHaveBeenCalledTimes(2))
+  expect(generateImages).toHaveBeenNthCalledWith(
+    2,
+    vi.mocked(generateImages).mock.calls[0][0],
+    [],
+    expect.any(AbortSignal)
   )
 })
+
+it.each(stylePresets)(
+  'hides the $id template from legacy history, copied prompts, and reused drafts',
+  async (preset) => {
+    const user = userEvent.setup()
+    const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+    const original = '西游记四人同行，手绘水彩，warm light'
+    vi.mocked(readImageHistory).mockResolvedValue([
+      {
+        id: 'legacy',
+        ownerId: 1,
+        createdAt: 1,
+        parameters: {
+          ...useImagePlaygroundStore.getState().parameters,
+          prompt: applyStyleTemplate(original, preset.promptTemplate),
+        },
+        images: [image],
+        referenceCount: 0,
+      },
+    ])
+    showStudio()
+    expect(
+      await screen.findByRole('button', { name: 'View creation 1' })
+    ).toHaveTextContent(original)
+    fireEvent.click(screen.getByRole('button', { name: 'Image prompt' }))
+    const popup = await screen.findByRole('dialog', { name: 'Image prompt' })
+    expect(
+      within(popup).getByText(original, { exact: true })
+    ).toBeInTheDocument()
+    await user.click(within(popup).getByRole('button', { name: 'Copy prompt' }))
+    expect(write).toHaveBeenCalledWith(original)
+    await user.keyboard('{Escape}')
+    fireEvent.click(screen.getByRole('button', { name: 'Reuse settings' }))
+    expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+      original
+    )
+    expect(screen.getByRole('button', { name: preset.label })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  }
+)
+
+it.each([
+  {
+    styleId: undefined,
+    original:
+      'Portrait of a traveler. Soft natural light. No text, no logo, no watermark.',
+  },
+  {
+    styleId: null,
+    original: applyStyleTemplate('A traveler', stylePresets[1].promptTemplate),
+  },
+])(
+  'preserves user-written English with saved style $styleId',
+  async ({ styleId, original }) => {
+    vi.mocked(readImageHistory).mockResolvedValue([
+      {
+        id: 'english',
+        ownerId: 1,
+        createdAt: 1,
+        styleId,
+        parameters: {
+          ...useImagePlaygroundStore.getState().parameters,
+          prompt: original,
+        },
+        images: [image],
+        referenceCount: 0,
+      },
+    ])
+    showStudio()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Reuse settings' })
+    )
+    expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+      original
+    )
+    expect(screen.getByRole('button', { name: 'No style' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  }
+)
 
 it('renders large image data URLs as the ambient image and follows history selection', async () => {
   // Generated PNGs can exceed the browser's ~2 MiB CSS custom-property limit.

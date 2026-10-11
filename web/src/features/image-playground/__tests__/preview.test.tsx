@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { beforeEach, expect, it, vi } from 'vitest'
 
@@ -245,4 +246,29 @@ it('keeps keyboard focus through consecutive image switches without refocusing',
   fireEvent.keyDown(viewer, { key: 'ArrowLeft' })
   expect(screen.getByRole('img')).toHaveAttribute('src', images[0].src)
   await waitFor(() => expect(viewer).toHaveFocus())
+})
+
+it('shows and copies the user prompt instead of provider-expanded instructions', async () => {
+  const user = userEvent.setup()
+  const write = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue()
+  render(
+    <StudioPreview
+      images={[
+        {
+          ...images[0],
+          revisedPrompt: 'Internal style instructions in English',
+        },
+      ]}
+      index={0}
+      prompt='西游记四人同行'
+      onIndexChange={() => undefined}
+      onClose={() => undefined}
+    />
+  )
+  expect(
+    screen.queryByText('Internal style instructions in English')
+  ).not.toBeInTheDocument()
+  expect(await screen.findByText('西游记四人同行')).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Copy prompt' }))
+  expect(write).toHaveBeenCalledWith('西游记四人同行')
 })

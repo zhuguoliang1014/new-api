@@ -41,6 +41,41 @@ beforeEach(() => {
 
 afterEach(() => style.remove())
 
+it.each([1, 2])(
+  'keeps the artwork background transparent on hover with %i images',
+  (count) => {
+    // jsdom has no pointer-driven CSS state. Map the browser's hover selector
+    // to an attribute so the real stylesheet still controls the computed result.
+    style.textContent = studioStyles.replaceAll(':hover', '[data-hovered]')
+    useImagePlaygroundStore.setState({
+      records: [
+        {
+          id: 'hover-record',
+          ownerId: 1,
+          createdAt: 1,
+          parameters: useImagePlaygroundStore.getState().parameters,
+          images: Array.from({ length: count }, (_, index) => ({
+            id: `image-${index}`,
+            src: 'data:image/png;base64,aW1hZ2U=',
+          })),
+          referenceCount: 0,
+        },
+      ],
+    })
+    render(
+      <div className='image-studio'>
+        <StudioGallery />
+      </div>
+    )
+    for (const preview of screen.getAllByRole('button', {
+      name: 'Image Preview',
+    })) {
+      preview.setAttribute('data-hovered', '')
+      expect(getComputedStyle(preview).backgroundColor).toBe('rgba(0, 0, 0, 0)')
+    }
+  }
+)
+
 it.each([1, 12])(
   'uses content height with a centered, capped scrolling history for %i creations',
   (count) => {

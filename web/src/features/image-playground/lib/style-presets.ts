@@ -17,6 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import type { ImageRecord } from '../types'
+
 export type StylePreset = {
   /** Stable key used in i18n and as array identifier. */
   id: string
@@ -171,4 +173,29 @@ export function applyStyleTemplate(
     return template.replace('[SUBJECT]', subject)
   }
   return subject ? `${subject}\n\n${template}` : template
+}
+
+/** Recover the user's words from the exact template stored by older releases.
+ * Partial matches and user-authored English must remain untouched. New records
+ * carry styleId (including null), so their prompts never need inference. */
+export function restoreLegacyStyleRecord(record: ImageRecord): ImageRecord {
+  if (record.styleId !== undefined) return record
+  for (const preset of stylePresets) {
+    const [prefix, suffix] = preset.promptTemplate.split('[SUBJECT]')
+    if (
+      !suffix ||
+      !record.parameters.prompt.startsWith(prefix) ||
+      !record.parameters.prompt.endsWith(suffix)
+    ) {
+      continue
+    }
+    const prompt = record.parameters.prompt.slice(prefix.length, -suffix.length)
+    if (!prompt.trim()) continue
+    return {
+      ...record,
+      parameters: { ...record.parameters, prompt },
+      styleId: preset.id,
+    }
+  }
+  return { ...record, styleId: null }
 }

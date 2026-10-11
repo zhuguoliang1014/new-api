@@ -26,7 +26,11 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { generateImages, getImageAuthScope, refinePrompt } from '../api'
 import { readImageHistory, saveImageRecord } from '../lib/history'
-import { applyStyleTemplate, stylePresets } from '../lib/style-presets'
+import {
+  applyStyleTemplate,
+  restoreLegacyStyleRecord,
+  stylePresets,
+} from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 import {
   normalizeImageParameters,
@@ -66,9 +70,11 @@ export function useImageStudio() {
         useImagePlaygroundStore.setState((state) => ({
           records: [
             ...state.records,
-            ...records.filter(
-              (record) => !state.records.some((item) => item.id === record.id)
-            ),
+            ...records
+              .filter(
+                (record) => !state.records.some((item) => item.id === record.id)
+              )
+              .map(restoreLegacyStyleRecord),
           ]
             .sort((a, b) => b.createdAt - a.createdAt)
             .slice(0, 30),
@@ -103,24 +109,24 @@ export function useImageStudio() {
       if (store.job || !ownerId || !scope || scope !== getImageAuthScope()) {
         return
       }
-      // Apply active style template to the prompt before generating.
-      const styledPrompt = (() => {
-        const { selectedStyleId } = store
-        if (!selectedStyleId) return parameters.prompt
-        const preset = stylePresets.find((p) => p.id === selectedStyleId)
-        if (!preset) return parameters.prompt
-        return applyStyleTemplate(parameters.prompt, preset.promptTemplate)
-      })()
-      const agentParameters = normalizeImageParameters({
-        ...parameters,
-        prompt: styledPrompt,
-      })
+      // Keep the user's draft and style separate; expand the template only for
+      // the provider request, never for history, copying, or continued editing.
+      const preset = stylePresets.find(
+        (item) => item.id === store.selectedStyleId
+      )
+      const creationParameters = normalizeImageParameters(parameters)
+      const agentParameters = {
+        ...creationParameters,
+        prompt: preset
+          ? applyStyleTemplate(creationParameters.prompt, preset.promptTemplate)
+          : creationParameters.prompt,
+      }
       const controller = new AbortController()
       const job = {
         id: nanoid(),
         startedAt: Date.now(),
         controller,
-        parameters: agentParameters,
+        parameters: creationParameters,
         referenceCount: store.references.length,
       }
       const references = store.references.map((reference) => reference.file)
@@ -146,7 +152,8 @@ export function useImageStudio() {
           id: job.id,
           ownerId,
           createdAt: Date.now(),
-          parameters: agentParameters,
+          parameters: creationParameters,
+          styleId: preset?.id ?? null,
           images,
           referenceCount: references.length,
         }

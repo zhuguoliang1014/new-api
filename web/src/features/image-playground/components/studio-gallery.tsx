@@ -167,6 +167,7 @@ export function StudioGallery() {
             images={preview.record.images}
             index={preview.index}
             requestedSize={preview.record.parameters.size}
+            prompt={preview.record.parameters.prompt}
             onClose={() => setPreview(null)}
             onIndexChange={(index) =>
               setPreview((current) => (current ? { ...current, index } : null))

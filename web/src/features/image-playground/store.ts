@@ -148,7 +148,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
           ...record.parameters,
         }),
         references: [],
-        selectedStyleId: null,
+        selectedStyleId: record.styleId ?? null,
         error: null,
       })
     },
