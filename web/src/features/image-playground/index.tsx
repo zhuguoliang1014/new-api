@@ -49,18 +49,20 @@ function ImageStudio() {
     <div
       className={`image-studio${ambientSrc ? ' image-studio--has-art' : ''}`}
     >
-      {/* Ambient color field */}
-      <div
-        className={`studio-ambient-bg${ambientSrc ? ' studio-ambient-bg--has-art' : ''}`}
-        style={
-          ambientSrc
-            ? ({
-                '--ambient-src': `url(${JSON.stringify(ambientSrc)})`,
-              } as React.CSSProperties)
-            : undefined
-        }
-        aria-hidden='true'
-      />
+      {/* Large generated data URLs exceed CSS custom-property limits. Keep the
+          artwork in an image element, below the translucent frosted sheet. */}
+      <div className='studio-ambient-bg' aria-hidden='true'>
+        {ambientSrc && (
+          <img
+            className='studio-ambient-image'
+            src={ambientSrc}
+            alt=''
+            decoding='async'
+            referrerPolicy='no-referrer'
+          />
+        )}
+        <div className='studio-ambient-frost' />
+      </div>
       <header className='studio-header'>
         <div className='studio-header-title'>
           <div className='studio-logo'>

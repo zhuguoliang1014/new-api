@@ -1,7 +1,8 @@
 /* Artwork supplies the ambient colour. Empty canvases use neutral glass with
    reflected edges and inset shadows; there is no synthetic colour gradient. */
 .image-studio,
-.studio-settings-popover {
+.studio-settings-popover,
+.studio-agent-dialog {
   --g-text: #23272c;
   --g-muted: #57606a;
   --g-muted2: #66717b;
@@ -13,6 +14,7 @@
   --g-line: rgba(50, 60, 70, 0.1);
   --g-cta-bg: #24292f;
   --g-cta-text: #fff;
+  --g-frost: rgba(244, 246, 248, 0.54);
   --r-panel: 24px;
   --r-card: 14px;
   --blur-panel: 32px;
@@ -33,7 +35,7 @@
 }
 .dark .image-studio,
 .dark .studio-settings-popover,
-.image-studio--has-art {
+.dark .studio-agent-dialog {
   --g-text: #fff;
   --g-muted: rgba(255, 255, 255, 0.84);
   --g-muted2: rgba(255, 255, 255, 0.72);
@@ -45,51 +47,43 @@
   --g-line: rgba(255, 255, 255, 0.15);
   --g-cta-bg: #fafafa;
   --g-cta-text: #202327;
+  --g-frost: rgba(24, 29, 35, 0.4);
 }
 .dark .image-studio {
   background: #22272c;
 }
-.image-studio--has-art {
-  background: #262b30;
-}
 .studio-ambient-bg {
   position: absolute;
   inset: 0;
-  z-index: -1;
+  z-index: 0;
   overflow: hidden;
   pointer-events: none;
 }
-.studio-ambient-bg::before {
-  content: '';
+.studio-ambient-image {
   position: absolute;
-  inset: -100px;
-  background-image: var(--ambient-src, none);
-  background-size: cover;
-  background-position: center;
-  filter: blur(64px) saturate(1.15) brightness(0.55);
-  opacity: 0;
-  transition: opacity 500ms ease;
+  inset: -64px;
+  width: calc(100% + 128px);
+  height: calc(100% + 128px);
+  max-width: none;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(48px) saturate(1.15);
 }
-.studio-ambient-bg--has-art::before {
-  opacity: 1;
-}
-/* A second translucent sheet softens the image behind the glass controls. */
-.studio-ambient-bg--has-art::after {
-  content: '';
+.studio-ambient-frost {
   position: absolute;
   inset: 0;
-  background: rgba(18, 20, 22, 0.08);
-  -webkit-backdrop-filter: blur(12px);
-  backdrop-filter: blur(12px);
+  background: var(--g-frost);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 .studio-header {
   position: relative;
+  z-index: 1;
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 22px 30px 12px;
+  padding: 16px 30px 8px;
 }
 .studio-header-title {
   display: flex;
@@ -130,6 +124,8 @@
   font-size: 11px;
 }
 .studio-workspace {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -160,8 +156,11 @@
   -webkit-backdrop-filter: blur(38px) saturate(1.35);
   backdrop-filter: blur(38px) saturate(1.35);
 }
-.image-studio--has-art .studio-dock {
-  background: rgba(35, 31, 27, 0.26);
+.image-studio--has-art .studio-header p,
+.image-studio--has-art .studio-save-state,
+.image-studio--has-art .studio-result-meta,
+.image-studio--has-art .studio-image-dimensions {
+  color: var(--g-text);
 }
 .studio-dock-form {
   display: flex;
@@ -171,7 +170,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 12px 16px 8px;
+  padding: 8px 16px 4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -209,14 +208,26 @@
   width: 24px;
   text-align: center;
 }
+.studio-dock-input {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 10px 20px 14px;
+}
 .studio-dock-prompt-item {
+  flex: 1;
+  min-width: 0;
   margin: 0;
+  border-radius: 8px;
+}
+.studio-dock-prompt-item:focus-within {
+  box-shadow: 0 1px 0 var(--g-muted2);
 }
 .studio-dock-prompt {
   width: 100%;
-  min-height: 64px;
+  min-height: 76px;
   max-height: 140px;
-  padding: 12px 22px;
+  padding: 6px 2px;
   resize: none;
   border: 0;
   border-radius: 0;
@@ -231,7 +242,9 @@
   color: var(--g-muted2);
 }
 .studio-dock-prompt:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--g-border-hi);
+  outline: none;
+  box-shadow: none;
+  background: transparent;
 }
 .studio-dock-prompt-item [data-slot='form-message'] {
   padding: 0 22px;
@@ -241,14 +254,20 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 10px 16px 14px;
+  gap: 12px;
+  padding: 10px 18px 12px;
   border-top: 1px solid var(--g-line);
+}
+.studio-dock-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 .studio-dock-params {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .studio-dock-params .studio-field {
@@ -263,22 +282,23 @@
   white-space: nowrap;
 }
 .studio-dock-params .studio-native-select select {
-  height: 32px;
-  min-height: 32px;
+  height: 40px;
+  min-height: 40px;
   border-radius: 999px;
   font-size: 12px;
 }
 .studio-dock-seg {
   display: flex;
   flex: 0 0 auto;
-  padding: 2px;
+  height: 40px;
+  padding: 3px;
   border-radius: 999px;
-  border: 1px solid var(--g-line);
+  border: 1px solid var(--g-border);
   background: var(--g-surface);
 }
 .studio-dock-seg-btn {
-  height: 28px;
-  padding: 0 9px;
+  height: 32px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 11px;
   color: var(--g-muted);
@@ -294,7 +314,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 8px;
   margin-left: auto;
 }
 .studio-dock-refine,
@@ -304,36 +324,66 @@
   background: transparent;
 }
 .studio-dock-refine {
-  height: 38px;
-  padding: 0 12px;
+  height: 40px;
+  padding: 0 14px;
   font-size: 12px;
 }
 .studio-dock-icon-btn {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
 }
 .studio-dock-generate {
   height: 40px;
-  padding: 0 24px;
+  padding: 0 22px;
   border-radius: 999px;
-  color: var(--g-cta-text);
-  background: var(--g-cta-bg);
   font-size: 13px;
-  font-weight: 600;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
+  font-weight: 650;
 }
-.studio-dock-generate:hover:not(:disabled) {
-  opacity: 0.88;
+/* A shared reflected edge and inset shadow make controls feel cut from the
+   same glass. The backdrop colour comes only from the generated artwork. */
+.studio-dock-refine,
+.studio-dock-icon-btn,
+.studio-dock-generate,
+.studio-dock-seg,
+.studio-dock-params .studio-native-select select {
+  flex-shrink: 0;
+  border: 1px solid var(--g-border);
+  background: var(--g-surface);
+  color: var(--g-text);
+  box-shadow:
+    inset 0 1px 1px var(--g-border-hi),
+    inset 0 -1px 1px rgba(70, 80, 90, 0.08),
+    0 3px 8px rgba(25, 35, 45, 0.06);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  transition:
+    background-color 160ms ease,
+    box-shadow 160ms ease;
+}
+.studio-dock-generate {
+  background: var(--g-active);
+  border-color: var(--g-border-hi);
+}
+.studio-dock-generate:hover:not(:disabled),
+.studio-dock-icon-btn[aria-expanded='true'] {
+  background: var(--g-active);
+  box-shadow:
+    inset 0 1px 1px var(--g-border-hi),
+    0 4px 12px rgba(25, 35, 45, 0.12);
 }
 .studio-dock-generate:disabled {
   opacity: 0.5;
+}
+.studio-dock-advanced {
+  padding: 0 20px 14px;
+  border-top: 1px solid var(--g-line);
 }
 .studio-creation-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   overflow-x: auto;
-  padding: 6px 14px;
+  padding: 4px 14px;
   border-bottom: 1px solid var(--g-line);
 }
 .studio-creation-actions > * {
@@ -386,50 +436,51 @@
   margin-left: 4px;
   font-weight: 400;
 }
-.studio-dock-form > .studio-field {
-  padding: 0 22px 8px;
-  margin: 0;
-  gap: 3px;
-}
-.studio-dock-form > .studio-field .studio-label-row {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-}
-.studio-upload {
-  border-radius: 12px;
+.studio-reference-field {
+  flex: 0 0 auto;
+  max-width: 40%;
 }
 .studio-upload-dragging {
   background: var(--g-active);
   outline: 2px solid var(--g-border-hi);
 }
 .studio-upload-button {
-  height: auto;
-  min-height: 30px;
-  padding: 4px 0;
-  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: 76px;
+  height: 76px;
+  padding: 0;
+  border: 1px solid var(--g-border);
+  border-radius: 18px;
   color: var(--g-muted);
-  font-size: 11px;
+  background: var(--g-surface);
+  box-shadow:
+    inset 0 1px 1px var(--g-border-hi),
+    inset 0 -2px 6px rgba(80, 90, 100, 0.04),
+    0 3px 8px rgba(25, 35, 45, 0.04);
+  transition:
+    background-color 160ms ease,
+    transform 160ms ease;
 }
-.studio-upload-button small {
-  display: none;
+.studio-upload-button svg {
+  width: 30px;
+  height: 30px;
 }
-.studio-upload-button:hover {
+.studio-upload-button:hover:not(:disabled) {
   color: var(--g-text);
-  background: transparent;
+  background: var(--g-raised);
+  transform: translateY(-1px);
 }
 .studio-references {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  padding-top: 6px;
+  border-radius: 18px;
 }
 .studio-reference {
   position: relative;
-  width: 56px;
-  height: 56px;
+  flex: 0 0 auto;
+  width: 76px;
+  height: 76px;
 }
 .studio-reference-preview {
   width: 100%;
@@ -494,23 +545,19 @@
   color: #20252a;
   background: #f5f7f8;
 }
-.studio-agent-settings {
-  border-bottom: 1px solid var(--g-line);
-  padding-bottom: 8px;
+.studio-agent-dialog {
+  width: min(540px, calc(100vw - 32px));
+  border: 1px solid var(--g-border);
+  border-radius: 28px;
+  background: rgba(242, 245, 247, 0.93);
+  box-shadow:
+    inset 0 1px 1px var(--g-border-hi),
+    0 24px 80px rgba(25, 35, 45, 0.2);
+  -webkit-backdrop-filter: blur(32px);
+  backdrop-filter: blur(32px);
 }
-.studio-agent-settings-trigger {
-  width: 100%;
-  justify-content: flex-start;
-  padding: 8px 0;
-  color: var(--g-text);
-}
-.studio-agent-settings-chevron {
-  margin-left: auto;
-  transition: transform 160ms ease;
-}
-.studio-agent-settings-trigger[aria-expanded='true']
-  .studio-agent-settings-chevron {
-  transform: rotate(180deg);
+.dark .studio-agent-dialog {
+  background: rgba(35, 40, 45, 0.94);
 }
 .studio-agent-settings-description {
   font-size: 12px;
@@ -551,20 +598,14 @@
 .studio-agent-settings-save {
   width: 100%;
 }
-.studio-advanced-trigger {
-  width: 100%;
-  padding: 0;
-  justify-content: space-between;
-  color: var(--g-text);
-}
 .studio-parameter-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
   padding-top: 10px;
 }
 .studio-size-summary {
-  margin-bottom: 10px;
+  margin-bottom: 0;
   color: var(--g-muted);
   font-size: 11px;
   line-height: 1.6;
@@ -590,12 +631,31 @@
   flex: 1;
   min-height: 0;
   min-width: 0;
+  display: flex;
+  padding: 0 180px;
+}
+.studio-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 180px;
+  border: 1px solid var(--g-border);
+  border-radius: 30px;
+  background: var(--g-surface);
+  box-shadow:
+    inset 0 1px 1px var(--g-border-hi),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.16),
+    0 12px 36px rgba(30, 40, 50, 0.06);
+  -webkit-backdrop-filter: blur(24px) saturate(1.15);
+  backdrop-filter: blur(24px) saturate(1.15);
 }
 .studio-result {
-  width: min(1040px, 100%);
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  padding: 18px 24px;
 }
 .studio-result-meta {
   display: flex;
@@ -607,12 +667,35 @@
   font-size: 11px;
 }
 .studio-results-grid {
+  flex: 1;
   display: grid;
+  align-content: center;
+  padding: 16px 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 .studio-results-single {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+.studio-results-single .studio-result-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.studio-results-single .studio-image-button {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+.studio-results-single .studio-image-button img {
+  max-height: 100%;
+  box-shadow: 0 12px 28px rgba(20, 30, 40, 0.18);
 }
 .studio-result-card {
   min-width: 0;
@@ -625,10 +708,10 @@
   max-width: 100%;
   margin: 0 auto;
   height: auto;
-  padding: 5px;
+  padding: 0;
   overflow: hidden;
-  border: 1px solid var(--g-border);
-  border-radius: 22px;
+  border: 0;
+  border-radius: 16px;
   background: var(--g-surface);
   box-shadow:
     inset 0 1px 0 var(--g-border-hi),
@@ -641,9 +724,9 @@
   display: block;
   width: auto;
   max-width: 100%;
-  max-height: 45vh;
+  max-height: min(40vh, 480px);
   object-fit: contain;
-  border-radius: 17px;
+  border-radius: 16px;
 }
 .studio-image-expand {
   position: absolute;
@@ -680,12 +763,14 @@
 }
 .studio-history {
   position: absolute;
-  top: 8px;
+  top: 50%;
   left: 0;
-  bottom: 8px;
+  transform: translateY(-50%);
+  max-height: min(540px, 100%);
   display: flex;
   flex-direction: column;
   width: 150px;
+  height: auto;
   padding: 14px 10px;
   border: 1px solid var(--g-border);
   border-radius: 24px;
@@ -697,6 +782,7 @@
   backdrop-filter: blur(28px);
 }
 .studio-history h3 {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -709,6 +795,7 @@
   font-size: 10px;
 }
 .studio-history-search {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -799,6 +886,7 @@
   display: grid;
   place-items: center;
   min-height: 100%;
+  height: 100%;
   width: 100%;
 }
 .studio-empty-state {
@@ -1041,10 +1129,25 @@
     padding: 8px 12px 12px;
   }
   .studio-gallery {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
     padding: 0;
+  }
+  .studio-canvas {
+    flex: 1 0 auto;
+    min-height: 260px;
+    border-radius: 24px;
+  }
+  .studio-result {
+    height: 320px;
+    padding: 14px;
   }
   .studio-history {
     position: static;
+    transform: none;
+    flex: 0 0 auto;
+    max-height: none;
     width: 100%;
     padding: 10px;
     margin-top: 12px;
@@ -1071,13 +1174,34 @@
   }
   .studio-dock-prompt {
     font-size: 16px;
-    padding-inline: 16px;
+    padding-inline: 2px;
   }
   .studio-dock-styles {
     padding-inline: 12px;
   }
-  .studio-dock-form > .studio-field {
-    padding-inline: 16px;
+  .studio-dock-input {
+    flex-direction: column;
+    gap: 12px;
+    padding: 8px 16px 14px;
+  }
+  .studio-dock-prompt-item {
+    width: 100%;
+    order: -1;
+  }
+  .studio-reference-field {
+    max-width: 100%;
+  }
+  .studio-upload-button,
+  .studio-reference {
+    width: 60px;
+    height: 60px;
+    border-radius: 15px;
+  }
+  .studio-dock-controls {
+    width: 100%;
+  }
+  .studio-parameter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .studio-dock-toolbar {
     padding: 8px 12px 12px;
@@ -1088,17 +1212,27 @@
   }
   .studio-dock-actions {
     width: 100%;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .studio-dock-params .studio-field {
+    flex: 0 0 72px;
+  }
+  .studio-dock-generate {
+    padding-inline: 16px;
   }
   .studio-dock-seg {
     flex: 1;
+    min-width: 128px;
   }
   .studio-dock-seg-btn {
     flex: 1;
-    height: 34px;
+    height: 32px;
+    padding-inline: 6px;
   }
   .studio-dock-params .studio-native-select select {
-    height: 38px;
-    font-size: 16px;
+    height: 40px;
+    font-size: 14px;
   }
   .studio-dock-style-chip {
     height: 38px;
@@ -1110,6 +1244,7 @@
   .studio-dock-refine {
     height: 40px;
     margin-right: auto;
+    padding-inline: 10px;
   }
   .studio-creation-actions button {
     min-height: 40px;
@@ -1134,9 +1269,25 @@
     font-size: 23px;
   }
 }
+@media (max-width: 379px) {
+  .studio-dock-params {
+    flex-wrap: wrap;
+  }
+  .studio-dock-params .studio-field {
+    flex: 1;
+  }
+  .studio-dock-seg {
+    order: 1;
+    flex-basis: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
-  .studio-ambient-bg::before,
-  .studio-agent-settings-chevron {
+  .studio-dock-refine,
+  .studio-dock-icon-btn,
+  .studio-dock-generate,
+  .studio-dock-seg,
+  .studio-dock-params .studio-native-select select,
+  .studio-upload-button {
     transition: none;
   }
   .studio-progress-dots span {
@@ -1146,13 +1297,13 @@
 @supports not
 ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .studio-dock,
+  .studio-canvas,
   .studio-history {
     background: #edf0f2;
   }
   .dark .studio-dock,
-  .dark .studio-history,
-  .image-studio--has-art .studio-dock,
-  .image-studio--has-art .studio-history {
+  .dark .studio-canvas,
+  .dark .studio-history {
     background: #33383d;
   }
 }

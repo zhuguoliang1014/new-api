@@ -7,22 +7,11 @@ published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 */
 import { Link } from '@tanstack/react-router'
-import {
-  Check,
-  ChevronDown,
-  ExternalLink,
-  Loader2,
-  Settings2,
-} from 'lucide-react'
+import { ExternalLink, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import type { ApiKey } from '@/features/keys/types'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -43,9 +32,6 @@ type StudioAgentSettingsProps = {
 export function StudioAgentSettings(props: StudioAgentSettingsProps) {
   const { t } = useTranslation()
   const state = props.state
-  const [open, setOpen] = useState(
-    !props.state.config?.image || !props.state.config?.prompt
-  )
   const [draft, setDraft] = useState<PlaygroundAgentConfig>({
     prompt: null,
     image: null,
@@ -61,7 +47,6 @@ export function StudioAgentSettings(props: StudioAgentSettingsProps) {
       ...new Set([...state.models, DEFAULT_PROMPT_MODEL, DEFAULT_IMAGE_MODEL]),
     ].sort()
   }, [state.models])
-  const configured = Boolean(draft.prompt && draft.image)
   const hasKeys = state.keys.length > 0
 
   const setSlot = (
@@ -87,7 +72,6 @@ export function StudioAgentSettings(props: StudioAgentSettingsProps) {
     try {
       const saved = await state.save(draft)
       setDraft(saved)
-      setOpen(false)
       props.onSaved?.()
     } catch (error) {
       handleServerError(error)
@@ -95,91 +79,61 @@ export function StudioAgentSettings(props: StudioAgentSettingsProps) {
   }
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      className='studio-agent-settings'
-    >
-      <CollapsibleTrigger
-        render={
+    <div className='studio-agent-settings'>
+      {state.isLoading && (
+        <p className='studio-agent-settings-description' role='status'>
+          {t('Loading agent configuration...')}
+        </p>
+      )}
+      {!state.isLoading && !hasKeys && (
+        <div className='studio-agent-settings-empty'>
+          <span>{t('Create an API key first')}</span>
+          <Button size='sm' variant='outline' render={<Link to='/keys' />}>
+            {t('Open API keys')} <ExternalLink size={13} aria-hidden='true' />
+          </Button>
+        </div>
+      )}
+      {!state.isLoading && hasKeys && (
+        <div className='studio-agent-settings-grid'>
+          <AgentSlotFields
+            label={t('Prompt refinement')}
+            slot='prompt'
+            draft={draft}
+            keys={state.keys}
+            models={modelOptions}
+            onChange={setSlot}
+          />
+          <AgentSlotFields
+            label={t('Image generation')}
+            slot='image'
+            draft={draft}
+            keys={state.keys}
+            models={modelOptions}
+            onChange={setSlot}
+          />
           <Button
             type='button'
-            variant='ghost'
-            className='studio-agent-settings-trigger'
-            aria-label={t('Agent configuration')}
-          />
-        }
-      >
-        <Settings2 size={15} aria-hidden='true' />
-        <span>{t('Agent configuration')}</span>
-        {configured && <Check size={14} aria-label={t('Configured')} />}
-        <ChevronDown
-          className='studio-agent-settings-chevron'
-          size={15}
-          aria-hidden='true'
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className='studio-agent-settings-content'>
-        <p className='studio-agent-settings-description'>
-          {t(
-            'Choose one API key and model for prompt refinement, and another for image generation.'
-          )}
-        </p>
-        {state.isLoading && (
-          <p className='studio-agent-settings-description' role='status'>
-            {t('Loading agent configuration...')}
-          </p>
-        )}
-        {!state.isLoading && !hasKeys && (
-          <div className='studio-agent-settings-empty'>
-            <span>{t('Create an API key first')}</span>
-            <Button size='sm' variant='outline' render={<Link to='/keys' />}>
-              {t('Open API keys')} <ExternalLink size={13} aria-hidden='true' />
-            </Button>
-          </div>
-        )}
-        {!state.isLoading && hasKeys && (
-          <div className='studio-agent-settings-grid'>
-            <AgentSlotFields
-              label={t('Prompt refinement')}
-              slot='prompt'
-              draft={draft}
-              keys={state.keys}
-              models={modelOptions}
-              onChange={setSlot}
-            />
-            <AgentSlotFields
-              label={t('Image generation')}
-              slot='image'
-              draft={draft}
-              keys={state.keys}
-              models={modelOptions}
-              onChange={setSlot}
-            />
-            <Button
-              type='button'
-              className='studio-agent-settings-save'
-              disabled={
-                !draft.prompt?.token_id ||
-                !draft.prompt.model ||
-                !draft.image?.token_id ||
-                !draft.image.model ||
-                state.isSaving
-              }
-              onClick={() => void save()}
-            >
-              {state.isSaving && (
-                <Loader2
-                  size={14}
-                  className='animate-spin motion-reduce:animate-none'
-                />
-              )}
-              {t('Save configuration')}
-            </Button>
-          </div>
-        )}
-      </CollapsibleContent>
-    </Collapsible>
+            className='studio-agent-settings-save'
+            disabled={
+              !draft.prompt?.token_id ||
+              !draft.prompt.model ||
+              !draft.image?.token_id ||
+              !draft.image.model ||
+              state.isSaving
+            }
+            onClick={() => void save()}
+          >
+            {state.isSaving && (
+              <Loader2
+                size={14}
+                className='animate-spin motion-reduce:animate-none'
+              />
+            )}
+            {t('Save configuration')}
+          </Button>
+        </div>
+      )}
+    </div>
   )
 }
 

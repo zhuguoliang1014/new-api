@@ -30,7 +30,12 @@ import { beforeEach, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
-import { generateImages, refinePrompt, savePlaygroundAgentConfig } from '../api'
+import {
+  generateImages,
+  getPlaygroundAgentConfig,
+  refinePrompt,
+  savePlaygroundAgentConfig,
+} from '../api'
 import { ImagePlayground } from '../index'
 import { readImageHistory, saveImageRecord } from '../lib/history'
 import * as imageFiles from '../lib/images'
@@ -161,15 +166,15 @@ async function ready() {
   await screen.findByRole('textbox', { name: 'Image prompt' })
 }
 
-it('keeps agent settings collapsed and saves separate key/model selections', async () => {
+it('keeps saved Agent settings closed and allows editing both selections in a dialog', async () => {
   showStudio()
   await ready()
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  const trigger = await screen.findByRole('button', {
-    name: 'Agent configuration',
-  })
-  expect(screen.queryByText('Prompt refinement')).not.toBeInTheDocument()
-  fireEvent.click(trigger)
+  const dialog = await screen.findByRole('dialog', { name: 'Agent settings' })
+  expect(
+    within(dialog).queryByRole('button', { name: 'Advanced settings' })
+  ).not.toBeInTheDocument()
   expect(await screen.findByText('Prompt refinement')).toBeInTheDocument()
   fireEvent.change(screen.getByLabelText('Prompt refinement API Key'), {
     target: { value: '12' },
@@ -188,12 +193,129 @@ it('keeps agent settings collapsed and saves separate key/model selections', asy
     screen.queryByLabelText('Prompt refinement API Key')
   ).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Agent configuration' })
-  )
   expect(await screen.findByLabelText('Prompt refinement API Key')).toHaveValue(
     '12'
   )
+})
+
+it('opens setup for missing configuration and remembers the saved choices on return', async () => {
+  vi.mocked(getPlaygroundAgentConfig).mockResolvedValueOnce({
+    prompt: null,
+    image: null,
+  })
+  const view = showStudio()
+  const dialog = await screen.findByRole('dialog', { name: 'Agent settings' })
+  expect(
+    within(dialog).getByRole('button', { name: 'Save configuration' })
+  ).toBeDisabled()
+  fireEvent.change(within(dialog).getByLabelText('Prompt refinement API Key'), {
+    target: { value: '11' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('Prompt refinement Model'), {
+    target: { value: 'gpt-6.1-sol' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('Image generation API Key'), {
+    target: { value: '12' },
+  })
+  fireEvent.change(within(dialog).getByLabelText('Image generation Model'), {
+    target: { value: 'gpt-image-2' },
+  })
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'Save configuration' })
+  )
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+  expect(savePlaygroundAgentConfig).toHaveBeenCalledWith(
+    {
+      prompt: { token_id: 11, model: 'gpt-6.1-sol' },
+      image: { token_id: 12, model: 'gpt-image-2' },
+    },
+    expect.anything()
+  )
+  view.unmount()
+  client.clear()
+  showStudio()
+  await waitFor(() => expect(getPlaygroundAgentConfig).toHaveBeenCalledTimes(2))
+  await waitFor(() =>
+    expect(
+      client.getQueryState(['image-playground', 'agent-config'])?.status
+    ).toBe('success')
+  )
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
+  expect(await screen.findByLabelText('Image generation API Key')).toHaveValue(
+    '12'
+  )
+})
+
+it('keeps the settings dialog and selected values when saving fails', async () => {
+  vi.mocked(savePlaygroundAgentConfig).mockRejectedValueOnce(
+    new Error('Offline')
+  )
+  showStudio()
+  await ready()
+  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
+  const input = await screen.findByLabelText('Prompt refinement API Key')
+  fireEvent.change(input, { target: { value: '12' } })
+  const save = screen.getByRole('button', { name: 'Save configuration' })
+  fireEvent.click(save)
+  await waitFor(() => expect(savePlaygroundAgentConfig).toHaveBeenCalled())
+  await waitFor(() => expect(save).toBeEnabled())
+  expect(
+    screen.getByRole('dialog', { name: 'Agent settings' })
+  ).toBeInTheDocument()
+  expect(input).toHaveValue('12')
+})
+
+it('does not confuse a failed configuration request with a first visit', async () => {
+  vi.mocked(getPlaygroundAgentConfig).mockRejectedValueOnce(
+    new Error('Offline')
+  )
+  showStudio()
+  await waitFor(() =>
+    expect(
+      client.getQueryState(['image-playground', 'agent-config'])?.status
+    ).toBe('error')
+  )
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+})
+
+it('offers a keyboard-accessible image tile for adding references', async () => {
+  const user = userEvent.setup()
+  showStudio()
+  await ready()
+  const tile = screen.getByRole('button', {
+    name: 'Add images to guide your creation',
+  })
+  expect(tile.textContent).toBe('')
+  const input = screen.getByLabelText(/Reference images/)
+  const click = vi.spyOn(input, 'click')
+  tile.focus()
+  await user.keyboard('{Enter}')
+  expect(click).toHaveBeenCalledOnce()
+})
+
+it('hides the add-reference tile at four images and restores it after removal', async () => {
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByLabelText(/Reference images/), {
+    target: {
+      files: ['first.png', 'second.png', 'third.png', 'fourth.png'].map(
+        (name) => new File(['image'], name, { type: 'image/png' })
+      ),
+    },
+  })
+  expect(
+    screen.queryByRole('button', { name: 'Add images to guide your creation' })
+  ).not.toBeInTheDocument()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Remove reference first.png' })
+  )
+  expect(
+    screen.getByRole('button', { name: 'Add images to guide your creation' })
+  ).toBeEnabled()
 })
 
 it('keeps the draft intact while applying a selected style to generation', async () => {
@@ -637,10 +759,11 @@ it('expands advanced settings and prevents a transparent JPEG request', async ()
   expect(
     screen.queryByRole('combobox', { name: 'Image background' })
   ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Advanced settings' })
-  )
+  const trigger = screen.getByRole('button', { name: 'Advanced settings' })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  fireEvent.click(trigger)
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   const background = await screen.findByRole('combobox', {
     name: 'Image background',
   })
@@ -930,7 +1053,9 @@ it('reuses a styled creation without applying the same style twice', async () =>
   )
 })
 
-it('uses the selected history image for both the canvas and ambient background', async () => {
+it('renders large image data URLs as the ambient image and follows history selection', async () => {
+  // Generated PNGs can exceed the browser's ~2 MiB CSS custom-property limit.
+  const largeImageSource = `data:image/png;base64,${'A'.repeat(2 ** 21)}`
   vi.mocked(readImageHistory).mockResolvedValue(
     ['latest', 'older'].map((id, index) => ({
       id,
@@ -940,12 +1065,21 @@ it('uses the selected history image for both the canvas and ambient background',
         ...useImagePlaygroundStore.getState().parameters,
         prompt: id,
       },
-      images: [{ id, src: `https://example.com/${id}.png` }],
+      images: [
+        {
+          id,
+          src: index === 0 ? largeImageSource : 'https://example.com/older.png',
+        },
+      ],
       referenceCount: 0,
     }))
   )
   const view = showStudio()
   await ready()
+  const background = view.container.querySelector('.studio-ambient-bg img')
+  expect(background).toHaveAttribute('src', largeImageSource)
+  expect(background).toHaveAttribute('alt', '')
+  expect(background).toHaveAttribute('referrerpolicy', 'no-referrer')
   fireEvent.click(
     await screen.findByRole('button', { name: 'View creation 2' })
   )
@@ -953,9 +1087,17 @@ it('uses the selected history image for both the canvas and ambient background',
     'src',
     'https://example.com/older.png'
   )
-  expect(view.container.querySelector('.studio-ambient-bg')).toHaveAttribute(
-    'style',
-    '--ambient-src: url("https://example.com/older.png");'
+  expect(
+    view.container.querySelector('.studio-ambient-bg img')
+  ).toHaveAttribute('src', 'https://example.com/older.png')
+})
+
+it('keeps an empty canvas in the selected interface theme without an artwork layer', async () => {
+  const view = showStudio()
+  await ready()
+  expect(view.container.querySelector('.studio-ambient-bg img')).toBeNull()
+  expect(view.container.querySelector('.image-studio')).not.toHaveClass(
+    'image-studio--has-art'
   )
 })
 

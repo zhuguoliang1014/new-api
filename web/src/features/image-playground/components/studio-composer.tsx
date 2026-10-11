@@ -18,9 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
+  Bot,
   Loader2,
   Plus,
-  Settings2,
+  SlidersHorizontal,
   Sparkles,
   Square,
   WandSparkles,
@@ -29,7 +30,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   Form,
   FormControl,
@@ -37,12 +44,6 @@ import {
   FormItem,
   FormMessage,
 } from '@/components/ui/form'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTitle,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
@@ -71,16 +72,12 @@ export function StudioComposer(props: StudioComposerProps) {
   const job = useImagePlaygroundStore((state) => state.job)
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
   const agentConfig = useStudioAgentConfig()
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null)
+  const needsSetup = Boolean(
+    agentConfig.config &&
+    (!agentConfig.config.prompt || !agentConfig.config.image)
+  )
   const isComposingRef = useRef(false)
-  useEffect(() => {
-    if (
-      agentConfig.config &&
-      (!agentConfig.config.prompt || !agentConfig.config.image)
-    ) {
-      setPanelOpen(true)
-    }
-  }, [agentConfig.config])
 
   const form = useForm<ImageParameters>({
     resolver: zodResolver(imageParametersSchema),
@@ -120,198 +117,216 @@ export function StudioComposer(props: StudioComposerProps) {
           className='studio-dock-form'
         >
           <StudioStyleSelector />
-          {/* Prompt input */}
-          <FormField
-            control={form.control}
-            name='prompt'
-            render={({ field }) => (
-              <FormItem className='studio-dock-prompt-item'>
-                <FormControl id='studio-prompt'>
-                  <Textarea
-                    {...field}
-                    id='studio-prompt'
-                    aria-label={t('Image prompt')}
-                    disabled={busy || props.refining}
-                    maxLength={32000}
-                    rows={2}
-                    onChange={(event) => {
-                      field.onChange(event)
-                      setParameters({ prompt: event.target.value })
-                    }}
-                    onCompositionStart={() => {
-                      isComposingRef.current = true
-                    }}
-                    onCompositionEnd={() => {
-                      isComposingRef.current = false
-                    }}
-                    placeholder={t(
-                      'A subject, a setting, a mood… What do you want to see?'
-                    )}
-                    className='studio-dock-prompt'
-                    onPaste={(event) => {
-                      const files = [...event.clipboardData.files].filter(
-                        (file) => file.type.startsWith('image/')
-                      )
-                      if (files.length && modelOptions.supportsReferences) {
-                        event.preventDefault()
-                        try {
-                          useImagePlaygroundStore
-                            .getState()
-                            .addReferences(files)
-                        } catch (error) {
-                          handleServerError(error)
-                        }
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (
-                        isComposingRef.current ||
-                        event.nativeEvent.isComposing ||
-                        event.nativeEvent.keyCode === 229
-                      ) {
-                        return
-                      }
-                      if (
-                        event.key === 'Enter' &&
-                        (event.metaKey || event.ctrlKey)
-                      ) {
-                        event.preventDefault()
-                        if (canGenerate) {
-                          void form.handleSubmit(props.onGenerate)()
-                        }
-                      }
-                    }}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <StudioReferences
-            supportsReferences={modelOptions.supportsReferences}
-            onAddFiles={(files) => {
-              try {
-                useImagePlaygroundStore.getState().addReferences(files)
-              } catch (error) {
-                handleServerError(error)
-              }
-            }}
-          />
-
-          {/* Bottom toolbar: params left, actions right */}
-          <div className='studio-dock-toolbar'>
-            <StudioQuickParameters />
-            {/* Right actions */}
-            <div className='studio-dock-actions'>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                className='studio-dock-refine'
-                aria-label={
-                  props.refining ? t('Refining...') : t('Refine prompt')
+          <div className='studio-dock-input'>
+            <StudioReferences
+              supportsReferences={modelOptions.supportsReferences}
+              onAddFiles={(files) => {
+                try {
+                  useImagePlaygroundStore.getState().addReferences(files)
+                } catch (error) {
+                  handleServerError(error)
                 }
-                disabled={!canRefine}
-                aria-busy={props.refining}
-                onClick={async () => {
-                  try {
-                    const refined = await props.onRefine(parameters.prompt)
-                    setParameters({ prompt: refined })
-                    form.setValue('prompt', refined)
-                  } catch (error) {
-                    if ((error as { name?: string }).name !== 'AbortError') {
-                      handleServerError(error)
-                    }
+              }}
+            />
+            {/* Prompt input */}
+            <FormField
+              control={form.control}
+              name='prompt'
+              render={({ field }) => (
+                <FormItem className='studio-dock-prompt-item'>
+                  <FormControl id='studio-prompt'>
+                    <Textarea
+                      {...field}
+                      id='studio-prompt'
+                      aria-label={t('Image prompt')}
+                      disabled={busy || props.refining}
+                      maxLength={32000}
+                      rows={2}
+                      onChange={(event) => {
+                        field.onChange(event)
+                        setParameters({ prompt: event.target.value })
+                      }}
+                      onCompositionStart={() => {
+                        isComposingRef.current = true
+                      }}
+                      onCompositionEnd={() => {
+                        isComposingRef.current = false
+                      }}
+                      placeholder={t(
+                        'A subject, a setting, a mood… What do you want to see?'
+                      )}
+                      className='studio-dock-prompt'
+                      onPaste={(event) => {
+                        const files = [...event.clipboardData.files].filter(
+                          (file) => file.type.startsWith('image/')
+                        )
+                        if (files.length && modelOptions.supportsReferences) {
+                          event.preventDefault()
+                          try {
+                            useImagePlaygroundStore
+                              .getState()
+                              .addReferences(files)
+                          } catch (error) {
+                            handleServerError(error)
+                          }
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (
+                          isComposingRef.current ||
+                          event.nativeEvent.isComposing ||
+                          event.nativeEvent.keyCode === 229
+                        ) {
+                          return
+                        }
+                        if (
+                          event.key === 'Enter' &&
+                          (event.metaKey || event.ctrlKey)
+                        ) {
+                          event.preventDefault()
+                          if (canGenerate) {
+                            void form.handleSubmit(props.onGenerate)()
+                          }
+                        }
+                      }}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+          <Collapsible>
+            {/* Bottom toolbar: params left, actions right */}
+            <div className='studio-dock-toolbar'>
+              <div className='studio-dock-controls'>
+                <StudioQuickParameters />
+              </div>
+              {/* Right actions */}
+              <div className='studio-dock-actions'>
+                <Button
+                  type='button'
+                  variant='ghost'
+                  size='sm'
+                  className='studio-dock-refine'
+                  aria-label={
+                    props.refining ? t('Refining...') : t('Refine prompt')
                   }
-                }}
-              >
-                {props.refining ? (
-                  <Loader2
-                    size={14}
-                    className='animate-spin motion-reduce:animate-none'
-                  />
-                ) : (
-                  <WandSparkles size={14} aria-hidden='true' />
-                )}
-                {props.refining ? t('Refining...') : t('Refine')}
-              </Button>
+                  disabled={!canRefine}
+                  aria-busy={props.refining}
+                  onClick={async () => {
+                    try {
+                      const refined = await props.onRefine(parameters.prompt)
+                      setParameters({ prompt: refined })
+                      form.setValue('prompt', refined)
+                    } catch (error) {
+                      if ((error as { name?: string }).name !== 'AbortError') {
+                        handleServerError(error)
+                      }
+                    }
+                  }}
+                >
+                  {props.refining ? (
+                    <Loader2
+                      size={14}
+                      className='animate-spin motion-reduce:animate-none'
+                    />
+                  ) : (
+                    <WandSparkles size={14} aria-hidden='true' />
+                  )}
+                  {props.refining ? t('Refining...') : t('Refine')}
+                </Button>
 
-              <Popover open={panelOpen} onOpenChange={setPanelOpen}>
-                <PopoverTrigger
+                <CollapsibleTrigger
                   render={
                     <Button
                       type='button'
                       variant='ghost'
                       size='icon'
                       className='studio-dock-icon-btn'
-                      aria-label={t('Agent settings')}
-                      disabled={busy || props.refining}
+                      aria-label={t('Advanced settings')}
+                      title={t('Advanced settings')}
                     />
                   }
                 >
-                  <Settings2 size={16} aria-hidden='true' />
-                </PopoverTrigger>
-                <PopoverContent
-                  side='top'
-                  align='end'
-                  sideOffset={16}
-                  className='studio-settings-popover'
-                  aria-label={t('Agent settings')}
+                  <SlidersHorizontal size={16} aria-hidden='true' />
+                </CollapsibleTrigger>
+                <Dialog
+                  open={settingsOpen ?? needsSetup}
+                  onOpenChange={setSettingsOpen}
+                  title={t('Agent settings')}
+                  description={t(
+                    'Choose one API key and model for prompt refinement, and another for image generation.'
+                  )}
+                  contentClassName='studio-agent-dialog'
+                  trigger={
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='icon'
+                      className='studio-dock-icon-btn'
+                      aria-label={t('Agent settings')}
+                      title={t('Agent settings')}
+                      disabled={busy || props.refining}
+                    >
+                      <Bot size={17} aria-hidden='true' />
+                    </Button>
+                  }
                 >
-                  <PopoverTitle>{t('Agent settings')}</PopoverTitle>
                   <StudioAgentSettings
                     state={agentConfig}
-                    onSaved={() => setPanelOpen(false)}
+                    onSaved={() => setSettingsOpen(false)}
                   />
-                  <StudioParameters secondaryOnly />
-                </PopoverContent>
-              </Popover>
-              <Button
-                type='button'
-                variant='ghost'
-                size='icon'
-                className='studio-dock-icon-btn'
-                aria-label={t('Create')}
-                disabled={busy || props.refining}
-                onClick={() => {
-                  useImagePlaygroundStore.getState().clearDraft()
-                  document
-                    .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                    ?.focus()
-                }}
-              >
-                <Plus size={16} aria-hidden='true' />
-              </Button>
-              {job && (
+                </Dialog>
                 <Button
                   type='button'
                   variant='ghost'
-                  className='studio-dock-refine'
-                  onClick={() => job.controller.abort()}
+                  size='icon'
+                  className='studio-dock-icon-btn'
+                  aria-label={t('Create')}
+                  disabled={busy || props.refining}
+                  onClick={() => {
+                    useImagePlaygroundStore.getState().clearDraft()
+                    document
+                      .querySelector<HTMLTextAreaElement>('#studio-prompt')
+                      ?.focus()
+                  }}
                 >
-                  <Square size={14} aria-hidden='true' />
-                  {t('Stop waiting')}
+                  <Plus size={16} aria-hidden='true' />
                 </Button>
-              )}
-              <Button
-                type='submit'
-                disabled={!canGenerate}
-                aria-label={t('Generate image')}
-                className='studio-dock-generate'
-              >
-                {busy ? (
-                  <Loader2
-                    size={16}
-                    className='animate-spin motion-reduce:animate-none'
-                  />
-                ) : (
-                  <Sparkles size={16} aria-hidden='true' />
+                {job && (
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    className='studio-dock-refine'
+                    onClick={() => job.controller.abort()}
+                  >
+                    <Square size={14} aria-hidden='true' />
+                    {t('Stop waiting')}
+                  </Button>
                 )}
-                {busy ? t('Creating...') : t('Generate')}
-              </Button>
+                <Button
+                  type='submit'
+                  disabled={!canGenerate}
+                  aria-label={t('Generate image')}
+                  className='studio-dock-generate'
+                >
+                  {busy ? (
+                    <Loader2
+                      size={16}
+                      className='animate-spin motion-reduce:animate-none'
+                    />
+                  ) : (
+                    <Sparkles size={16} aria-hidden='true' />
+                  )}
+                  {busy ? t('Creating...') : t('Generate')}
+                </Button>
+              </div>
             </div>
-          </div>
+            <CollapsibleContent className='studio-dock-advanced'>
+              <StudioParameters />
+            </CollapsibleContent>
+          </Collapsible>
         </form>
       </Form>
     </div>

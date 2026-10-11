@@ -64,55 +64,57 @@ export function StudioGallery() {
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   return (
     <section className='studio-gallery' aria-label={t('My creations')}>
-      {storageUnavailable && (
-        <p className='studio-storage-warning' role='status'>
-          {t(
-            'Local storage is unavailable or full. Download your images before leaving.'
-          )}
-        </p>
-      )}
-      {job && <GenerationProgress compact={Boolean(selectedId)} />}
-      {!job && !record && <StudioInspiration />}
-      {(!job || selectedId) && record && (
-        <div className='studio-result'>
-          <div className='studio-result-meta'>
-            <span>
-              {record.parameters.model} ·{' '}
-              {record.parameters.size === 'auto'
-                ? t('Auto')
-                : record.parameters.size.replace('x', ' × ')}
-            </span>
-            <span>
-              {new Date(record.createdAt).toLocaleString(locale, {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
+      <div className='studio-canvas'>
+        {storageUnavailable && (
+          <p className='studio-storage-warning' role='status'>
+            {t(
+              'Local storage is unavailable or full. Download your images before leaving.'
+            )}
+          </p>
+        )}
+        {job && <GenerationProgress compact={Boolean(selectedId)} />}
+        {!job && !record && <StudioInspiration />}
+        {(!job || selectedId) && record && (
+          <div className='studio-result'>
+            <div className='studio-result-meta'>
+              <span>
+                {record.parameters.model} ·{' '}
+                {record.parameters.size === 'auto'
+                  ? t('Auto')
+                  : record.parameters.size.replace('x', ' × ')}
+              </span>
+              <span>
+                {new Date(record.createdAt).toLocaleString(locale, {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </span>
+            </div>
+            <div
+              className={`studio-results-grid${record.images.length === 1 ? ' studio-results-single' : ''}`}
+            >
+              {record.images.map((image, index) => (
+                <div className='studio-result-card' key={image.id}>
+                  <ImageArtwork
+                    image={image}
+                    requestedSize={record.parameters.size}
+                    onPreview={() => setPreview({ index, record })}
+                  />
+                </div>
+              ))}
+            </div>
+            {record.images.some((image) => /^https?:/.test(image.src)) && (
+              <p className='studio-help'>
+                {t(
+                  'Some providers return temporary links. Download images you want to keep.'
+                )}
+              </p>
+            )}
           </div>
-          <div
-            className={`studio-results-grid${record.images.length === 1 ? ' studio-results-single' : ''}`}
-          >
-            {record.images.map((image, index) => (
-              <div className='studio-result-card' key={image.id}>
-                <ImageArtwork
-                  image={image}
-                  requestedSize={record.parameters.size}
-                  onPreview={() => setPreview({ index, record })}
-                />
-              </div>
-            ))}
-          </div>
-          {record.images.some((image) => /^https?:/.test(image.src)) && (
-            <p className='studio-help'>
-              {t(
-                'Some providers return temporary links. Download images you want to keep.'
-              )}
-            </p>
-          )}
-        </div>
-      )}
+        )}
+      </div>
       {records.length > 0 && (
         <div className='studio-history'>
           <h3>

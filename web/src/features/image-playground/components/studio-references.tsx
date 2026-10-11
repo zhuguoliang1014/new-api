@@ -38,8 +38,8 @@ export function StudioReferences(props: StudioReferencesProps) {
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   return (
-    <div className='studio-field'>
-      <div className='studio-label-row'>
+    <div className='studio-reference-field'>
+      <div className='sr-only'>
         <Label htmlFor='studio-reference'>
           {t('Reference images')}
           <span className='studio-optional'>{t('Optional')}</span>
@@ -60,7 +60,7 @@ export function StudioReferences(props: StudioReferencesProps) {
         }}
       />
       <div
-        className={`studio-upload${dragging ? ' studio-upload-dragging' : ''}`}
+        className={`studio-references${dragging ? ' studio-upload-dragging' : ''}`}
         onDragOver={(event) => {
           event.preventDefault()
           if (!busy && props.supportsReferences) setDragging(true)
@@ -74,70 +74,64 @@ export function StudioReferences(props: StudioReferencesProps) {
           }
         }}
       >
-        <Button
-          type='button'
-          variant='ghost'
-          className='studio-upload-button'
-          disabled={busy || !props.supportsReferences || references.length >= 4}
-          onClick={() => fileInput.current?.click()}
-        >
-          <ImagePlus size={20} aria-hidden='true' />
-          <span>
-            {t('Add images to guide your creation')}
-            <small>
-              {t('Drop, paste or choose · PNG, JPEG, WebP · 10 MB each')}
-            </small>
-          </span>
-        </Button>
+        {references.map((reference) => (
+          <div key={reference.id} className='studio-reference'>
+            <StudioImageHoverPreview
+              src={reference.preview}
+              label={reference.file.name}
+              imageLabel={t('Preview reference {{name}}', {
+                name: reference.file.name,
+              })}
+              trigger={
+                <Button
+                  type='button'
+                  variant='ghost'
+                  className='studio-reference-preview'
+                  aria-label={t('Preview reference {{name}}', {
+                    name: reference.file.name,
+                  })}
+                >
+                  <img src={reference.preview} alt={reference.file.name} />
+                </Button>
+              }
+            />
+            <Button
+              type='button'
+              variant='secondary'
+              size='icon'
+              disabled={busy}
+              className='studio-reference-remove'
+              aria-label={t('Remove reference {{name}}', {
+                name: reference.file.name,
+              })}
+              onClick={() =>
+                useImagePlaygroundStore.getState().removeReference(reference.id)
+              }
+            >
+              <X size={14} />
+            </Button>
+          </div>
+        ))}
+        {references.length < 4 && (
+          <Button
+            type='button'
+            variant='ghost'
+            className='studio-upload-button'
+            aria-label={t('Add images to guide your creation')}
+            title={t('Drop, paste or choose · PNG, JPEG, WebP · 10 MB each')}
+            disabled={
+              busy || !props.supportsReferences || references.length >= 4
+            }
+            onClick={() => fileInput.current?.click()}
+          >
+            <ImagePlus size={30} strokeWidth={1.4} aria-hidden='true' />
+          </Button>
+        )}
       </div>
       {!props.supportsReferences && (
         <p className='studio-help'>
           {t('Choose a model that supports reference images.')}
         </p>
-      )}
-      {references.length > 0 && (
-        <div className='studio-references'>
-          {references.map((reference) => (
-            <div key={reference.id} className='studio-reference'>
-              <StudioImageHoverPreview
-                src={reference.preview}
-                label={reference.file.name}
-                imageLabel={t('Preview reference {{name}}', {
-                  name: reference.file.name,
-                })}
-                trigger={
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    className='studio-reference-preview'
-                    aria-label={t('Preview reference {{name}}', {
-                      name: reference.file.name,
-                    })}
-                  >
-                    <img src={reference.preview} alt={reference.file.name} />
-                  </Button>
-                }
-              />
-              <Button
-                type='button'
-                variant='secondary'
-                size='icon'
-                disabled={busy}
-                className='studio-reference-remove'
-                aria-label={t('Remove reference {{name}}', {
-                  name: reference.file.name,
-                })}
-                onClick={() =>
-                  useImagePlaygroundStore
-                    .getState()
-                    .removeReference(reference.id)
-                }
-              >
-                <X size={14} />
-              </Button>
-            </div>
-          ))}
-        </div>
       )}
     </div>
   )
