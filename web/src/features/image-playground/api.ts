@@ -30,6 +30,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { validateReferenceFiles } from './lib/images'
 import {
+  AGENT_IMAGE_MODEL,
   getImageModelOptions,
   imageParametersSchema,
   normalizeImageParameters,
@@ -206,7 +207,7 @@ export async function generateImages(
   // capabilities and before persisting or sending the request.
   const parsed = imageParametersSchema.parse({
     ...input,
-    model: 'gpt-image-2',
+    model: AGENT_IMAGE_MODEL,
   })
   const options = getImageModelOptions(parsed.model)
   // Never silently downgrade an explicit resolution before a billable request.

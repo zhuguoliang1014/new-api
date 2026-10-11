@@ -52,11 +52,15 @@ export type ImageJob = {
   parameters: ImageParameters
   referenceCount: number
 }
+
+/** The image provider is an Agent implementation detail, not a user choice. */
+export const AGENT_IMAGE_MODEL = 'gpt-image-2' as const
+
 export const defaultImageParameters: ImageParameters = {
   prompt: '',
   // The Agent mode keeps the provider choice on the server. The fixed value
   // here is used only for local parameter normalization and history records.
-  model: 'gpt-image-2',
+  model: AGENT_IMAGE_MODEL,
   size: 'auto',
   quality: 'auto',
   count: 1,

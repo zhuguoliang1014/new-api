@@ -23,6 +23,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { validateReferenceFiles } from './lib/images'
 import {
+  AGENT_IMAGE_MODEL,
   defaultImageParameters,
   normalizeImageParameters,
   getImageModelOptions,
@@ -84,7 +85,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       const parameters = normalizeImageParameters({
         ...state.parameters,
         ...values,
-        model: 'gpt-image-2',
+        model: AGENT_IMAGE_MODEL,
       })
       const modelChanged =
         values.model !== undefined && values.model !== state.parameters.model
@@ -142,7 +143,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       set({
         parameters: normalizeImageParameters({
           ...record.parameters,
-          model: 'gpt-image-2',
+          model: AGENT_IMAGE_MODEL,
         }),
         references: [],
         error: null,

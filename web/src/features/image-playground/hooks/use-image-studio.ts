@@ -19,7 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useMutation } from '@tanstack/react-query'
 import { t } from 'i18next'
 import { nanoid } from 'nanoid'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 import { getServerErrorMessage } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
@@ -28,12 +28,14 @@ import { generateImages, getImageAuthScope, refinePrompt } from '../api'
 import { readImageHistory, saveImageRecord } from '../lib/history'
 import { useImagePlaygroundStore } from '../store'
 import {
+  AGENT_IMAGE_MODEL,
   normalizeImageParameters,
   type ImageParameters,
   type ImageRecord,
 } from '../types'
 
 export function useImageStudio() {
+  const refineControllerRef = useRef<AbortController | null>(null)
   const scope = useAuthStore((state) =>
     state.auth.user && state.auth.session
       ? `${state.auth.user.id}:${state.auth.session.sid}`
@@ -42,7 +44,17 @@ export function useImageStudio() {
   const ownerId = useAuthStore((state) => state.auth.user?.id)
   const historyLoaded = useImagePlaygroundStore((state) => state.historyLoaded)
   useEffect(() => {
+    // Prompt refinement is session-bound too. Abort an in-flight request when
+    // the account changes so a late response cannot update a new session's
+    // composer, even if the previous route remains mounted for a frame.
+    refineControllerRef.current?.abort()
+    refineControllerRef.current = null
     useImagePlaygroundStore.getState().setScope(scope)
+
+    return () => {
+      refineControllerRef.current?.abort()
+      refineControllerRef.current = null
+    }
   }, [scope])
 
   useEffect(() => {
@@ -79,7 +91,8 @@ export function useImageStudio() {
   const refineMutation = useMutation({
     retry: false,
     meta: { errorToast: false },
-    mutationFn: (prompt: string) => refinePrompt(prompt),
+    mutationFn: ({ prompt, signal }: { prompt: string; signal: AbortSignal }) =>
+      refinePrompt(prompt, signal),
   })
 
   const generationMutation = useMutation({
@@ -92,7 +105,7 @@ export function useImageStudio() {
       }
       const agentParameters = normalizeImageParameters({
         ...parameters,
-        model: 'gpt-image-2',
+        model: AGENT_IMAGE_MODEL,
       })
       const controller = new AbortController()
       const job = {
@@ -163,7 +176,25 @@ export function useImageStudio() {
   })
 
   return {
-    refine: refineMutation.mutateAsync,
+    refine: async (prompt: string) => {
+      const controller = new AbortController()
+      refineControllerRef.current?.abort()
+      refineControllerRef.current = controller
+      try {
+        const refined = await refineMutation.mutateAsync({
+          prompt,
+          signal: controller.signal,
+        })
+        if (controller.signal.aborted || scope !== getImageAuthScope()) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
+        return refined
+      } finally {
+        if (refineControllerRef.current === controller) {
+          refineControllerRef.current = null
+        }
+      }
+    },
     refining: refineMutation.isPending,
     refineError: refineMutation.error,
     generate: generationMutation.mutate,

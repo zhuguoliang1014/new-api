@@ -274,4 +274,14 @@ func TestPlaygroundImageModelOverrideIgnoresClientModel(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "gpt-image-2", request.Model)
 	})
+
+	t.Run("empty prompt is rejected", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/pg/images/generations", bytes.NewBufferString(`{"model":"client-selected","prompt":"  "}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		common.SetContextKey(c, constant.ContextKeyPlaygroundModel, "gpt-image-2")
+
+		_, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesGenerations)
+		require.EqualError(t, err, "prompt is required")
+	})
 }

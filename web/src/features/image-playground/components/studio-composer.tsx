@@ -135,6 +135,7 @@ export function StudioComposer(props: StudioComposerProps) {
                       size='sm'
                       className='studio-refine-prompt'
                       disabled={!canRefine}
+                      aria-busy={props.refining}
                       onClick={async () => {
                         try {
                           const refined = await props.onRefine(

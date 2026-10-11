@@ -427,13 +427,52 @@ it('keeps the simple composer free of credential and model controls', async () =
 })
 
 it('fills the prompt from the server-side refinement agent', async () => {
+  let finish!: (value: string) => void
+  vi.mocked(refinePrompt).mockImplementation(
+    async (_prompt, _signal) =>
+      new Promise((resolve) => {
+        finish = resolve
+      })
+  )
   showStudio()
   await ready()
   const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
   fireEvent.change(prompt, { target: { value: 'A cat by a window' } })
-  fireEvent.click(screen.getByRole('button', { name: 'Refine prompt' }))
+  const refineButton = screen.getByRole('button', { name: 'Refine prompt' })
+  fireEvent.click(refineButton)
+  await screen.findByRole('button', { name: 'Refining...' })
+  expect(refineButton).toHaveAttribute('aria-busy', 'true')
+  await act(async () => finish('A polished studio prompt'))
   await waitFor(() => expect(prompt).toHaveValue('A polished studio prompt'))
-  expect(refinePrompt).toHaveBeenCalledWith('A cat by a window')
+  expect(refineButton).toHaveAttribute('aria-busy', 'false')
+  expect(refinePrompt).toHaveBeenCalledWith(
+    'A cat by a window',
+    expect.any(AbortSignal)
+  )
+})
+
+it('aborts prompt refinement when the authenticated session changes', async () => {
+  let finish!: (value: string) => void
+  let requestSignal!: AbortSignal
+  vi.mocked(refinePrompt).mockImplementation((_prompt, signal) => {
+    requestSignal = signal as AbortSignal
+    return new Promise((resolve) => {
+      finish = resolve
+    })
+  })
+  showStudio()
+  await ready()
+  const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
+  fireEvent.change(prompt, { target: { value: 'A private idea' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Refine prompt' }))
+  await screen.findByRole('button', { name: 'Refining...' })
+
+  act(() => useAuthStore.getState().auth.reset())
+  expect(requestSignal.aborted).toBe(true)
+  await act(async () => finish('A stale refined prompt'))
+
+  expect(useImagePlaygroundStore.getState().parameters.prompt).toBe('')
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue('')
 })
 
 it('reports storage failure while keeping generated images available for download', async () => {

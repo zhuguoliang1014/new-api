@@ -1058,11 +1058,15 @@ input.studio-model-input:focus,
 }
 .studio-label-row {
   align-items: flex-start;
+  flex-wrap: wrap;
 }
 .studio-prompt-label-actions {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 3px;
+  justify-content: flex-end;
+  min-width: 0;
   color: var(--studio-muted);
 }
 .studio-refine-prompt {

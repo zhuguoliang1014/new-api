@@ -279,6 +279,13 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 		}
 	}
 
+	// Agent-mode requests are generated from a user prompt and must never
+	// spend a channel request on an empty idea. Keep the legacy relay behavior
+	// unchanged for providers that intentionally accept image-only requests.
+	if common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel) != "" && strings.TrimSpace(imageRequest.Prompt) == "" {
+		return nil, errors.New("prompt is required")
+	}
+
 	// Provider parameters can override the top-level count. Validate before
 	// pricing so malformed multipliers return a client error, not a pricing
 	// failure after reservation has started.
