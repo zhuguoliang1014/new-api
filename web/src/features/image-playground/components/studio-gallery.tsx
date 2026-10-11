@@ -16,24 +16,18 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Clock3, RotateCcw, Search, Trash2 } from 'lucide-react'
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ConfirmDialog } from '@/components/confirm-dialog'
-import { CopyButton } from '@/components/copy-button'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
-import { handleServerError } from '@/lib/handle-server-error'
 
-import { getImageAuthScope } from '../api'
-import { deleteImageRecord } from '../lib/history'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageRecord } from '../types'
-import { DownloadCreationButton } from './download-creation-button'
 import { GenerationProgress } from './generation-progress'
 import { ImageArtwork, ImageActions } from './studio-image'
 import { StudioInspiration } from './studio-inspiration'
@@ -49,7 +43,6 @@ export function StudioGallery() {
   const records = useImagePlaygroundStore((state) => state.records)
   const selectedId = useImagePlaygroundStore((state) => state.selectedRecordId)
   const job = useImagePlaygroundStore((state) => state.job)
-  const error = useImagePlaygroundStore((state) => state.error)
   const storageUnavailable = useImagePlaygroundStore(
     (state) => state.storageUnavailable
   )
@@ -57,8 +50,6 @@ export function StudioGallery() {
     index: number
     record: ImageRecord
   } | null>(null)
-  const [deleting, setDeleting] = useState<ImageRecord | null>(null)
-  const [deleteBusy, setDeleteBusy] = useState(false)
   const [historyQuery, setHistoryQuery] = useState('')
   const record = records.find((item) => item.id === selectedId) ?? records[0]
   const visibleRecords = historyQuery.trim()
@@ -71,87 +62,14 @@ export function StudioGallery() {
       })
     : records
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
-  useEffect(() => {
-    if (selectedId) {
-      document
-        .querySelector('.studio-result')
-        ?.scrollIntoView({ block: 'start' })
-    }
-  }, [selectedId])
-  const remove = async () => {
-    if (!deleting) return
-    const scope = getImageAuthScope()
-    setDeleteBusy(true)
-    try {
-      await deleteImageRecord(deleting.ownerId, deleting.id)
-      if (scope !== getImageAuthScope()) return
-      useImagePlaygroundStore.setState((state) => ({
-        records: state.records.filter((item) => item.id !== deleting.id),
-        selectedRecordId: null,
-      }))
-      setDeleting(null)
-    } catch (err) {
-      handleServerError(err)
-    } finally {
-      setDeleteBusy(false)
-    }
-  }
   return (
     <section className='studio-gallery' aria-label={t('My creations')}>
-      <div className='studio-gallery-header'>
-        <div>
-          <span className='studio-step'>02</span>
-          <h2>
-            {t('My creations')}
-            <span className='studio-count'>
-              {formatNumber(records.length, locale)}
-            </span>
-          </h2>
-        </div>
-        <span className='studio-local-label'>
-          <Clock3 size={14} aria-hidden='true' />
-          {t('Saved in this browser')}
-        </span>
-      </div>
-      <div className='studio-gallery-toolbar'>
-        <div className='studio-gallery-toolbar-label'>
-          <span className='studio-gallery-dot' aria-hidden='true' />
-          <span>{t('Saved in this browser')}</span>
-        </div>
-        <label className='studio-history-search'>
-          <Search size={14} aria-hidden='true' />
-          <Input
-            value={historyQuery}
-            onChange={(event) => setHistoryQuery(event.target.value)}
-            placeholder={t('Search')}
-            aria-label={t('Search')}
-          />
-        </label>
-      </div>
       {storageUnavailable && (
         <p className='studio-storage-warning' role='status'>
           {t(
             'Local storage is unavailable or full. Download your images before leaving.'
           )}
         </p>
-      )}
-      {error && (
-        <div className='studio-generation-error' role='alert'>
-          <strong>{t('Creation interrupted')}</strong>
-          <p>{error}</p>
-          <Button
-            variant='outline'
-            size='sm'
-            onClick={() => {
-              useImagePlaygroundStore.setState({ error: null })
-              document
-                .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                ?.focus()
-            }}
-          >
-            {t('Review and try again')}
-          </Button>
-        </div>
       )}
       {job && <GenerationProgress compact={Boolean(selectedId)} />}
       {!job && !record && <StudioInspiration />}
@@ -183,60 +101,9 @@ export function StudioGallery() {
                   requestedSize={record.parameters.size}
                   onPreview={() => setPreview({ index, record })}
                 />
-                <ImageActions image={image} record={record} />
               </div>
             ))}
           </div>
-          <div className='studio-result-prompt'>
-            <p>{record.parameters.prompt}</p>
-            <div className='studio-result-tools'>
-              {record.images.length > 1 && (
-                <DownloadCreationButton key={record.id} record={record} />
-              )}
-              <CopyButton
-                value={record.parameters.prompt}
-                size='sm'
-                variant='ghost'
-                aria-label={t('Copy prompt')}
-              >
-                {t('Copy prompt')}
-              </CopyButton>
-              <Button
-                variant='ghost'
-                size='sm'
-                disabled={Boolean(job)}
-                onClick={() => {
-                  useImagePlaygroundStore.getState().reuseRecord(record)
-                  document
-                    .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                    ?.focus()
-                  document
-                    .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                    ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-                }}
-              >
-                <RotateCcw size={14} aria-hidden='true' />
-                {t('Reuse settings')}
-              </Button>
-              <Button
-                variant='ghost'
-                size='sm'
-                className='studio-delete'
-                aria-label={t('Delete creation')}
-                onClick={() => setDeleting(record)}
-              >
-                <Trash2 size={14} />
-              </Button>
-            </div>
-          </div>
-          {record.referenceCount > 0 && (
-            <p className='studio-help'>
-              {t(
-                'This creation used {{count}} reference image(s). Add references again to regenerate.',
-                { count: record.referenceCount }
-              )}
-            </p>
-          )}
           {record.images.some((image) => /^https?:/.test(image.src)) && (
             <p className='studio-help'>
               {t(
@@ -250,8 +117,17 @@ export function StudioGallery() {
         <div className='studio-history'>
           <h3>
             {t('Recent creations')}
-            <span>{t('Last 30 creations are kept locally')}</span>
+            <span>{formatNumber(records.length, locale)}</span>
           </h3>
+          <label className='studio-history-search'>
+            <Search size={14} aria-hidden='true' />
+            <Input
+              value={historyQuery}
+              onChange={(event) => setHistoryQuery(event.target.value)}
+              placeholder={t('Search')}
+              aria-label={t('Search')}
+            />
+          </label>
           <div className='studio-history-list'>
             {visibleRecords.map((item, index) => (
               <Button
@@ -303,20 +179,6 @@ export function StudioGallery() {
           />
         </Suspense>
       )}
-      <ConfirmDialog
-        open={Boolean(deleting)}
-        onOpenChange={(open) => {
-          if (!open) setDeleting(null)
-        }}
-        title={t('Delete creation?')}
-        desc={t(
-          'This removes the images and prompt from this browser. Download anything you want to keep first.'
-        )}
-        confirmText={t('Delete')}
-        destructive
-        isLoading={deleteBusy}
-        handleConfirm={() => void remove()}
-      />
     </section>
   )
 }

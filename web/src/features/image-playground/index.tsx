@@ -16,10 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check, ImageIcon, Plus } from 'lucide-react'
+import { Check, ImageIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { StudioComposer } from './components/studio-composer'
@@ -31,20 +30,41 @@ import '@/styles/image-studio.css'
 
 export function ImagePlayground() {
   const scope = useAuthStore((state) => state.auth.session?.sid)
-  // Remount transient dialogs/form state when the authenticated session changes.
   return <ImageStudio key={scope} />
 }
 
 function ImageStudio() {
   const { t } = useTranslation()
   const studio = useImageStudio()
-  const clearDraft = useImagePlaygroundStore((state) => state.clearDraft)
+
+  // Keep the atmosphere in sync with the artwork currently on the canvas.
+  const ambientSrc = useImagePlaygroundStore((state) => {
+    const record =
+      state.records.find((item) => item.id === state.selectedRecordId) ??
+      state.records[0]
+    return record?.images[0]?.src ?? null
+  })
+
   return (
-    <div className='image-studio'>
+    <div
+      className={`image-studio${ambientSrc ? ' image-studio--has-art' : ''}`}
+    >
+      {/* Ambient color field */}
+      <div
+        className={`studio-ambient-bg${ambientSrc ? ' studio-ambient-bg--has-art' : ''}`}
+        style={
+          ambientSrc
+            ? ({
+                '--ambient-src': `url(${JSON.stringify(ambientSrc)})`,
+              } as React.CSSProperties)
+            : undefined
+        }
+        aria-hidden='true'
+      />
       <header className='studio-header'>
         <div className='studio-header-title'>
           <div className='studio-logo'>
-            <ImageIcon size={22} aria-hidden='true' />
+            <ImageIcon size={20} aria-hidden='true' />
           </div>
           <div>
             <h1>{t('Image Playground')}</h1>
@@ -56,32 +76,16 @@ function ImageStudio() {
             <Check size={13} aria-hidden='true' />
             {t('Local')}
           </span>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            className='studio-new-canvas'
-            onClick={() => {
-              clearDraft()
-              window.requestAnimationFrame(() =>
-                document
-                  .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                  ?.focus()
-              )
-            }}
-          >
-            <Plus size={15} aria-hidden='true' />
-            {t('Create')}
-          </Button>
         </div>
       </header>
+      {/* The dock reserves its height below the scrollable canvas. */}
       <div className='studio-workspace'>
+        <StudioGallery />
         <StudioComposer
           refining={studio.refining}
           onRefine={studio.refine}
           onGenerate={studio.generate}
         />
-        <StudioGallery />
       </div>
     </div>
   )

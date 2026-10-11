@@ -30,7 +30,6 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { validateReferenceFiles } from './lib/images'
 import {
-  AGENT_IMAGE_MODEL,
   getImageModelOptions,
   imageParametersSchema,
   normalizeImageParameters,
@@ -43,6 +42,48 @@ import {
 // the browser. Disabling automatic auth replay is deliberate: image creation
 // can be billable, so a 401 must never be replayed automatically.
 export const imageRelayClient = api
+
+export type PlaygroundAgentSelection = {
+  token_id: number
+  model: string
+}
+
+export type PlaygroundAgentConfig = {
+  prompt: PlaygroundAgentSelection | null
+  image: PlaygroundAgentSelection | null
+}
+
+export async function getPlaygroundAgentConfig(): Promise<PlaygroundAgentConfig> {
+  const response = await api.get('/api/image-playground/settings')
+  const payload = requireServerSuccess(response.data) as {
+    data?: {
+      prompt?: PlaygroundAgentSelection | null
+      image?: PlaygroundAgentSelection | null
+    }
+  }
+  const data = payload.data ?? {}
+  return {
+    prompt: data.prompt ?? null,
+    image: data.image ?? null,
+  }
+}
+
+export async function savePlaygroundAgentConfig(
+  config: PlaygroundAgentConfig
+): Promise<PlaygroundAgentConfig> {
+  const response = await api.put('/api/image-playground/settings', config)
+  const payload = requireServerSuccess(response.data) as {
+    data?: {
+      prompt?: PlaygroundAgentSelection | null
+      image?: PlaygroundAgentSelection | null
+    }
+  }
+  const data = payload.data ?? {}
+  return {
+    prompt: data.prompt ?? null,
+    image: data.image ?? null,
+  }
+}
 
 export function getImageAuthScope(): string | null {
   const auth = useAuthStore.getState().auth
@@ -177,8 +218,8 @@ function getImageOutput(
 /**
  * Generate images through the session-scoped playground route.
  *
- * The backend chooses the image model (currently gpt-image-2), so the model
- * field in the local draft is intentionally omitted from the request body.
+ * The backend resolves the selected API key and model. The model remains in
+ * the local draft so parameter capabilities and history stay accurate.
  */
 export async function generateImages(
   input: ImageParameters,
@@ -202,13 +243,7 @@ export async function generateImages(
   const references = (typeof first === 'number' ? third : second) as File[]
   const signal = (typeof first === 'number' ? fourth : third) as AbortSignal
 
-  // Agent mode owns the provider choice. Legacy drafts may still contain a
-  // user-selected model, so normalize it before validating size/quality
-  // capabilities and before persisting or sending the request.
-  const parsed = imageParametersSchema.parse({
-    ...input,
-    model: AGENT_IMAGE_MODEL,
-  })
+  const parsed = imageParametersSchema.parse(input)
   const options = getImageModelOptions(parsed.model)
   // Never silently downgrade an explicit resolution before a billable request.
   if (!options.sizes.includes(parsed.size)) {
@@ -271,12 +306,4 @@ export async function generateImages(
       }
     )
   }
-}
-
-/** @deprecated Model discovery is intentionally removed from Agent mode. */
-export async function getImageModels(
-  _ignoredKeyId?: number,
-  _signal?: AbortSignal
-): Promise<string[]> {
-  return ['gpt-image-2']
 }

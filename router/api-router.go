@@ -22,7 +22,9 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
-	apiRouter.POST("/image-playground/refine-prompt", middleware.UserAuth(), middleware.PlaygroundPath("/pg/chat/completions"), middleware.PlaygroundModel("gpt-4o-mini"), middleware.Distribute(), controller.PlaygroundPromptRefine)
+	apiRouter.GET("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.GetPlaygroundAgentConfig)
+	apiRouter.PUT("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.UpdatePlaygroundAgentConfig)
+	apiRouter.POST("/image-playground/refine-prompt", middleware.UserAuth(), middleware.PlaygroundPath("/pg/chat/completions"), middleware.PlaygroundAgent(middleware.PlaygroundAgentPrompt), middleware.Distribute(), controller.PlaygroundPromptRefine)
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)

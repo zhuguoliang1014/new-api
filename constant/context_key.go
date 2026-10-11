@@ -60,6 +60,8 @@ const (
 
 	// ContextKeyPlaygroundModel forces the server-managed model for agent-mode playground requests.
 	ContextKeyPlaygroundModel ContextKey = "playground_model"
+	// ContextKeyPlaygroundProfile identifies the persisted agent slot used by a playground request.
+	ContextKeyPlaygroundProfile ContextKey = "playground_profile"
 
 	// ContextKeyFileSourcesToCleanup stores file sources that need cleanup when request ends
 	ContextKeyFileSourcesToCleanup ContextKey = "file_sources_to_cleanup"

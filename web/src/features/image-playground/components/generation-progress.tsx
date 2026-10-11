@@ -16,11 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Loader2, Square } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
@@ -49,11 +47,11 @@ export function GenerationProgress(props: { compact: boolean }) {
       }
     >
       <div className='studio-progress-art' aria-hidden='true'>
-        <div />
-        <Loader2
-          className='animate-spin motion-reduce:animate-none'
-          size={32}
-        />
+        <div className='studio-progress-dots'>
+          <span />
+          <span />
+          <span />
+        </div>
       </div>
       <div role='status'>
         <span className='studio-eyebrow'>{t('Creation in progress')}</span>
@@ -70,10 +68,6 @@ export function GenerationProgress(props: { compact: boolean }) {
           · {job.parameters.model}
         </p>
       </div>
-      <Button variant='outline' onClick={() => job.controller.abort()}>
-        <Square size={13} aria-hidden='true' />
-        {t('Stop waiting')}
-      </Button>
       <small>
         {t('Stopping may not cancel processing or charges at the provider.')}
       </small>

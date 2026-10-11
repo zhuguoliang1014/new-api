@@ -65,7 +65,7 @@ function ParameterSelect(props: {
   )
 }
 
-export function StudioParameters() {
+export function StudioParameters(props: { secondaryOnly?: boolean }) {
   const { t } = useTranslation()
   const parameters = useImagePlaygroundStore((state) => state.parameters)
   const busy = useImagePlaygroundStore((state) => Boolean(state.job))
@@ -102,67 +102,70 @@ export function StudioParameters() {
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className='studio-parameter-grid'>
-          {modelOptions.supportsFlexibleSizes ? (
-            <>
-              <ParameterSelect
-                id='studio-resolution'
-                label={t('Resolution')}
-                value={sizePreset?.resolution ?? 'auto'}
-                options={['auto', '1K', '2K', '4K'].map((value) => ({
-                  value,
-                  label: value === 'auto' ? t('Auto') : value,
-                }))}
-                disabled={busy}
-                onChange={(value) =>
-                  setParameters({
-                    size:
-                      value === 'auto'
-                        ? 'auto'
-                        : aspect.sizes[value as ImageResolution],
-                  })
-                }
-              />
-              <ParameterSelect
-                id='studio-aspect'
-                label={t('Aspect ratio')}
-                value={aspect.ratio}
-                options={imageAspectPresets.map((preset) => ({
-                  value: preset.ratio,
-                  label:
-                    preset.ratio === '21:9'
-                      ? t('{{ratio}} (approx.)', { ratio: preset.ratio })
-                      : preset.ratio,
-                }))}
-                disabled={busy || parameters.size === 'auto'}
-                onChange={(ratio) => {
-                  const preset = imageAspectPresets.find(
-                    (item) => item.ratio === ratio
-                  )
-                  if (preset && sizePreset) {
-                    setParameters({ size: preset.sizes[sizePreset.resolution] })
+          {!props.secondaryOnly &&
+            (modelOptions.supportsFlexibleSizes ? (
+              <>
+                <ParameterSelect
+                  id='studio-resolution'
+                  label={t('Resolution')}
+                  value={sizePreset?.resolution ?? 'auto'}
+                  options={['auto', '1K', '2K', '4K'].map((value) => ({
+                    value,
+                    label: value === 'auto' ? t('Auto') : value,
+                  }))}
+                  disabled={busy}
+                  onChange={(value) =>
+                    setParameters({
+                      size:
+                        value === 'auto'
+                          ? 'auto'
+                          : aspect.sizes[value as ImageResolution],
+                    })
                   }
-                }}
-              />
-            </>
-          ) : (
-            <ParameterSelect
-              id='studio-size'
-              label={t('Image size')}
-              value={parameters.size}
-              options={modelOptions.sizes.map((value) => {
-                if (value === 'auto') return { value, label: t('Auto') }
-                const [width, height] = value.split('x').map(Number)
-                return {
-                  value,
-                  label: `${getImageAspectRatio(width, height)} · ${value.replace('x', ' × ')}`,
+                />
+                <ParameterSelect
+                  id='studio-aspect'
+                  label={t('Aspect ratio')}
+                  value={aspect.ratio}
+                  options={imageAspectPresets.map((preset) => ({
+                    value: preset.ratio,
+                    label:
+                      preset.ratio === '21:9'
+                        ? t('{{ratio}} (approx.)', { ratio: preset.ratio })
+                        : preset.ratio,
+                  }))}
+                  disabled={busy || parameters.size === 'auto'}
+                  onChange={(ratio) => {
+                    const preset = imageAspectPresets.find(
+                      (item) => item.ratio === ratio
+                    )
+                    if (preset && sizePreset) {
+                      setParameters({
+                        size: preset.sizes[sizePreset.resolution],
+                      })
+                    }
+                  }}
+                />
+              </>
+            ) : (
+              <ParameterSelect
+                id='studio-size'
+                label={t('Image size')}
+                value={parameters.size}
+                options={modelOptions.sizes.map((value) => {
+                  if (value === 'auto') return { value, label: t('Auto') }
+                  const [width, height] = value.split('x').map(Number)
+                  return {
+                    value,
+                    label: `${getImageAspectRatio(width, height)} · ${value.replace('x', ' × ')}`,
+                  }
+                })}
+                disabled={busy}
+                onChange={(size) =>
+                  setParameters({ size: size as ImageParameters['size'] })
                 }
-              })}
-              disabled={busy}
-              onChange={(size) =>
-                setParameters({ size: size as ImageParameters['size'] })
-              }
-            />
-          )}
+              />
+            ))}
           <ParameterSelect
             id='studio-count'
             label={t('Image count')}
@@ -177,7 +180,7 @@ export function StudioParameters() {
             disabled={busy}
             onChange={(count) => setParameters({ count: Number(count) })}
           />
-          {modelOptions.qualities.length > 1 && (
+          {!props.secondaryOnly && modelOptions.qualities.length > 1 && (
             <ParameterSelect
               id='studio-quality'
               label={t('Quality')}
@@ -252,5 +255,111 @@ export function StudioParameters() {
         )}
       </CollapsibleContent>
     </Collapsible>
+  )
+}
+
+export function StudioQuickParameters() {
+  const { t } = useTranslation()
+  const parameters = useImagePlaygroundStore((state) => state.parameters)
+  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
+  const setParameters = useImagePlaygroundStore((state) => state.setParameters)
+  const options = getImageModelOptions(parameters.model)
+  const sizePreset = getImageSizePreset(parameters.size)
+  const aspect = sizePreset?.preset ?? imageAspectPresets[0]
+  const resolution = sizePreset?.resolution ?? 'auto'
+  const labels: Record<string, string> = {
+    auto: t('Auto'),
+    low: t('Low'),
+    medium: t('Medium'),
+    high: t('High'),
+    standard: t('Standard'),
+    hd: t('HD'),
+  }
+  return (
+    <div className='studio-dock-params'>
+      {options.supportsFlexibleSizes ? (
+        <>
+          <ParameterSelect
+            id='studio-quick-aspect'
+            label={t('Aspect ratio')}
+            value={parameters.size === 'auto' ? 'auto' : aspect.ratio}
+            options={[
+              { value: 'auto', label: t('Auto') },
+              ...imageAspectPresets.map((preset) => ({
+                value: preset.ratio,
+                label: preset.ratio,
+              })),
+            ]}
+            disabled={busy}
+            onChange={(ratio) => {
+              if (ratio === 'auto') {
+                setParameters({ size: 'auto' })
+                return
+              }
+              const preset = imageAspectPresets.find(
+                (item) => item.ratio === ratio
+              )
+              if (preset) {
+                setParameters({
+                  size: preset.sizes[sizePreset?.resolution ?? '1K'],
+                })
+              }
+            }}
+          />
+          <div
+            className='studio-dock-seg'
+            role='group'
+            aria-label={t('Resolution')}
+          >
+            {(['auto', '1K', '2K', '4K'] as const).map((value) => (
+              <Button
+                key={value}
+                type='button'
+                variant='ghost'
+                className='studio-dock-seg-btn'
+                aria-pressed={resolution === value}
+                disabled={busy}
+                onClick={() =>
+                  setParameters({
+                    size: value === 'auto' ? 'auto' : aspect.sizes[value],
+                  })
+                }
+              >
+                {value === 'auto' ? t('Auto') : value}
+              </Button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <ParameterSelect
+          id='studio-quick-size'
+          label={t('Image size')}
+          value={parameters.size}
+          options={options.sizes.map((size) => ({
+            value: size,
+            label: size === 'auto' ? t('Auto') : size.replace('x', ' × '),
+          }))}
+          disabled={busy}
+          onChange={(size) =>
+            setParameters({ size: size as ImageParameters['size'] })
+          }
+        />
+      )}
+      {options.qualities.length > 1 && (
+        <ParameterSelect
+          id='studio-quick-quality'
+          label={t('Quality')}
+          value={parameters.quality}
+          options={options.qualities.map((value) => ({
+            value,
+            label: labels[value],
+          }))}
+          disabled={busy}
+          onChange={(quality) =>
+            setParameters({ quality: quality as ImageParameters['quality'] })
+          }
+        />
+      )}
+    </div>
   )
 }

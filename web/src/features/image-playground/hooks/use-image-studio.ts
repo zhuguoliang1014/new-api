@@ -26,9 +26,9 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { generateImages, getImageAuthScope, refinePrompt } from '../api'
 import { readImageHistory, saveImageRecord } from '../lib/history'
+import { applyStyleTemplate, stylePresets } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 import {
-  AGENT_IMAGE_MODEL,
   normalizeImageParameters,
   type ImageParameters,
   type ImageRecord,
@@ -103,9 +103,17 @@ export function useImageStudio() {
       if (store.job || !ownerId || !scope || scope !== getImageAuthScope()) {
         return
       }
+      // Apply active style template to the prompt before generating.
+      const styledPrompt = (() => {
+        const { selectedStyleId } = store
+        if (!selectedStyleId) return parameters.prompt
+        const preset = stylePresets.find((p) => p.id === selectedStyleId)
+        if (!preset) return parameters.prompt
+        return applyStyleTemplate(parameters.prompt, preset.promptTemplate)
+      })()
       const agentParameters = normalizeImageParameters({
         ...parameters,
-        model: AGENT_IMAGE_MODEL,
+        prompt: styledPrompt,
       })
       const controller = new AbortController()
       const job = {

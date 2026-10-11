@@ -17,20 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ImagePlus, X } from 'lucide-react'
-import { lazy, Suspense, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
 import { useImagePlaygroundStore } from '../store'
-
-const StudioPreview = lazy(() =>
-  import('./studio-preview').then((module) => ({
-    default: module.StudioPreview,
-  }))
-)
+import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 type StudioReferencesProps = {
   supportsReferences: boolean
@@ -41,10 +35,6 @@ export function StudioReferences(props: StudioReferencesProps) {
   const { t } = useTranslation()
   const references = useImagePlaygroundStore((state) => state.references)
   const busy = useImagePlaygroundStore((state) => Boolean(state.job))
-  const [previewId, setPreviewId] = useState<string | null>(null)
-  const previewIndex = references.findIndex(
-    (reference) => reference.id === previewId
-  )
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   return (
@@ -109,17 +99,25 @@ export function StudioReferences(props: StudioReferencesProps) {
         <div className='studio-references'>
           {references.map((reference) => (
             <div key={reference.id} className='studio-reference'>
-              <Button
-                type='button'
-                variant='ghost'
-                className='studio-reference-preview'
-                aria-label={t('Preview reference {{name}}', {
+              <StudioImageHoverPreview
+                src={reference.preview}
+                label={reference.file.name}
+                imageLabel={t('Preview reference {{name}}', {
                   name: reference.file.name,
                 })}
-                onClick={() => setPreviewId(reference.id)}
-              >
-                <img src={reference.preview} alt={reference.file.name} />
-              </Button>
+                trigger={
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    className='studio-reference-preview'
+                    aria-label={t('Preview reference {{name}}', {
+                      name: reference.file.name,
+                    })}
+                  >
+                    <img src={reference.preview} alt={reference.file.name} />
+                  </Button>
+                }
+              />
               <Button
                 type='button'
                 variant='secondary'
@@ -140,20 +138,6 @@ export function StudioReferences(props: StudioReferencesProps) {
             </div>
           ))}
         </div>
-      )}
-      {previewIndex >= 0 && (
-        <Suspense fallback={<LoadingState />}>
-          <StudioPreview
-            title={t('Reference images')}
-            images={references.map((reference) => ({
-              id: reference.id,
-              src: reference.preview,
-            }))}
-            index={previewIndex}
-            onIndexChange={(index) => setPreviewId(references[index].id)}
-            onClose={() => setPreviewId(null)}
-          />
-        </Suspense>
       )}
     </div>
   )

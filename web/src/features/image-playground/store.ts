@@ -23,7 +23,6 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { validateReferenceFiles } from './lib/images'
 import {
-  AGENT_IMAGE_MODEL,
   defaultImageParameters,
   normalizeImageParameters,
   getImageModelOptions,
@@ -39,6 +38,8 @@ type ImagePlaygroundStore = {
   references: ImageReference[]
   records: ImageRecord[]
   selectedRecordId: string | null
+  /** The id of the active style preset, or null for no style. */
+  selectedStyleId: string | null
   job: ImageJob | null
   error: string | null
   storageUnavailable: boolean
@@ -58,6 +59,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
     references: [],
     records: [],
     selectedRecordId: null,
+    selectedStyleId: null,
     job: null,
     error: null,
     storageUnavailable: false,
@@ -74,6 +76,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         references: [],
         records: [],
         selectedRecordId: null,
+        selectedStyleId: null,
         job: null,
         error: null,
         storageUnavailable: false,
@@ -85,7 +88,6 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       const parameters = normalizeImageParameters({
         ...state.parameters,
         ...values,
-        model: AGENT_IMAGE_MODEL,
       })
       const modelChanged =
         values.model !== undefined && values.model !== state.parameters.model
@@ -109,6 +111,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         parameters: { ...state.parameters, prompt: '' },
         references: [],
         selectedRecordId: null,
+        selectedStyleId: null,
         error: null,
       }))
     },
@@ -143,9 +146,9 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       set({
         parameters: normalizeImageParameters({
           ...record.parameters,
-          model: AGENT_IMAGE_MODEL,
         }),
         references: [],
+        selectedStyleId: null,
         error: null,
       })
     },
