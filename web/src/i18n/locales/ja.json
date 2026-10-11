@@ -7047,6 +7047,14 @@
     "Zoom in": "拡大",
     "Zoom level": "拡大率",
     "Zoom out": "縮小",
-    "Zoomable image": "拡大・縮小できる画像"
+    "Zoomable image": "拡大・縮小できる画像",
+    "Advanced settings": "詳細設定",
+    "Prompt is too long.": "プロンプトが長すぎます。",
+    "Prompt refinement failed.": "プロンプトの調整に失敗しました。",
+    "Refine prompt": "プロンプトを調整",
+    "Refining...": "調整中…",
+    "The prompt service returned an invalid response.": "プロンプトサービスから無効な応答が返されました。",
+    "The studio agent chooses the image model automatically.": "スタジオ Agent が画像モデルを自動で選択します。",
+    "The studio agent handles the model and billing setup.": "スタジオ Agent がモデルと課金設定を処理します。"
   }
 }

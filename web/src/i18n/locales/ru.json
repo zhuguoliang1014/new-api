@@ -7047,6 +7047,14 @@
     "Zoom in": "Увеличить",
     "Zoom level": "Масштаб",
     "Zoom out": "Уменьшить",
-    "Zoomable image": "Масштабируемое изображение"
+    "Zoomable image": "Масштабируемое изображение",
+    "Advanced settings": "Расширенные настройки",
+    "Prompt is too long.": "Промпт слишком длинный.",
+    "Prompt refinement failed.": "Не удалось улучшить промпт.",
+    "Refine prompt": "Улучшить промпт",
+    "Refining...": "Улучшение…",
+    "The prompt service returned an invalid response.": "Сервис промптов вернул недопустимый ответ.",
+    "The studio agent chooses the image model automatically.": "Агент студии автоматически выбирает модель изображений.",
+    "The studio agent handles the model and billing setup.": "Агент студии настраивает модель и оплату."
   }
 }

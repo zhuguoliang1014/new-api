@@ -54,7 +54,9 @@ export type ImageJob = {
 }
 export const defaultImageParameters: ImageParameters = {
   prompt: '',
-  model: '',
+  // The Agent mode keeps the provider choice on the server. The fixed value
+  // here is used only for local parameter normalization and history records.
+  model: 'gpt-image-2',
   size: 'auto',
   quality: 'auto',
   count: 1,

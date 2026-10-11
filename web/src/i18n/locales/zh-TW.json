@@ -7047,6 +7047,14 @@
     "Zoom in": "放大",
     "Zoom level": "縮放比例",
     "Zoom out": "縮小",
-    "Zoomable image": "可縮放圖片"
+    "Zoomable image": "可縮放圖片",
+    "Advanced settings": "進階設定",
+    "Prompt is too long.": "提示詞過長。",
+    "Prompt refinement failed.": "提示詞潤飾失敗。",
+    "Refine prompt": "潤飾提示詞",
+    "Refining...": "正在潤飾…",
+    "The prompt service returned an invalid response.": "提示詞服務返回了無效回應。",
+    "The studio agent chooses the image model automatically.": "工作台 Agent 會自動選擇生圖模型。",
+    "The studio agent handles the model and billing setup.": "工作台 Agent 會處理模型與計費設定。"
   }
 }

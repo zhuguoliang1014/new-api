@@ -7047,6 +7047,14 @@
     "Zoom in": "Agrandir",
     "Zoom level": "Niveau de zoom",
     "Zoom out": "Réduire",
-    "Zoomable image": "Image avec zoom"
+    "Zoomable image": "Image avec zoom",
+    "Advanced settings": "Paramètres avancés",
+    "Prompt is too long.": "Le prompt est trop long.",
+    "Prompt refinement failed.": "L'amélioration du prompt a échoué.",
+    "Refine prompt": "Améliorer le prompt",
+    "Refining...": "Amélioration…",
+    "The prompt service returned an invalid response.": "Le service de prompts a renvoyé une réponse invalide.",
+    "The studio agent chooses the image model automatically.": "L'agent de studio choisit automatiquement le modèle d'image.",
+    "The studio agent handles the model and billing setup.": "L'agent de studio gère le modèle et la facturation."
   }
 }

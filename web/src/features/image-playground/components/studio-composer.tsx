@@ -17,21 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Link } from '@tanstack/react-router'
-import {
-  ArrowUpRight,
-  ChevronRight,
-  Loader2,
-  Sparkles,
-  WandSparkles,
-  X,
-} from 'lucide-react'
+import { ChevronRight, Loader2, Sparkles, WandSparkles, X } from 'lucide-react'
 import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
-import { Combobox } from '@/components/ui/combobox'
 import {
   Form,
   FormControl,
@@ -40,10 +31,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
-import { Label } from '@/components/ui/label'
-import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
-import type { ApiKey } from '@/features/keys/types'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { useImagePlaygroundStore } from '../store'
@@ -56,13 +44,8 @@ import { StudioParameters } from './studio-parameters'
 import { StudioReferences } from './studio-references'
 
 type StudioComposerProps = {
-  keys: ApiKey[]
-  keyId: number | null
-  keysLoading: boolean
-  models: string[]
-  modelsLoading: boolean
-  modelsError: boolean
-  retryModels: () => void
+  refining: boolean
+  onRefine: (prompt: string) => Promise<string>
   onGenerate: (parameters: ImageParameters) => void
 }
 
@@ -99,7 +82,10 @@ export function StudioComposer(props: StudioComposerProps) {
   ]
   const busy = Boolean(job)
   const canGenerate = Boolean(
-    props.keyId && parameters.model.trim() && parameters.prompt.trim() && !busy
+    parameters.prompt.trim() && !busy && !props.refining
+  )
+  const canRefine = Boolean(
+    parameters.prompt.trim() && !busy && !props.refining
   )
   const addFiles = (files: File[]) => {
     try {
@@ -121,88 +107,17 @@ export function StudioComposer(props: StudioComposerProps) {
           <ChevronRight size={16} />
         </span>
       </div>
-      <div className='studio-field'>
-        <Label htmlFor='studio-key'>{t('API Key')}</Label>
-        <NativeSelect
-          id='studio-key'
-          value={props.keyId ?? ''}
-          className='studio-native-select'
-          disabled={busy || props.keysLoading || !props.keys.length}
-          onChange={(event) =>
-            useImagePlaygroundStore
-              .getState()
-              .setKey(Number(event.target.value))
-          }
-        >
-          {!props.keys.length && (
-            <NativeSelectOption value=''>
-              {props.keysLoading ? t('Loading...') : t('No available API key')}
-            </NativeSelectOption>
-          )}
-          {props.keys.map((key) => (
-            <NativeSelectOption key={key.id} value={key.id}>
-              {key.name || `#${key.id}`}
-            </NativeSelectOption>
-          ))}
-        </NativeSelect>
-        {!props.keysLoading && !props.keys.length && (
-          <Link to='/keys' className='studio-inline-link'>
-            {t('Create API Key')}
-            <ArrowUpRight size={14} aria-hidden='true' />
-          </Link>
-        )}
+      <div className='studio-agent-note' role='status'>
+        <Sparkles size={14} aria-hidden='true' />
+        <span>
+          {t('The studio agent chooses the image model automatically.')}
+        </span>
       </div>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(props.onGenerate)}
           className='studio-form'
         >
-          <FormField
-            control={form.control}
-            name='model'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel htmlFor='studio-model'>{t('Image model')}</FormLabel>
-                <FormControl id='studio-model'>
-                  <Combobox
-                    id='studio-model'
-                    options={props.models.map((model) => ({
-                      value: model,
-                      label: model,
-                    }))}
-                    value={field.value}
-                    onValueChange={(model) =>
-                      setParameters({ model: model ?? '' })
-                    }
-                    allowCustomValue
-                    disabled={busy || !props.keyId}
-                    placeholder={
-                      props.modelsLoading
-                        ? t('Loading image models...')
-                        : t('Select or enter an image model')
-                    }
-                    className='studio-model-input'
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          {props.modelsError && (
-            <div className='studio-inline-feedback'>
-              <span>
-                {t('Model discovery failed. You can enter a model name.')}
-              </span>
-              <Button
-                type='button'
-                variant='ghost'
-                size='sm'
-                onClick={props.retryModels}
-              >
-                {t('Retry')}
-              </Button>
-            </div>
-          )}
           <FormField
             control={form.control}
             name='prompt'
@@ -214,6 +129,35 @@ export function StudioComposer(props: StudioComposerProps) {
                   </FormLabel>
                   <div className='studio-prompt-label-actions'>
                     <span>{t('Be specific, be creative')}</span>
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='sm'
+                      className='studio-refine-prompt'
+                      disabled={!canRefine}
+                      onClick={async () => {
+                        try {
+                          const refined = await props.onRefine(
+                            parameters.prompt
+                          )
+                          setParameters({ prompt: refined })
+                          form.setValue('prompt', refined)
+                        } catch (error) {
+                          if (
+                            (error as { name?: string }).name !== 'AbortError'
+                          ) {
+                            handleServerError(error)
+                          }
+                        }
+                      }}
+                    >
+                      {props.refining ? (
+                        <Loader2 className='animate-spin motion-reduce:animate-none' />
+                      ) : (
+                        <WandSparkles size={14} aria-hidden='true' />
+                      )}
+                      {props.refining ? t('Refining...') : t('Refine prompt')}
+                    </Button>
                     {parameters.prompt && (
                       <Button
                         type='button'
@@ -344,7 +288,7 @@ export function StudioComposer(props: StudioComposerProps) {
               )}
               {busy ? t('Creating your image...') : t('Generate image')}
             </Button>
-            <p>{t('Uses your selected key and its billing group.')}</p>
+            <p>{t('The studio agent handles the model and billing setup.')}</p>
             <span className='studio-shortcut'>
               {t('Ctrl / ⌘ + Enter to generate')}
             </span>

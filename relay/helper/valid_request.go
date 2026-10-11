@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -196,6 +197,9 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			c.Request.PostForm = formData
 			imageRequest.Prompt = formData.Get("prompt")
 			imageRequest.Model = formData.Get("model")
+			if modelOverride := common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel); modelOverride != "" {
+				imageRequest.Model = modelOverride
+			}
 			if nValue := strings.TrimSpace(formData.Get("n")); nValue != "" {
 				n, err := strconv.Atoi(nValue)
 				if err != nil || n < 0 || n > dto.MaxImageN {
@@ -242,6 +246,9 @@ func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageReq
 			return nil, err
 		}
 
+		if modelOverride := common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel); modelOverride != "" {
+			imageRequest.Model = modelOverride
+		}
 		if imageRequest.Model == "" {
 			return nil, errors.New("model is required")
 		}

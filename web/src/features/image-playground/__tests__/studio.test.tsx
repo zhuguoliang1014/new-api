@@ -27,50 +27,24 @@ import {
 } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest'
 
-import { getApiKeys } from '@/features/keys/api'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { generateImages, getImageModels } from '../api'
+import { generateImages, refinePrompt } from '../api'
 import { ImagePlayground } from '../index'
 import { readImageHistory, saveImageRecord } from '../lib/history'
 import * as imageFiles from '../lib/images'
 import { useImagePlaygroundStore } from '../store'
 
-vi.mock('@/features/keys/api', () => ({ getApiKeys: vi.fn() }))
 vi.mock('../api', async (original) => ({
   ...(await original<typeof import('../api')>()),
   generateImages: vi.fn(),
-  getImageModels: vi.fn(),
+  refinePrompt: vi.fn(),
 }))
 vi.mock('../lib/history', () => ({
   readImageHistory: vi.fn(),
   saveImageRecord: vi.fn(),
   deleteImageRecord: vi.fn(),
 }))
-vi.mock('@tanstack/react-router', () => ({
-  Link: (props: { to: string; children: React.ReactNode }) => (
-    <a href={props.to}>{props.children}</a>
-  ),
-}))
-
-const key = {
-  id: 7,
-  name: 'Studio key',
-  key: 'masked',
-  status: 1,
-  unlimited_quota: true,
-  remain_quota: 1,
-  used_quota: 0,
-  expired_time: -1,
-  created_time: 0,
-  accessed_time: 0,
-  group: 'default',
-  auto_groups: null,
-  cross_group_retry: false,
-  model_limits_enabled: false,
-  model_limits: '',
-  allow_ips: '',
-}
 const image = { id: 'image-one', src: 'data:image/png;base64,aW1hZ2U=' }
 let client: QueryClient
 
@@ -92,14 +66,10 @@ beforeEach(() => {
       },
     },
   }))
-  vi.mocked(getApiKeys).mockResolvedValue({
-    success: true,
-    data: { items: [key], total: 1, page: 1, page_size: 100 },
-  })
-  vi.mocked(getImageModels).mockResolvedValue(['gpt-image-2'])
   vi.mocked(readImageHistory).mockResolvedValue([])
   vi.mocked(saveImageRecord).mockResolvedValue()
   vi.mocked(generateImages).mockResolvedValue([image])
+  vi.mocked(refinePrompt).mockResolvedValue('A polished studio prompt')
   vi.stubGlobal(
     'URL',
     Object.assign(class extends URL {}, {
@@ -120,11 +90,7 @@ function showStudio() {
   )
 }
 async function ready() {
-  await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'Image model' })).toHaveValue(
-      'gpt-image-2'
-    )
-  )
+  await screen.findByRole('textbox', { name: 'Image prompt' })
 }
 
 it('requires a prompt, fills an inspiration idea, and generates an actionable creation', async () => {
@@ -152,7 +118,7 @@ it('requires a prompt, fills an inspiration idea, and generates an actionable cr
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
 })
 
-it('starts a new canvas by clearing the draft without changing the selected model', async () => {
+it('starts a new canvas by clearing the draft while keeping the Agent defaults', async () => {
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -166,7 +132,7 @@ it('starts a new canvas by clearing the draft without changing the selected mode
   fireEvent.click(screen.getByRole('button', { name: 'Create' }))
   expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue('')
   expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
-  expect(screen.getByRole('combobox', { name: 'Image model' })).toHaveValue(
+  expect(useImagePlaygroundStore.getState().parameters.model).toBe(
     'gpt-image-2'
   )
 })
@@ -253,7 +219,6 @@ it.each([
     fireEvent.keyDown(prompt, { key: 'Enter', ctrlKey: true, keyCode: 13 })
     await waitFor(() =>
       expect(generateImages).toHaveBeenCalledWith(
-        7,
         expect.objectContaining({ prompt: '画一只猫' }),
         [],
         expect.any(AbortSignal)
@@ -296,7 +261,6 @@ it('preserves the caret while composing Chinese in the middle of a prompt', asyn
   fireEvent.keyDown(prompt, { key: 'Enter', metaKey: true })
   await waitFor(() =>
     expect(generateImages).toHaveBeenCalledWith(
-      7,
       expect.objectContaining({ prompt: '画 你的 风景' }),
       [],
       expect.any(AbortSignal)
@@ -307,6 +271,7 @@ it('preserves the caret while composing Chinese in the middle of a prompt', asyn
 it('keeps committed Chinese text and multiline edits when output settings change', async () => {
   showStudio()
   await ready()
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced settings' }))
   const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
   prompt.focus()
   fireEvent.compositionStart(prompt)
@@ -332,7 +297,6 @@ it('keeps committed Chinese text and multiline edits when output settings change
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() =>
     expect(generateImages).toHaveBeenCalledWith(
-      7,
       expect.objectContaining({
         prompt: '画一只猫\n坐在窗',
         size: '1536x1024',
@@ -412,7 +376,6 @@ it('uploads and removes references and sends only the remaining files to edits',
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() =>
     expect(generateImages).toHaveBeenCalledWith(
-      7,
       expect.objectContaining({ prompt: 'Keep the scene, make it snowy' }),
       [files[1]],
       expect.any(AbortSignal)
@@ -439,7 +402,8 @@ it('cancels the pending job and drops drafts, references and late results on log
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByText('Turning your idea into an image.')
-  const signal = vi.mocked(generateImages).mock.calls[0][3]
+  const signal = vi.mocked(generateImages).mock
+    .calls[0][2] as unknown as AbortSignal
   act(() => useAuthStore.getState().auth.reset())
   expect(signal.aborted).toBe(true)
   await act(async () => finish([image]))
@@ -452,36 +416,24 @@ it('cancels the pending job and drops drafts, references and late results on log
   expect(saveImageRecord).not.toHaveBeenCalled()
 })
 
-it('offers manual model entry if discovery fails and excludes expired or disabled keys', async () => {
-  vi.mocked(getImageModels).mockRejectedValue(new Error('models unavailable'))
-  vi.mocked(getApiKeys).mockResolvedValue({
-    success: true,
-    data: {
-      items: [
-        { ...key, id: 1, name: 'expired', expired_time: 1 },
-        { ...key, id: 2, name: 'disabled', status: 2 },
-        key,
-      ],
-      total: 3,
-      page: 1,
-      page_size: 100,
-    },
-  })
+it('keeps the simple composer free of credential and model controls', async () => {
   showStudio()
-  await screen.findByText('Model discovery failed. You can enter a model name.')
+  await ready()
+  expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
   expect(
-    screen.queryByRole('option', { name: 'expired' })
+    screen.queryByRole('combobox', { name: 'Image model' })
   ).not.toBeInTheDocument()
-  expect(
-    screen.queryByRole('option', { name: 'disabled' })
-  ).not.toBeInTheDocument()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Image model' }), {
-    target: { value: 'custom-art' },
-  })
-  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
-    target: { value: 'A painting' },
-  })
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+})
+
+it('fills the prompt from the server-side refinement agent', async () => {
+  showStudio()
+  await ready()
+  const prompt = screen.getByRole('textbox', { name: 'Image prompt' })
+  fireEvent.change(prompt, { target: { value: 'A cat by a window' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Refine prompt' }))
+  await waitFor(() => expect(prompt).toHaveValue('A polished studio prompt'))
+  expect(refinePrompt).toHaveBeenCalledWith('A cat by a window')
 })
 
 it('reports storage failure while keeping generated images available for download', async () => {
@@ -500,27 +452,16 @@ it('reports storage failure while keeping generated images available for downloa
   expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
 })
 
-it('offers key creation and disables generation when no usable key exists', async () => {
-  vi.mocked(getApiKeys).mockResolvedValue({
-    success: true,
-    data: { items: [], total: 0, page: 1, page_size: 100 },
-  })
-  showStudio()
-  expect(
-    await screen.findByRole('link', { name: 'Create API Key' })
-  ).toHaveAttribute('href', '/keys')
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
-  expect(getImageModels).not.toHaveBeenCalled()
-})
-
 it('stops a request without retrying and restores submission with a charge-status explanation', async () => {
   vi.mocked(generateImages).mockImplementation(
-    (_key, _parameters, _references, signal) =>
-      new Promise((_resolve, reject) => {
-        signal.addEventListener('abort', () =>
+    (_parameters, _references, signal) => {
+      const requestSignal = signal as unknown as AbortSignal
+      return new Promise((_resolve, reject) => {
+        requestSignal.addEventListener('abort', () =>
           reject(new DOMException('Aborted', 'AbortError'))
         )
       })
+    }
   )
   showStudio()
   await ready()
@@ -543,13 +484,13 @@ it('stops a request without retrying and restores submission with a charge-statu
   expect(generateImages).toHaveBeenCalledTimes(1)
 })
 
-it('expands output settings and prevents a transparent JPEG request', async () => {
+it('expands advanced settings and prevents a transparent JPEG request', async () => {
   showStudio()
   await ready()
   expect(
     screen.queryByRole('combobox', { name: 'Image background' })
   ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Output settings' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced settings' }))
   const background = await screen.findByRole('combobox', {
     name: 'Image background',
   })
@@ -658,6 +599,7 @@ it.each([
   async ({ resolution, ratio, size }) => {
     showStudio()
     await ready()
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced settings' }))
     expect(
       screen.getByRole('combobox', { name: 'Aspect ratio' })
     ).toBeDisabled()
@@ -676,7 +618,6 @@ it.each([
     fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
     await waitFor(() =>
       expect(generateImages).toHaveBeenCalledWith(
-        7,
         expect.objectContaining({ size }),
         [],
         expect.any(AbortSignal)
@@ -685,25 +626,19 @@ it.each([
   }
 )
 
-it('resets unsupported 4K selection visibly when switching to a legacy model', async () => {
-  vi.mocked(getImageModels).mockResolvedValue(['gpt-image-2', 'gpt-image-1'])
+it('keeps the built-in image model stable while changing advanced output settings', async () => {
   showStudio()
   await ready()
+  expect(useImagePlaygroundStore.getState().parameters.model).toBe(
+    'gpt-image-2'
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Advanced settings' }))
   fireEvent.change(screen.getByRole('combobox', { name: 'Resolution' }), {
     target: { value: '4K' },
   })
-  fireEvent.change(screen.getByRole('combobox', { name: 'Image model' }), {
-    target: { value: 'gpt-image-1' },
-  })
-  expect(
-    screen.queryByRole('combobox', { name: 'Resolution' })
-  ).not.toBeInTheDocument()
-  expect(screen.getByRole('combobox', { name: 'Image size' })).toHaveValue(
-    'auto'
+  expect(useImagePlaygroundStore.getState().parameters.model).toBe(
+    'gpt-image-2'
   )
-  expect(
-    screen.getByRole('option', { name: '2:3 · 1024 × 1536' })
-  ).toBeInTheDocument()
 })
 
 it('opens reference thumbnails in the zoomable preview and preserves the uploaded file', async () => {

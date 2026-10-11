@@ -357,6 +357,10 @@ func getJSONStringValue(result gjson.Result, field string) (string, error) {
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
+	if modelName := common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel); modelName != "" {
+		return &ModelRequest{Model: modelName}, true, nil
+	}
+
 	var modelRequest ModelRequest
 	shouldSelectChannel := true
 	var err error

@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { Check, ImageIcon, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { ErrorState } from '@/components/error-state'
 import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -76,26 +75,14 @@ function ImageStudio() {
           </Button>
         </div>
       </header>
-      {studio.keysQuery.isError ? (
-        <ErrorState
-          title={t('Failed to load API keys')}
-          onRetry={() => void studio.keysQuery.refetch()}
+      <div className='studio-workspace'>
+        <StudioComposer
+          refining={studio.refining}
+          onRefine={studio.refine}
+          onGenerate={studio.generate}
         />
-      ) : (
-        <div className='studio-workspace'>
-          <StudioComposer
-            keys={studio.keys}
-            keyId={studio.keyId}
-            keysLoading={studio.keysQuery.isLoading}
-            models={studio.modelsQuery.data ?? []}
-            modelsLoading={studio.modelsQuery.isLoading}
-            modelsError={studio.modelsQuery.isError}
-            retryModels={() => void studio.modelsQuery.refetch()}
-            onGenerate={studio.generate}
-          />
-          <StudioGallery />
-        </div>
-      )}
+        <StudioGallery />
+      </div>
     </div>
   )
 }

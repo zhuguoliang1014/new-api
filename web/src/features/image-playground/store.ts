@@ -34,7 +34,6 @@ import {
 
 type ImagePlaygroundStore = {
   scope: string | null
-  selectedKeyId: number | null
   parameters: ImageParameters
   references: ImageReference[]
   records: ImageRecord[]
@@ -44,7 +43,6 @@ type ImagePlaygroundStore = {
   storageUnavailable: boolean
   historyLoaded: boolean
   setScope: (scope: string | null) => void
-  setKey: (id: number | null) => void
   setParameters: (values: Partial<ImageParameters>) => void
   clearDraft: () => void
   addReferences: (files: File[]) => void
@@ -55,7 +53,6 @@ type ImagePlaygroundStore = {
 export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
   (set, get) => ({
     scope: null,
-    selectedKeyId: null,
     parameters: defaultImageParameters,
     references: [],
     records: [],
@@ -72,7 +69,6 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       }
       set({
         scope,
-        selectedKeyId: null,
         parameters: defaultImageParameters,
         references: [],
         records: [],
@@ -83,12 +79,12 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         historyLoaded: false,
       })
     },
-    setKey: (selectedKeyId) => set({ selectedKeyId }),
     setParameters: (values) => {
       const state = get()
       const parameters = normalizeImageParameters({
         ...state.parameters,
         ...values,
+        model: 'gpt-image-2',
       })
       const modelChanged =
         values.model !== undefined && values.model !== state.parameters.model
@@ -143,7 +139,14 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       for (const reference of get().references) {
         URL.revokeObjectURL(reference.preview)
       }
-      set({ parameters: record.parameters, references: [], error: null })
+      set({
+        parameters: normalizeImageParameters({
+          ...record.parameters,
+          model: 'gpt-image-2',
+        }),
+        references: [],
+        error: null,
+      })
     },
   })
 )

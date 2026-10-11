@@ -7047,6 +7047,14 @@
     "Zoom in": "Zoom in",
     "Zoom level": "Zoom level",
     "Zoom out": "Zoom out",
-    "Zoomable image": "Zoomable image"
+    "Zoomable image": "Zoomable image",
+    "Advanced settings": "Advanced settings",
+    "Prompt is too long.": "Prompt is too long.",
+    "Prompt refinement failed.": "Prompt refinement failed.",
+    "Refine prompt": "Refine prompt",
+    "Refining...": "Refining...",
+    "The prompt service returned an invalid response.": "The prompt service returned an invalid response.",
+    "The studio agent chooses the image model automatically.": "The studio agent chooses the image model automatically.",
+    "The studio agent handles the model and billing setup.": "The studio agent handles the model and billing setup."
   }
 }

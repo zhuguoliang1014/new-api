@@ -7047,6 +7047,14 @@
     "Zoom in": "Phóng to",
     "Zoom level": "Mức thu phóng",
     "Zoom out": "Thu nhỏ",
-    "Zoomable image": "Ảnh có thể thu phóng"
+    "Zoomable image": "Ảnh có thể thu phóng",
+    "Advanced settings": "Cài đặt nâng cao",
+    "Prompt is too long.": "Prompt quá dài.",
+    "Prompt refinement failed.": "Không thể tinh chỉnh prompt.",
+    "Refine prompt": "Tinh chỉnh prompt",
+    "Refining...": "Đang tinh chỉnh…",
+    "The prompt service returned an invalid response.": "Dịch vụ prompt trả về phản hồi không hợp lệ.",
+    "The studio agent chooses the image model automatically.": "Agent của studio tự động chọn mô hình tạo ảnh.",
+    "The studio agent handles the model and billing setup.": "Agent của studio xử lý thiết lập mô hình và thanh toán."
   }
 }

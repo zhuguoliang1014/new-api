@@ -243,3 +243,35 @@ func TestGetAndValidOpenAIImageRequestNBounds(t *testing.T) {
 		require.Contains(t, err.Error(), boundErr)
 	})
 }
+
+func TestPlaygroundImageModelOverrideIgnoresClientModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("json generation", func(t *testing.T) {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/pg/images/generations", bytes.NewBufferString(`{"model":"client-selected","prompt":"a cat"}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		common.SetContextKey(c, constant.ContextKeyPlaygroundModel, "gpt-image-2")
+
+		request, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesGenerations)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-image-2", request.Model)
+	})
+
+	t.Run("multipart edit", func(t *testing.T) {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.WriteField("model", "client-selected"))
+		require.NoError(t, writer.WriteField("prompt", "edit this image"))
+		require.NoError(t, writer.Close())
+
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodPost, "/pg/images/edits", &body)
+		c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+		common.SetContextKey(c, constant.ContextKeyPlaygroundModel, "gpt-image-2")
+
+		request, err := GetAndValidOpenAIImageRequest(c, relayconstant.RelayModeImagesEdits)
+		require.NoError(t, err)
+		require.Equal(t, "gpt-image-2", request.Model)
+	})
+}
