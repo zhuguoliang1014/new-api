@@ -152,6 +152,65 @@ it('requires a prompt, fills an inspiration idea, and generates an actionable cr
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
 })
 
+it('starts a new canvas by clearing the draft without changing the selected model', async () => {
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A quiet studio portrait' },
+  })
+  fireEvent.change(screen.getByLabelText(/Reference images/), {
+    target: {
+      files: [new File(['one'], 'reference.png', { type: 'image/png' })],
+    },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue('')
+  expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
+  expect(screen.getByRole('combobox', { name: 'Image model' })).toHaveValue(
+    'gpt-image-2'
+  )
+})
+
+it('filters saved creations by prompt and model', async () => {
+  const parameters = useImagePlaygroundStore.getState().parameters
+  vi.mocked(readImageHistory).mockResolvedValue([
+    {
+      id: 'sunrise',
+      ownerId: 1,
+      createdAt: 2,
+      parameters: { ...parameters, prompt: 'A quiet sunrise over the sea' },
+      images: [image],
+      referenceCount: 0,
+    },
+    {
+      id: 'ocean',
+      ownerId: 1,
+      createdAt: 1,
+      parameters: {
+        ...parameters,
+        model: 'ocean-model',
+        prompt: 'A blue ocean in the afternoon',
+      },
+      images: [{ ...image, id: 'image-two' }],
+      referenceCount: 0,
+    },
+  ])
+  showStudio()
+  await ready()
+  expect(screen.getAllByRole('button', { name: /View creation/ })).toHaveLength(
+    2
+  )
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), {
+    target: { value: 'ocean-model' },
+  })
+  expect(screen.getAllByRole('button', { name: /View creation/ })).toHaveLength(
+    1
+  )
+  expect(
+    screen.queryByRole('button', { name: 'View creation 2' })
+  ).not.toBeInTheDocument()
+})
+
 it.each([
   {
     signal: 'an active composition session',

@@ -16,15 +16,17 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ImageIcon } from 'lucide-react'
+import { Check, ImageIcon, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { ErrorState } from '@/components/error-state'
+import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { StudioComposer } from './components/studio-composer'
 import { StudioGallery } from './components/studio-gallery'
 import { useImageStudio } from './hooks/use-image-studio'
+import { useImagePlaygroundStore } from './store'
 
 import '@/styles/image-studio.css'
 
@@ -37,6 +39,7 @@ export function ImagePlayground() {
 function ImageStudio() {
   const { t } = useTranslation()
   const studio = useImageStudio()
+  const clearDraft = useImagePlaygroundStore((state) => state.clearDraft)
   return (
     <div className='image-studio'>
       <header className='studio-header'>
@@ -49,9 +52,29 @@ function ImageStudio() {
             <p>{t('An idea. A few words. An entirely new image.')}</p>
           </div>
         </div>
-        <span className='studio-header-tag'>
-          {t('Create without limits to your imagination')}
-        </span>
+        <div className='studio-header-actions'>
+          <span className='studio-save-state'>
+            <Check size={13} aria-hidden='true' />
+            {t('Local')}
+          </span>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            className='studio-new-canvas'
+            onClick={() => {
+              clearDraft()
+              window.requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLTextAreaElement>('#studio-prompt')
+                  ?.focus()
+              )
+            }}
+          >
+            <Plus size={15} aria-hidden='true' />
+            {t('Create')}
+          </Button>
+        </div>
       </header>
       {studio.keysQuery.isError ? (
         <ErrorState

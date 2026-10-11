@@ -25,6 +25,7 @@ import { validateReferenceFiles } from './lib/images'
 import {
   defaultImageParameters,
   normalizeImageParameters,
+  getImageModelOptions,
   type ImageJob,
   type ImageParameters,
   type ImageRecord,
@@ -45,6 +46,7 @@ type ImagePlaygroundStore = {
   setScope: (scope: string | null) => void
   setKey: (id: number | null) => void
   setParameters: (values: Partial<ImageParameters>) => void
+  clearDraft: () => void
   addReferences: (files: File[]) => void
   removeReference: (id: string) => void
   reuseRecord: (record: ImageRecord) => void
@@ -82,13 +84,37 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       })
     },
     setKey: (selectedKeyId) => set({ selectedKeyId }),
-    setParameters: (values) =>
+    setParameters: (values) => {
+      const state = get()
+      const parameters = normalizeImageParameters({
+        ...state.parameters,
+        ...values,
+      })
+      const modelChanged =
+        values.model !== undefined && values.model !== state.parameters.model
+      if (
+        modelChanged &&
+        !getImageModelOptions(parameters.model).supportsReferences
+      ) {
+        for (const reference of state.references) {
+          URL.revokeObjectURL(reference.preview)
+        }
+        set({ parameters, references: [] })
+        return
+      }
+      set({ parameters })
+    },
+    clearDraft: () => {
+      for (const reference of get().references) {
+        URL.revokeObjectURL(reference.preview)
+      }
       set((state) => ({
-        parameters: normalizeImageParameters({
-          ...state.parameters,
-          ...values,
-        }),
-      })),
+        parameters: { ...state.parameters, prompt: '' },
+        references: [],
+        selectedRecordId: null,
+        error: null,
+      }))
+    },
     addReferences: (files) => {
       const combined = [
         ...get().references.map((reference) => reference.file),

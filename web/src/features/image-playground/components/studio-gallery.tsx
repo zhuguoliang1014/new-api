@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Clock3, RotateCcw, Trash2 } from 'lucide-react'
+import { Clock3, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/confirm-dialog'
 import { CopyButton } from '@/components/copy-button'
 import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
@@ -58,7 +59,17 @@ export function StudioGallery() {
   } | null>(null)
   const [deleting, setDeleting] = useState<ImageRecord | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
+  const [historyQuery, setHistoryQuery] = useState('')
   const record = records.find((item) => item.id === selectedId) ?? records[0]
+  const visibleRecords = historyQuery.trim()
+    ? records.filter((item) => {
+        const query = historyQuery.trim().toLowerCase()
+        return (
+          item.parameters.prompt.toLowerCase().includes(query) ||
+          item.parameters.model.toLowerCase().includes(query)
+        )
+      })
+    : records
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   useEffect(() => {
     if (selectedId) {
@@ -101,6 +112,21 @@ export function StudioGallery() {
           <Clock3 size={14} aria-hidden='true' />
           {t('Saved in this browser')}
         </span>
+      </div>
+      <div className='studio-gallery-toolbar'>
+        <div className='studio-gallery-toolbar-label'>
+          <span className='studio-gallery-dot' aria-hidden='true' />
+          <span>{t('Saved in this browser')}</span>
+        </div>
+        <label className='studio-history-search'>
+          <Search size={14} aria-hidden='true' />
+          <Input
+            value={historyQuery}
+            onChange={(event) => setHistoryQuery(event.target.value)}
+            placeholder={t('Search')}
+            aria-label={t('Search')}
+          />
+        </label>
       </div>
       {storageUnavailable && (
         <p className='studio-storage-warning' role='status'>
@@ -227,7 +253,7 @@ export function StudioGallery() {
             <span>{t('Last 30 creations are kept locally')}</span>
           </h3>
           <div className='studio-history-list'>
-            {records.map((item, index) => (
+            {visibleRecords.map((item, index) => (
               <Button
                 key={item.id}
                 variant='ghost'
@@ -251,6 +277,9 @@ export function StudioGallery() {
                 <span>{item.parameters.prompt}</span>
               </Button>
             ))}
+            {!visibleRecords.length && (
+              <p className='studio-history-empty'>{t('No results found')}</p>
+            )}
           </div>
         </div>
       )}

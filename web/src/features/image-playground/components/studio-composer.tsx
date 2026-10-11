@@ -18,7 +18,14 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
-import { ArrowUpRight, Loader2, Sparkles } from 'lucide-react'
+import {
+  ArrowUpRight,
+  ChevronRight,
+  Loader2,
+  Sparkles,
+  WandSparkles,
+  X,
+} from 'lucide-react'
 import { useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -70,6 +77,26 @@ export function StudioComposer(props: StudioComposerProps) {
     values: parameters,
   })
   const modelOptions = getImageModelOptions(parameters.model)
+  const promptIdeas = [
+    {
+      label: t('Product photography'),
+      prompt: t(
+        'A premium amber perfume bottle on a travertine pedestal, warm sunlight, soft shadows, a minimal editorial product photograph.'
+      ),
+    },
+    {
+      label: t('Travel poster'),
+      prompt: t(
+        'A vintage travel poster of a quiet mountain lake, layered forest silhouettes, a coral sun, textured paper, a limited teal and cream palette, no text.'
+      ),
+    },
+    {
+      label: t('Dream architecture'),
+      prompt: t(
+        'A sculptural seaside house with curved white walls and a terracotta staircase, Mediterranean light, calm blue water, architectural photography.'
+      ),
+    },
+  ]
   const busy = Boolean(job)
   const canGenerate = Boolean(
     props.keyId && parameters.model.trim() && parameters.prompt.trim() && !busy
@@ -90,6 +117,9 @@ export function StudioComposer(props: StudioComposerProps) {
           <h2>{t('Your idea, in focus')}</h2>
           <p>{t('Describe it. Make it yours.')}</p>
         </div>
+        <span className='studio-composer-chevron' aria-hidden='true'>
+          <ChevronRight size={16} />
+        </span>
       </div>
       <div className='studio-field'>
         <Label htmlFor='studio-key'>{t('API Key')}</Label>
@@ -182,7 +212,26 @@ export function StudioComposer(props: StudioComposerProps) {
                   <FormLabel htmlFor='studio-prompt'>
                     {t('Image prompt')}
                   </FormLabel>
-                  <span>{t('Be specific, be creative')}</span>
+                  <div className='studio-prompt-label-actions'>
+                    <span>{t('Be specific, be creative')}</span>
+                    {parameters.prompt && (
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-xs'
+                        className='studio-clear-prompt'
+                        aria-label={t('Clear')}
+                        onClick={() => {
+                          useImagePlaygroundStore.getState().setParameters({
+                            prompt: '',
+                          })
+                          form.setValue('prompt', '')
+                        }}
+                      >
+                        <X size={13} aria-hidden='true' />
+                      </Button>
+                    )}
+                  </div>
                 </div>
                 <FormControl id='studio-prompt'>
                   <Textarea
@@ -236,6 +285,44 @@ export function StudioComposer(props: StudioComposerProps) {
                   />
                 </FormControl>
                 <FormMessage />
+                <div className='studio-prompt-kit' aria-label={t('Prompt')}>
+                  <div className='studio-prompt-kit-heading'>
+                    <span>
+                      <WandSparkles size={13} aria-hidden='true' />
+                      {t('A little inspiration')}
+                    </span>
+                    <span>
+                      {t('Illustrated prompt ideas · Select one to try')}
+                    </span>
+                  </div>
+                  <div className='studio-prompt-ideas'>
+                    {promptIdeas.map((idea, index) => (
+                      <Button
+                        key={idea.label}
+                        type='button'
+                        variant='outline'
+                        size='sm'
+                        className='studio-prompt-idea'
+                        aria-label={`${t('A little inspiration')} ${index + 1}`}
+                        title={idea.label}
+                        onClick={() => {
+                          const nextPrompt = parameters.prompt.trim()
+                            ? `${parameters.prompt.trim()}\n\n${idea.prompt}`
+                            : idea.prompt
+                          setParameters({ prompt: nextPrompt })
+                          form.setValue('prompt', nextPrompt)
+                          document
+                            .querySelector<HTMLTextAreaElement>(
+                              '#studio-prompt'
+                            )
+                            ?.focus()
+                        }}
+                      >
+                        {idea.label}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
               </FormItem>
             )}
           />
