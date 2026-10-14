@@ -32,6 +32,7 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { isTokenBasedModel } from '../lib/model-helpers'
+import { getWeeklyTimePricing } from '../lib/weekly-time-pricing'
 import type { PricingModel } from '../types'
 
 function pricingModel(overrides: Partial<PricingModel>): PricingModel {
@@ -55,6 +56,70 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  const weeklyExpression =
+    '(tier("standard", p * 1.5 + c * 4.5 + cr * 0.05)) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? 2 : 1) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18 ? 2 : 1)'
+
+  test.each([
+    ['2026-10-14T08:59:00+08:00', '$0.18', '$0.54', '$0.006'],
+    ['2026-10-14T09:00:00+08:00', '$0.36', '$1.08', '$0.012'],
+    ['2026-10-14T12:00:00+08:00', '$0.18', '$0.54', '$0.006'],
+    ['2026-10-14T14:00:00+08:00', '$0.36', '$1.08', '$0.012'],
+    ['2026-10-14T18:00:00+08:00', '$0.18', '$0.54', '$0.006'],
+    ['2026-10-17T10:00:00+08:00', '$0.18', '$0.54', '$0.006'],
+  ])(
+    'applies the group and time multipliers to every price at %s',
+    (now, input, output, cache) => {
+      const summary = getDynamicPricingSummary(
+        pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr: weeklyExpression,
+        }),
+        { tokenUnit: 'M', groupRatioMultiplier: 0.12, now: new Date(now) }
+      )
+      expect(summary?.primaryEntries.map((entry) => entry.formatted)).toEqual([
+        input,
+        output,
+      ])
+      expect(summary?.secondaryEntries[0].formatted).toBe(cache)
+      expect(summary?.isTimePricing).toBe(true)
+    }
+  )
+
+  test('multiplies overlapping weekly factors and preserves a free group price', () => {
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      billing_expr:
+        'tier("base", p * 1) * (hour("UTC") >= 9 ? 2 : 1) * (hour("UTC") < 12 ? 3 : 1)',
+    })
+    expect(
+      getDynamicPricingSummary(model, {
+        tokenUnit: 'M',
+        now: new Date('2026-10-14T10:00:00Z'),
+      })?.primaryEntries[0].formatted
+    ).toBe('$6')
+    expect(
+      getDynamicPricingSummary(model, {
+        tokenUnit: 'M',
+        groupRatioMultiplier: 0,
+        now: new Date('2026-10-14T10:00:00Z'),
+      })?.primaryEntries[0].formatted
+    ).toBe('$0')
+  })
+
+  test.each([
+    'tier("base", p * 1) * (minute("UTC") >= 30 ? 2 : 1)',
+    'tier("base", p * 1) * (header("tier") == "fast" ? 2 : 1)',
+    'tier("base", p * 1) * (hour("Local") >= 9 ? 2 : 1)',
+    'tier("base", p * 1) * (hour("Invalid/Zone") >= 9 ? 2 : 1)',
+    'tier("base", p * 1) * (hour("UTC") >= 9 && weekday("Asia/Shanghai") == 1 ? 2 : 1)',
+    '(len < 100 ? tier("short", p * 1) : tier("long", p * 2)) * (hour("UTC") >= 9 ? 2 : 1)',
+  ])(
+    'retains the general breakdown for expressions without an hourly weekly schedule: %s',
+    (expression) => {
+      expect(getWeeklyTimePricing(expression)).toBeNull()
+    }
+  )
+
   test('keeps request prices unchanged by token units and separates mixed billing units', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',

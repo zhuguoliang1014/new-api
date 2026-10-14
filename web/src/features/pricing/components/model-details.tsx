@@ -64,7 +64,11 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 import { DEFAULT_TOKEN_UNIT } from '../constants'
 import { useBillingTime } from '../hooks/use-billing-time'
 import { usePricingData } from '../hooks/use-pricing-data'
-import type { ParsedTaskTier } from '../lib/billing-expr'
+import {
+  BILLING_PRICING_VARS,
+  type ParsedTaskTier,
+  type ParsedTier,
+} from '../lib/billing-expr'
 import { formatBillingCondition } from '../lib/billing-expression/condition-display'
 import {
   formatTaskUsageUnitPrice,
@@ -78,7 +82,11 @@ import {
   type DynamicPriceEntry,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getAvailableGroups,
+  getDisplayGroupRatio,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { withPluginPricing } from '../lib/plugin-pricing'
 import { formatFixedPrice, formatGroupPrice } from '../lib/price'
 import {
@@ -94,6 +102,7 @@ import {
   taskTierConditions,
   pricingDisplayFallbackKey,
 } from '../lib/task-price-display'
+import { getWeeklyTimePricing } from '../lib/weekly-time-pricing'
 import type {
   ModelCapability,
   PriceType,
@@ -104,6 +113,7 @@ import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
+import { TimePricingSchedule } from './time-pricing-schedule'
 
 // ----------------------------------------------------------------------------
 // Local UI helpers
@@ -638,6 +648,8 @@ function ModelHeader(props: { model: PricingModel }) {
 // ----------------------------------------------------------------------------
 
 function PriceSection(props: {
+  groupRatio: Record<string, number>
+  selectedGroup?: string
   model: PricingModel
   priceRate: number
   usdExchangeRate: number
@@ -651,6 +663,16 @@ function PriceSection(props: {
   const baseGroupRatioMap = { [baseGroupKey]: 1 }
   const currency = useSystemConfigStore((state) => state.config.currency)
   const billingTime = useBillingTime(props.model.billing_expr)
+  const weekly = getWeeklyTimePricing(
+    props.model.billing_expr || '',
+    billingTime === undefined ? undefined : new Date(billingTime)
+  )
+  const displayRatio = weekly
+    ? getDisplayGroupRatio(
+        { ...props.model, group_ratio: props.groupRatio },
+        props.selectedGroup
+      )
+    : 1
   const dynamicSummary = useMemo(
     () =>
       getDynamicPricingSummary(props.model, {
@@ -659,7 +681,7 @@ function PriceSection(props: {
         showRechargePrice: props.showRechargePrice,
         priceRate: props.priceRate,
         usdExchangeRate: props.usdExchangeRate,
-        groupRatioMultiplier: 1,
+        groupRatioMultiplier: displayRatio,
       }),
     // Currency is read indirectly by the price formatter.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -670,6 +692,7 @@ function PriceSection(props: {
       props.priceRate,
       props.usdExchangeRate,
       billingTime,
+      displayRatio,
       currency,
     ]
   )
@@ -744,7 +767,9 @@ function PriceSection(props: {
 
     return (
       <section>
-        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <SectionTitle>
+          {weekly ? t('Current Price') : t('Base Price')}
+        </SectionTitle>
         {dynamicSummary.providerCount && (
           <p className='text-muted-foreground mb-2 text-xs'>
             {t('{{count}} providers', { count: dynamicSummary.providerCount })}
@@ -824,6 +849,20 @@ function PriceSection(props: {
                 )
               })}
             </div>
+          </div>
+        )}
+        {weekly && (
+          <div className='mt-4'>
+            <TimePricingSchedule
+              schedule={weekly}
+              options={{
+                tokenUnit: props.tokenUnit,
+                groupRatioMultiplier: displayRatio,
+                showRechargePrice: props.showRechargePrice,
+                priceRate: props.priceRate,
+                usdExchangeRate: props.usdExchangeRate,
+              }}
+            />
           </div>
         )}
       </section>
@@ -1056,6 +1095,11 @@ function ProviderGroupPricingSection(
 ) {
   const { t, i18n } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
+  const billingTime = useBillingTime(props.model.billing_expr)
+  const weekly = getWeeklyTimePricing(
+    props.model.billing_expr || '',
+    billingTime === undefined ? undefined : new Date(billingTime)
+  )
 
   const availableGroups = useMemo(
     () => getAvailableGroups(props.model, props.usableGroup || {}),
@@ -1110,12 +1154,24 @@ function ProviderGroupPricingSection(
   )
 
   if (isDynamicPricingModel(props.model)) {
-    const dynamicTiers = props.model.billing_usage_schema
+    let dynamicTiers = props.model.billing_usage_schema
       ? getTaskPricingDisplayTiers(
           props.model.billing_expr,
           props.model.billing_usage_schema
         )
       : getDynamicPricingTiers(props.model)
+    if (weekly && !props.model.billing_usage_schema) {
+      dynamicTiers = [{ ...weekly.tier, label: t('Current period price') }]
+      for (const variable of BILLING_PRICING_VARS) {
+        const field = variable.field as keyof ParsedTier
+        const value = weekly.tier[field]
+        if (typeof value === 'number') {
+          Object.assign(dynamicTiers[0], {
+            [field]: value * weekly.currentMultiplier,
+          })
+        }
+      }
+    }
     const hasRequestPrice = dynamicTiers.some(
       (tier) => !('unitPrices' in tier) && tier.billingUnit === 'request'
     )
@@ -1457,6 +1513,7 @@ const TAB_META: Record<
 }
 
 export interface ModelDetailsContentProps {
+  selectedGroup?: string
   model: PricingModel
   groupRatio: Record<string, number>
   usableGroup: Record<string, { desc: string; ratio: number }>
@@ -1476,6 +1533,9 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
     props.model.billing_mode === 'tiered_expr' &&
     Boolean(props.model.billing_expr)
 
+  const weekly =
+    !props.model.billing_usage_schema &&
+    getWeeklyTimePricing(props.model.billing_expr || '')
   const simpleTaskPricing = hasSimpleTaskPricing(props.model)
   const taskTiers = getTaskPricingDisplayTiers(
     props.model.billing_expr,
@@ -1515,13 +1575,15 @@ export function ModelDetailsContent(props: ModelDetailsContentProps) {
             {showBasePrices && (
               <PriceSection
                 model={props.model}
+                groupRatio={props.groupRatio}
+                selectedGroup={props.selectedGroup}
                 priceRate={props.priceRate}
                 usdExchangeRate={props.usdExchangeRate}
                 tokenUnit={props.tokenUnit}
                 showRechargePrice={showRechargePrice}
               />
             )}
-            {isDynamic && !simpleTaskPricing && (
+            {isDynamic && !simpleTaskPricing && !weekly && (
               <DynamicPricingBreakdown
                 billingExpr={props.model.billing_expr}
                 usageSchema={props.model.billing_usage_schema}

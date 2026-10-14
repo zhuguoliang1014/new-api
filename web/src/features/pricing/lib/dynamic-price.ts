@@ -44,6 +44,7 @@ import {
   tryParseTaskVisualConfig,
 } from './task-expr'
 import { getTaskPricingDisplayTiers } from './task-matrix-display'
+import { getWeeklyTimePricing } from './weekly-time-pricing'
 
 export type DynamicPriceOptions = {
   tokenUnit: TokenUnit
@@ -502,12 +503,22 @@ export function getDynamicPricingSummary(
   const timeTiers = isTaskUsage
     ? null
     : getCurrentTimePricingTiers(baseExpression, options.now ?? new Date())
+  const weekly = isTaskUsage
+    ? null
+    : getWeeklyTimePricing(model.billing_expr || '', options.now)
+  const currentOptions = weekly
+    ? {
+        ...options,
+        groupRatioMultiplier:
+          (options.groupRatioMultiplier ?? 1) * weekly.currentMultiplier,
+      }
+    : options
   const summaryTiers = timeTiers ?? tiers
   const tier = isTaskUsage
     ? (summaryTiers.at(-1) ?? null)
     : (summaryTiers[0] ?? null)
   let entries = getDynamicPriceEntries(tier, {
-    ...options,
+    ...currentOptions,
     usageSchema: model.billing_usage_schema,
   })
   let isMixedBilling = false
@@ -587,7 +598,7 @@ export function getDynamicPricingSummary(
             !PRIMARY_DYNAMIC_FIELDS.has(entry.field)
         ),
     isTaskUsage,
-    isTimePricing: timeTiers !== null,
+    isTimePricing: timeTiers !== null || weekly !== null,
     ...(isMixedBilling ? { isMixedBilling } : {}),
   }
 }

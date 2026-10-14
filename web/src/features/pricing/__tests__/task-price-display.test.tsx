@@ -76,6 +76,58 @@ it('renders weekday and hour conditions as time windows instead of expression so
   expect(screen.queryByText(/weekday\(/)).not.toBeInTheDocument()
 })
 
+it('shows actual group prices and localized weekly periods without changing the billing expression', async () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(new Date('2026-10-14T10:00:00+08:00'))
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const expression =
+    '(tier("standard", p * 1.5 + c * 4.5 + cr * 0.05)) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? 2 : 1) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18 ? 2 : 1)'
+  const flash: PricingModel = {
+    id: 103,
+    model_name: 'deepseek-v4-flash',
+    quota_type: 0,
+    model_ratio: 1,
+    completion_ratio: 1,
+    enable_groups: ['国模分组'],
+    billing_mode: 'tiered_expr',
+    billing_expr: expression,
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <ModelDetailsContent
+        model={flash}
+        groupRatio={{ 国模分组: 0.12 }}
+        usableGroup={{ 国模分组: { desc: '', ratio: 0.12 } }}
+        endpointMap={{}}
+        autoGroups={[]}
+        priceRate={1}
+        usdExchangeRate={1}
+        tokenUnit='M'
+      />
+    </QueryClientProvider>
+  )
+  expect(screen.getByText('Current Price')).toBeVisible()
+  expect(screen.getAllByText('$0.36').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$1.08').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$0.012').length).toBeGreaterThan(0)
+  expect(screen.getByText('Peak and off-peak pricing')).toBeVisible()
+  expect(
+    screen.getAllByText(/Mon–Fri.*09:00–12:00.*14:00–18:00/).length
+  ).toBeGreaterThan(0)
+  expect(screen.queryByText(/星期 1:00/)).not.toBeInTheDocument()
+  expect(screen.queryByText('$1.5')).not.toBeInTheDocument()
+  expect(flash.billing_expr).toBe(expression)
+  act(() => {
+    vi.setSystemTime(new Date('2026-10-14T12:00:00+08:00'))
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  expect(screen.getAllByText('$0.18').length).toBeGreaterThan(0)
+})
+
 const model: PricingModel = {
   id: 1,
   model_name: 'incho_music',
@@ -261,6 +313,7 @@ afterEach(async () => {
   clients.forEach((client) => client.clear())
   clients.length = 0
   vi.restoreAllMocks()
+  vi.useRealTimers()
   await i18next.changeLanguage('en')
 })
 
