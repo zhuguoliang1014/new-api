@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/model_setting"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 func stopReasonClaude2OpenAI(reason string) string {
@@ -300,15 +301,39 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		Usage:        &dto.Usage{},
 	}
 	var err *types.NewAPIError
+	var hasContent bool
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
 			sr.Stop(err)
+			return
+		}
+		if !hasContent {
+			event := gjson.Parse(data)
+			switch event.Get("type").String() {
+			case "content_block_start":
+				blockType := event.Get("content_block.type").String()
+				hasContent = event.Get("content_block.text").String() != "" ||
+					event.Get("content_block.thinking").String() != "" ||
+					(blockType == "tool_use" || blockType == "server_tool_use") && event.Get("content_block.name").String() != ""
+			case "content_block_delta":
+				hasContent = event.Get("delta.partial_json").String() != ""
+			}
 		}
 	})
 	info.StreamStatus.RequireTerminal()
 	if err != nil {
 		return nil, err
+	}
+	// Transport failures and heartbeat-only streams must not turn the estimated
+	// request size into a charge when upstream supplied neither usage nor output.
+	if claudeInfo.Usage.BillingUsage == nil && claudeInfo.ResponseText.Len() == 0 && !hasContent {
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("Claude stream ended without upstream usage or content"),
+			types.ErrorCodeEmptyResponse,
+			http.StatusBadGateway,
+			types.ErrOptionWithSkipRetry(),
+		)
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo)
