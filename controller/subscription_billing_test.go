@@ -2,16 +2,20 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/middleware"
@@ -22,6 +26,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -967,4 +972,158 @@ func TestNativeEpaySubscriptionChargesExistingCNYPrice(t *testing.T) {
 			assert.True(t, verified.VerifyStatus)
 		})
 	}
+}
+
+func nativeEpayFixture(t *testing.T) (*gorm.DB, *model.User) {
+	t.Helper()
+	db := subscriptionBillingDB(t, true)
+	require.NoError(t, db.AutoMigrate(&model.TopUp{}, &model.SubscriptionOrder{}, &model.SystemTask{}, &model.SystemTaskLock{}))
+	confirmPaymentComplianceForTest(t)
+	oldAddress, oldID, oldKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
+	oldMethods, oldPrice, oldMin := operation_setting.PayMethods, operation_setting.Price, operation_setting.MinTopUp
+	oldDiscount := operation_setting.GetPaymentSetting().AmountDiscount
+	oldGroupRatios := common.TopupGroupRatio2JSONString()
+	oldQuota := common.QuotaPerUnit
+	oldUpgrade := setting.TopupUpgradeGroup
+	oldDisplay := operation_setting.GetGeneralSetting().QuotaDisplayType
+	operation_setting.PayAddress = "https://native-pay.example/"
+	operation_setting.EpayId = "2043"
+	operation_setting.EpayKey = "fixture-secret"
+	operation_setting.Price = 1
+	operation_setting.MinTopUp = 10
+	operation_setting.PayMethods = []map[string]string{{"type": "alipay", "name": "Alipay"}}
+	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{50: 0.95, 100: 0.95, 200: 0.95, 500: 0.9}
+	require.NoError(t, common.UpdateTopupGroupRatioByJSONString("{}"))
+	common.QuotaPerUnit = 500000
+	setting.TopupUpgradeGroup = "vip"
+	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
+	user := &model.User{Username: "native-parity-user", AffCode: "native-parity-aff", Group: "default", Quota: 7, Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(user).Error)
+	t.Cleanup(func() {
+		require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.UserSubscription{}).Error)
+		require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.SubscriptionOrder{}).Error)
+		require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.TopUp{}).Error)
+		require.NoError(t, db.Where("user_id = ?", user.Id).Delete(&model.Log{}).Error)
+		require.NoError(t, db.Unscoped().Delete(user).Error)
+		operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = oldAddress, oldID, oldKey
+		operation_setting.PayMethods, operation_setting.Price, operation_setting.MinTopUp = oldMethods, oldPrice, oldMin
+		operation_setting.GetPaymentSetting().AmountDiscount = oldDiscount
+		require.NoError(t, common.UpdateTopupGroupRatioByJSONString(oldGroupRatios))
+		common.QuotaPerUnit = oldQuota
+		setting.TopupUpgradeGroup = oldUpgrade
+		operation_setting.GetGeneralSetting().QuotaDisplayType = oldDisplay
+	})
+	return db, user
+}
+
+func TestNativeEpayRMBToUSDAndMigrationBenefits(t *testing.T) {
+	db, user := nativeEpayFixture(t)
+	for _, tc := range []struct {
+		amount int64
+		money  float64
+	}{
+		{1, 1}, {10, 10}, {30, 30}, {50, 47.5}, {100, 95}, {200, 190}, {500, 450},
+	} {
+		t.Run(fmt.Sprint(tc.amount), func(t *testing.T) {
+			before := model.User{}
+			require.NoError(t, db.First(&before, user.Id).Error)
+			for _, group := range []string{"default", "vip", "stable", "image"} {
+				assert.Equal(t, tc.money, getPayMoney(tc.amount, group))
+			}
+			order := model.TopUp{UserId: user.Id, Amount: tc.amount, Money: tc.money, TradeNo: fmt.Sprintf("native-parity-%d", tc.amount), PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
+			require.NoError(t, db.Create(&order).Error)
+			params := epay.GenerateParams(map[string]string{"pid": "2043", "out_trade_no": order.TradeNo, "trade_no": "provider-" + order.TradeNo, "type": "alipay", "trade_status": "TRADE_SUCCESS", "money": fmt.Sprintf("%.2f", tc.money)}, operation_setting.EpayKey)
+			for range 2 {
+				form := url.Values{}
+				for k, v := range params {
+					form.Set(k, v)
+				}
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodPost, "/api/user/epay/notify", strings.NewReader(form.Encode()))
+				c.Request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+				EpayNotify(c)
+				require.Equal(t, "success", recorder.Body.String())
+			}
+			var after model.User
+			require.NoError(t, db.First(&after, user.Id).Error)
+			assert.Equal(t, before.Quota+int(tc.amount)*500000, after.Quota)
+			assert.Equal(t, "vip", after.Group)
+			assert.Equal(t, before.AffQuota, after.AffQuota)
+			require.NoError(t, db.First(&order, order.Id).Error)
+			assert.Equal(t, common.TopUpStatusSuccess, order.Status)
+		})
+	}
+	var count int64
+	require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).Count(&count).Error)
+	assert.EqualValues(t, 7, count)
+}
+
+func TestNativeEpayRejectsMismatchedCNYAmountBeforeGrantingCredit(t *testing.T) {
+	db, user := nativeEpayFixture(t)
+	order := model.TopUp{UserId: user.Id, Amount: 50, Money: 47.5, TradeNo: "native-invalid-cny", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending}
+	require.NoError(t, db.Create(&order).Error)
+	for _, money := range []string{"1", "50", "NaN", "-1", ""} {
+		_, err := completeEpayPaidOrder(order.TradeNo, "alipay", money, "", "")
+		require.Error(t, err)
+	}
+	var saved model.User
+	require.NoError(t, db.First(&saved, user.Id).Error)
+	assert.Equal(t, 7, saved.Quota)
+	require.NoError(t, db.First(&order, order.Id).Error)
+	assert.Equal(t, common.TopUpStatusPending, order.Status)
+}
+
+func TestNativeEpayReconciliationRecoversWalletAndSubscriptionWithoutCallbacks(t *testing.T) {
+	db, user := nativeEpayFixture(t)
+	wallet := model.TopUp{UserId: user.Id, Amount: 50, Money: 47.5, TradeNo: "native-reconcile-wallet", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 3600}
+	unpaid := model.TopUp{UserId: user.Id, Amount: 10, Money: 10, TradeNo: "native-reconcile-unpaid", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 60}
+	require.NoError(t, db.Create(&wallet).Error)
+	require.NoError(t, db.Create(&unpaid).Error)
+	plan := model.SubscriptionPlan{Title: "native reconcile", PriceAmount: 1155, PriceCNY: 300, TotalAmount: 577500000, Enabled: true, DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, UpgradeGroup: "vip"}
+	require.NoError(t, db.Create(&plan).Error)
+	t.Cleanup(func() { require.NoError(t, db.Delete(&plan).Error); model.InvalidateSubscriptionPlanCache(plan.Id) })
+	sub := model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: "native-reconcile-sub", Money: 300, PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 3600}
+	require.NoError(t, db.Create(&sub).Error)
+	fail := true
+	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
+		if fail {
+			return nil, fmt.Errorf("provider unavailable: %s", r.URL.String())
+		}
+		assert.Equal(t, "order", r.URL.Query().Get("act"))
+		trade := r.URL.Query().Get("out_trade_no")
+		status, money := 1, "47.50"
+		if trade == unpaid.TradeNo {
+			status, money = 0, "10.00"
+		}
+		if trade == sub.TradeNo {
+			money = "300.00"
+		}
+		body, err := common.Marshal(map[string]any{"code": 1, "status": status, "pid": 2043, "out_trade_no": trade, "trade_no": "provider-" + trade, "type": "alipay", "money": money})
+		require.NoError(t, err)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})
+	_, err := queryEpayOrder(context.Background(), wallet.TradeNo)
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), operation_setting.EpayKey)
+	result, err := runEpayReconciliation(context.Background(), epayReconcileResult{})
+	require.Error(t, err)
+	assert.Equal(t, 3, result.Failed)
+	fail = false
+	result, err = runEpayReconciliation(context.Background(), result)
+	require.NoError(t, err)
+	assert.Equal(t, 2, result.Settled)
+	result, err = runEpayReconciliation(context.Background(), result)
+	require.NoError(t, err)
+	assert.Zero(t, result.Settled)
+	var saved model.User
+	require.NoError(t, db.First(&saved, user.Id).Error)
+	assert.Equal(t, 25000007, saved.Quota)
+	assert.Equal(t, "vip", saved.Group)
+	var subs []model.UserSubscription
+	require.NoError(t, db.Where("user_id = ?", user.Id).Find(&subs).Error)
+	require.Len(t, subs, 1)
+	assert.EqualValues(t, 577500000, subs[0].AmountTotal)
+	require.NoError(t, db.First(&unpaid, unpaid.Id).Error)
+	assert.Equal(t, common.TopUpStatusPending, unpaid.Status)
 }
