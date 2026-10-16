@@ -11,7 +11,7 @@ import { RechargeTab } from '../recharge-tab'
 import { SubscriptionTab } from '../subscription-tab'
 
 const rechargeProps = {
-  hupijiaoEnabled: true,
+  onlinePaymentEnabled: true,
   presetAmounts: [{ value: 100, discount: 1 }],
   selectedPreset: 100,
   onSelectPreset: vi.fn(),
@@ -118,7 +118,7 @@ it('exposes the selected recharge preset to assistive technology', () => {
 })
 
 it('keeps redemption available when online topup is disabled', () => {
-  render(<RechargeTab {...rechargeProps} hupijiaoEnabled={false} />)
+  render(<RechargeTab {...rechargeProps} onlinePaymentEnabled={false} />)
   expect(screen.getByRole('textbox', { name: 'Redemption Code' })).toBeVisible()
   expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
 })

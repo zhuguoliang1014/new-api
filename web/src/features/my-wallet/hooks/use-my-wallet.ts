@@ -6,6 +6,7 @@ import { DEFAULT_DISCOUNT_RATE } from '@/features/wallet/constants'
 import {
   useAffiliate,
   useRedemption,
+  usePayment,
   useTopupInfo,
 } from '@/features/wallet/hooks'
 import { mergePresetAmounts } from '@/features/wallet/lib'
@@ -90,32 +91,55 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
   const [hupijiaoPayment, setHupijiaoPayment] =
     useState<HupijiaoPaymentData | null>(null)
 
-  const { topupInfo: rawTopupInfo, loading: topupLoading } = useTopupInfo()
+  const {
+    topupInfo: rawTopupInfo,
+    presetAmounts: nativePresets,
+    loading: topupLoading,
+  } = useTopupInfo()
   const topupInfo = rawTopupInfo as MyWalletTopupInfo | null
   const affiliate = useAffiliate()
   const redemption = useRedemption()
   const hupijiao = useHupijiaoPayment()
+  const nativePayment = usePayment()
+  const nativeEnabled =
+    !!topupInfo?.enable_online_topup &&
+    !!topupInfo.pay_methods?.some((method) => method.type === 'alipay')
+  const onlinePaymentEnabled =
+    nativeEnabled || !!topupInfo?.enable_hupijiao_topup
+  const { calculatePaymentAmount: calculateNativeAmount } = nativePayment
 
-  const hupijiaoEnabled = !!topupInfo?.enable_hupijiao_topup
-  const minTopup = getHupijiaoMinTopup(topupInfo)
+  const minTopup = nativeEnabled
+    ? Math.max(1, topupInfo?.min_topup || 1)
+    : getHupijiaoMinTopup(topupInfo)
   const presetAmounts = useMemo(
-    () => getHupijiaoPresets(topupInfo),
-    [topupInfo]
+    () => (nativeEnabled ? nativePresets : getHupijiaoPresets(topupInfo)),
+    [nativeEnabled, nativePresets, topupInfo]
   )
-  const priceRatio = Number(topupInfo?.hupijiao_price ?? 0)
+  const priceRatio =
+    nativeEnabled && topupAmount > 0
+      ? paymentAmount / topupAmount / (topupInfo?.discount?.[topupAmount] || 1)
+      : Number(topupInfo?.hupijiao_price ?? 0)
   const discountMap = useMemo(
-    () => parseDiscountMap(topupInfo?.hupijiao_discount),
-    [topupInfo?.hupijiao_discount]
+    () =>
+      nativeEnabled
+        ? topupInfo?.discount || {}
+        : parseDiscountMap(topupInfo?.hupijiao_discount),
+    [nativeEnabled, topupInfo?.discount, topupInfo?.hupijiao_discount]
   )
 
   const calculatePaymentAmount = useCallback(
     async (amount: number) => {
-      if (!hupijiaoEnabled || amount <= 0) {
+      if (!onlinePaymentEnabled || amount <= 0) {
         setPaymentAmount(0)
         return 0
       }
       try {
         setCalculating(true)
+        if (nativeEnabled) {
+          const value = await calculateNativeAmount(amount, 'alipay')
+          setPaymentAmount(value)
+          return value
+        }
         const response = await calculateHupijiaoAmount({ amount })
         const value =
           isApiSuccess(response) && response.data
@@ -130,7 +154,7 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
         setCalculating(false)
       }
     },
-    [hupijiaoEnabled]
+    [onlinePaymentEnabled, nativeEnabled, calculateNativeAmount]
   )
 
   const fetchUser = useCallback(async () => {
@@ -155,14 +179,14 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
 
   // Initialize default amount once topupInfo arrives
   useEffect(() => {
-    if (!topupInfo || !hupijiaoEnabled || topupAmount !== 0) return
+    if (!topupInfo || !onlinePaymentEnabled || topupAmount !== 0) return
     const initial = presetAmounts[0]?.value ?? minTopup
     setTopupAmount(initial)
     setSelectedPreset(presetAmounts[0]?.value ?? null)
     void calculatePaymentAmount(initial)
   }, [
     topupInfo,
-    hupijiaoEnabled,
+    onlinePaymentEnabled,
     presetAmounts,
     minTopup,
     topupAmount,
@@ -220,7 +244,7 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
   }
 
   const handleAlipayClick = async () => {
-    if (!hupijiaoEnabled) return
+    if (!onlinePaymentEnabled) return
     if (topupAmount < minTopup) return
     setPaymentLoading('alipay')
     try {
@@ -232,6 +256,12 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
   }
 
   const handlePaymentConfirm = async () => {
+    if (nativeEnabled) {
+      if (await nativePayment.processPayment(topupAmount, 'alipay')) {
+        setConfirmDialogOpen(false)
+      }
+      return
+    }
     const data = await hupijiao.processHupijiaoPayment(topupAmount)
     if (!data) return
     setConfirmDialogOpen(false)
@@ -272,7 +302,7 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
     userLoading,
     topupInfo,
     topupLoading,
-    hupijiaoEnabled,
+    onlinePaymentEnabled,
     minTopup,
     topupAmount,
     selectedPreset,
@@ -294,7 +324,9 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
     setHupijiaoDialogOpen,
     hupijiaoPayment,
     setHupijiaoPayment,
-    paymentProcessing: hupijiao.processing,
+    paymentProcessing: nativeEnabled
+      ? nativePayment.processing
+      : hupijiao.processing,
     discountRate: discountMap[topupAmount] || DEFAULT_DISCOUNT_RATE,
     complianceConfirmed: topupInfo?.payment_compliance_confirmed !== false,
     redemptionEnabled: topupInfo?.enable_redemption !== false,

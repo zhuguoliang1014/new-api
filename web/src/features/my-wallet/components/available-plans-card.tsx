@@ -98,6 +98,10 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
 
   const hupijiaoEnabled = !!props.topupInfo?.enable_hupijiao_topup
+  const epayEnabled =
+    !!props.topupInfo?.enable_online_topup &&
+    !!props.topupInfo.pay_methods?.some((method) => method.type === 'alipay')
+  const onlinePaymentEnabled = epayEnabled || hupijiaoEnabled
 
   const fetchPlans = useCallback(async () => {
     const [planRes, subRes] = await Promise.all([
@@ -245,7 +249,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
             const sale = computeSaleWindow(plan, nowSec)
             const isSaleable =
               sale.status !== 'upcoming' && sale.status !== 'ended'
-            const purchasable = isSaleable && !reached && hupijiaoEnabled
+            const purchasable = isSaleable && !reached && onlinePaymentEnabled
             const isRecommended = isPopular && purchasable
 
             const quotaLabel =
@@ -388,7 +392,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                   </dl>
 
                   <div className='mt-auto pt-4'>
-                    {!hupijiaoEnabled && isSaleable && !reached ? (
+                    {!onlinePaymentEnabled && isSaleable && !reached ? (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
                           <Button
@@ -449,6 +453,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         }}
         plan={selectedPlan}
         enableHupijiao={hupijiaoEnabled}
+        enableEpay={epayEnabled}
         purchaseLimit={
           selectedPlan?.plan?.max_purchase_per_user
             ? Number(selectedPlan.plan.max_purchase_per_user)

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 import type { PresetAmount } from '../types'
 
 interface RechargeTabProps {
-  hupijiaoEnabled: boolean
+  onlinePaymentEnabled: boolean
   presetAmounts: PresetAmount[]
   selectedPreset: number | null
   onSelectPreset: (preset: PresetAmount) => void
@@ -49,7 +49,7 @@ function formatCny(value: number): string {
 }
 
 export function RechargeTab({
-  hupijiaoEnabled,
+  onlinePaymentEnabled,
   presetAmounts,
   selectedPreset,
   onSelectPreset,
@@ -81,8 +81,9 @@ export function RechargeTab({
     if (numValue >= 0) onTopupAmountChange(numValue)
   }
 
-  const showPresets = hupijiaoEnabled && presetAmounts.length > 0
-  const belowMin = hupijiaoEnabled && topupAmount > 0 && topupAmount < minTopup
+  const showPresets = onlinePaymentEnabled && presetAmounts.length > 0
+  const belowMin =
+    onlinePaymentEnabled && topupAmount > 0 && topupAmount < minTopup
 
   return (
     <div id='wallet-add-funds' className='scroll-mt-4'>
@@ -161,7 +162,7 @@ export function RechargeTab({
         </section>
         <div className='space-y-5 sm:space-y-6'>
           {loading && <RechargeSkeleton />}
-          {!loading && !hupijiaoEnabled && (
+          {!loading && !onlinePaymentEnabled && (
             <Alert>
               <AlertDescription>
                 {t(
@@ -170,7 +171,7 @@ export function RechargeTab({
               </AlertDescription>
             </Alert>
           )}
-          {!loading && hupijiaoEnabled && (
+          {!loading && onlinePaymentEnabled && (
             <>
               {showPresets ? (
                 <div className='space-y-2.5 sm:space-y-3'>

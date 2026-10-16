@@ -1,13 +1,15 @@
 // Local fork subscription purchase dialog. Independent of new-api's upstream
-// SubscriptionPurchaseDialog — only the Hupijiao (Alipay) payment flow is
-// supported here. Do NOT delegate to upstream dialog; upstream has hardcoded
-// balance-payment UI we don't want.
+// SubscriptionPurchaseDialog; composes the shared native payment form behavior.
+// Balance redemption is not offered in this view.
 
-import { useState } from 'react'
 import { Crown, CalendarClock, Package } from 'lucide-react'
-import { SiAlipay } from 'react-icons/si'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { SiAlipay } from 'react-icons/si'
 import { toast } from 'sonner'
+
+import { GroupBadge } from '@/components/group-badge'
+import { HupijiaoPaymentDialog } from '@/components/payment/hupijiao-payment-dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
@@ -17,22 +19,22 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
-import { GroupBadge } from '@/components/group-badge'
-import { HupijiaoPaymentDialog } from '@/components/payment/hupijiao-payment-dialog'
+import {
+  paySubscriptionEpay,
+  paySubscriptionHupijiao,
+} from '@/features/subscriptions/api'
+import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import type { PlanRecord } from '@/features/subscriptions/types'
+import { submitPaymentForm } from '@/features/wallet/lib'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
-import { paySubscriptionHupijiao } from '@/features/subscriptions/api'
-import {
-  formatDuration,
-  formatResetPeriod,
-} from '@/features/subscriptions/lib'
-import type { PlanRecord } from '@/features/subscriptions/types'
 
 interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   plan: PlanRecord | null
   enableHupijiao?: boolean
+  enableEpay?: boolean
   hupijiaoPaymentMethodName?: string
   purchaseLimit?: number
   purchaseCount?: number
@@ -43,6 +45,7 @@ export function LocalSubscriptionPurchaseDialog({
   onOpenChange,
   plan: planRecord,
   enableHupijiao,
+  enableEpay,
   hupijiaoPaymentMethodName,
   purchaseLimit,
   purchaseCount,
@@ -63,7 +66,7 @@ export function LocalSubscriptionPurchaseDialog({
 
   const priceCNY = Number(plan.price_cny || 0)
   const totalAmount = Number(plan.total_amount || 0)
-  const hasHupijiao = !!enableHupijiao && priceCNY > 0
+  const hasOnlinePayment = (!!enableEpay || !!enableHupijiao) && priceCNY > 0
   const limitReached =
     (purchaseLimit || 0) > 0 && (purchaseCount || 0) >= (purchaseLimit || 0)
 
@@ -73,9 +76,23 @@ export function LocalSubscriptionPurchaseDialog({
     abbreviate: false,
   })
 
-  const handlePayHupijiao = async () => {
+  const handleOnlinePayment = async () => {
     setPaying(true)
     try {
+      if (enableEpay) {
+        const res = await paySubscriptionEpay({
+          plan_id: plan.id,
+          payment_method: 'alipay',
+        })
+        if (res.message !== 'success' || !res.url) {
+          toast.error(res.message || t('Payment request failed'))
+          return
+        }
+        submitPaymentForm(res.url, res.data || {})
+        toast.success(t('Payment initiated'))
+        onOpenChange(false)
+        return
+      }
       const res = await paySubscriptionHupijiao({ plan_id: plan.id })
       if (res.success && res.data?.pay_url) {
         setHupijiaoPayment({
@@ -174,11 +191,11 @@ export function LocalSubscriptionPurchaseDialog({
               </Alert>
             )}
 
-            {hasHupijiao ? (
+            {hasOnlinePayment ? (
               <Button
                 variant='outline'
                 className='w-full gap-2'
-                onClick={handlePayHupijiao}
+                onClick={handleOnlinePayment}
                 disabled={paying || limitReached}
               >
                 <SiAlipay className='h-4 w-4' style={{ color: '#1677FF' }} />
@@ -210,7 +227,7 @@ export function LocalSubscriptionPurchaseDialog({
         onExpired={() => {
           setHupijiaoPaymentOpen(false)
           setHupijiaoPayment(null)
-          toast.error('订单已过期，请重新下单')
+          toast.error(t('Order expired, please order again'))
         }}
       />
     </>

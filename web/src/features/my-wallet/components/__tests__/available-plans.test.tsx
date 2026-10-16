@@ -305,3 +305,55 @@ it('updates quota display currency without converting the CNY purchase price aga
   expect(within(card).getByText('¥54,600')).toBeVisible()
   expect(within(card).getByText('¥2,000')).toBeVisible()
 })
+
+it('submits the native Epay subscription checkout when the original gateway is disabled', async () => {
+  const submit = vi
+    .spyOn(HTMLFormElement.prototype, 'submit')
+    .mockImplementation(() => {})
+  const post = vi.spyOn(api, 'post').mockResolvedValue({
+    data: {
+      message: 'success',
+      url: 'https://pay.example/submit.php',
+      data: {
+        pid: '2043',
+        money: '2000.00',
+        out_trade_no: 'native-subscription',
+      },
+    },
+  })
+  const nativeInfo = {
+    ...topupInfo,
+    enable_hupijiao_topup: false,
+    enable_online_topup: true,
+    pay_methods: [{ type: 'alipay', name: 'Alipay' }],
+  }
+  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data:
+        url === '/api/subscription/plans'
+          ? [plan()]
+          : { subscriptions: [], all_subscriptions: [] },
+    },
+  }))
+  render(
+    <TooltipProvider>
+      <AvailablePlansCard topupInfo={nativeInfo} />
+    </TooltipProvider>
+  )
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Subscribe Now' })
+  )
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Purchase Subscription',
+  })
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Alipay' }))
+  expect(post).toHaveBeenCalledWith('/api/subscription/epay/pay', {
+    plan_id: 1,
+    payment_method: 'alipay',
+  })
+  expect(submit).toHaveBeenCalledOnce()
+  expect(
+    post.mock.calls.some(([url]) => String(url).includes('hupijiao'))
+  ).toBe(false)
+})

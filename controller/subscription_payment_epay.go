@@ -45,7 +45,13 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorMsg(c, msg)
 		return
 	}
-	if plan.PriceAmount < 0.01 {
+	// The local plan has a separate CNY sale price. Epay always charges CNY;
+	// keep the historical amount fallback for plans without that field.
+	payMoney := plan.PriceAmount
+	if plan.PriceCNY > 0 {
+		payMoney = plan.PriceCNY
+	}
+	if payMoney < 0.01 {
 		common.ApiErrorMsg(c, "套餐金额过低")
 		return
 	}
@@ -92,7 +98,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	order := &model.SubscriptionOrder{
 		UserId:          userId,
 		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
+		Money:           payMoney,
 		TradeNo:         tradeNo,
 		PaymentMethod:   req.PaymentMethod,
 		PaymentProvider: model.PaymentProviderEpay,
@@ -107,7 +113,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Type:           req.PaymentMethod,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
-		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
+		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
 		Device:         epay.PC,
 		NotifyUrl:      notifyUrl,
 		ReturnUrl:      returnUrl,

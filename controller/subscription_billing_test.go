@@ -23,6 +23,7 @@ import (
 	kittypes "github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -904,6 +905,66 @@ func TestSubscriptionBillingRatioMigration(t *testing.T) {
 			}
 			require.NoError(t, db.Raw(query).Scan(&version).Error)
 			t.Logf("database=%s version=%s", db.Dialector.Name(), version)
+		})
+	}
+}
+
+func TestNativeEpaySubscriptionChargesExistingCNYPrice(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		cny, legacy float64
+		want        string
+	}{
+		{"local CNY price", 300, 1155, "300.00"},
+		{"legacy price fallback", 0, 20, "20.00"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := subscriptionBillingDB(t)
+			require.NoError(t, db.AutoMigrate(&model.SubscriptionOrder{}, &model.TopUp{}))
+			confirmPaymentComplianceForTest(t)
+			oldAddress, oldID, oldKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
+			oldMethods := operation_setting.PayMethods
+			oldCallback := operation_setting.CustomCallbackAddress
+			operation_setting.PayAddress = "https://pay.example/"
+			operation_setting.EpayId = "test-merchant"
+			operation_setting.EpayKey = "test-secret"
+			operation_setting.PayMethods = []map[string]string{{"type": "alipay", "name": "Alipay"}}
+			operation_setting.CustomCallbackAddress = "https://gateway.example"
+			t.Cleanup(func() {
+				operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = oldAddress, oldID, oldKey
+				operation_setting.PayMethods = oldMethods
+				operation_setting.CustomCallbackAddress = oldCallback
+			})
+			plan := model.SubscriptionPlan{Title: "native epay", PriceAmount: tc.legacy, PriceCNY: tc.cny, Currency: "USD", Enabled: true, DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, TotalAmount: 1000}
+			require.NoError(t, db.Create(&plan).Error)
+			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+			body, err := common.Marshal(SubscriptionEpayPayRequest{PlanId: plan.Id, PaymentMethod: "alipay"})
+			require.NoError(t, err)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Set("id", 1)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/epay/pay", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			SubscriptionRequestEpay(c)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var response struct {
+				Message string            `json:"message"`
+				URL     string            `json:"url"`
+				Data    map[string]string `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Equal(t, "success", response.Message, recorder.Body.String())
+			assert.Equal(t, "https://pay.example/submit.php", response.URL)
+			assert.Equal(t, tc.want, response.Data["money"])
+			assert.Equal(t, "https://gateway.example/api/subscription/epay/notify", response.Data["notify_url"])
+			var order model.SubscriptionOrder
+			require.NoError(t, db.Where("trade_no = ?", response.Data["out_trade_no"]).First(&order).Error)
+			assert.Equal(t, tc.want, fmt.Sprintf("%.2f", order.Money))
+			assert.Equal(t, model.PaymentProviderEpay, order.PaymentProvider)
+			assert.Equal(t, common.TopUpStatusPending, order.Status)
+			verified, err := GetEpayClient().Verify(response.Data)
+			require.NoError(t, err)
+			assert.True(t, verified.VerifyStatus)
 		})
 	}
 }

@@ -96,7 +96,7 @@ export function MyWallet(props: MyWalletProps) {
 
               <TabsContent value='recharge' className='mt-0'>
                 <RechargeTab
-                  hupijiaoEnabled={wallet.hupijiaoEnabled}
+                  onlinePaymentEnabled={wallet.onlinePaymentEnabled}
                   presetAmounts={wallet.presetAmounts}
                   selectedPreset={wallet.selectedPreset}
                   onSelectPreset={wallet.handleSelectPreset}
