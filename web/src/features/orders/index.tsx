@@ -1,10 +1,14 @@
+import { useTranslation } from 'react-i18next'
+
 import { SectionPageLayout } from '@/components/layout'
+
 import { BillingHistoryList } from './components/billing-history-list'
 
 export function Orders() {
+  const { t } = useTranslation()
   return (
     <SectionPageLayout>
-      <SectionPageLayout.Title>我的订单</SectionPageLayout.Title>
+      <SectionPageLayout.Title>{t('My Orders')}</SectionPageLayout.Title>
       <SectionPageLayout.Content>
         <div className='bg-background rounded-lg border p-4'>
           <BillingHistoryList

@@ -416,6 +416,41 @@ func TestLocalWalletAccessTokenScopes(t *testing.T) {
 	}
 }
 
+func TestOrderActionsRequireAdminAndBillingWriteScope(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	user := createMiddlewarePATUser(t, "order-actions-admin", "")
+	require.NoError(t, model.DB.Model(user).Update("role", common.RoleAdminUser).Error)
+	read, _ := createMiddlewareScopedToken(t, user.Id, 0, "billing:read")
+	write, _ := createMiddlewareScopedToken(t, user.Id, 0, "billing:write")
+	expired, _ := createMiddlewareScopedToken(t, user.Id, time.Now().Unix()-1, "billing:write")
+	router := gin.New()
+	for _, path := range []string{"/api/user/topup/complete", "/api/user/topup/close"} {
+		router.POST(path, AdminAuth(), func(c *gin.Context) { c.Status(http.StatusNoContent) })
+	}
+	for _, path := range []string{"/api/user/topup/complete", "/api/user/topup/close"} {
+		for _, tc := range []struct {
+			token        string
+			role, status int
+		}{
+			{write, common.RoleAdminUser, http.StatusNoContent},
+			{read, common.RoleAdminUser, http.StatusForbidden},
+			{write, common.RoleCommonUser, http.StatusForbidden},
+			{expired, common.RoleAdminUser, http.StatusUnauthorized},
+			{"", common.RoleAdminUser, http.StatusUnauthorized},
+		} {
+			require.NoError(t, model.DB.Model(user).Update("role", tc.role).Error)
+			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"trade_no":"order-1"}`))
+			request.Header.Set("Content-Type", "application/json")
+			if tc.token != "" {
+				request.Header.Set("Authorization", "Bearer "+tc.token)
+			}
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, request)
+			assert.Equal(t, tc.status, response.Code, response.Body.String())
+		}
+	}
+}
+
 func TestAccessTokenIdentityAndSingleLookup(t *testing.T) {
 	setupDashboardAuthMiddlewareTest(t)
 	gin.SetMode(gin.TestMode)

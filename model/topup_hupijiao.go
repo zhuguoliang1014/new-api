@@ -26,7 +26,7 @@ const (
 func ListUnsettledHupijiaoTopUps(ctx context.Context, minCreateTime, maxCreateTime int64, afterID, limit int) ([]TopUp, error) {
 	var orders []TopUp
 	err := DB.WithContext(ctx).
-		Where("payment_provider = ? AND status IN ? AND open_order_id <> ?", PaymentProviderHupijiao, []string{common.TopUpStatusPending, common.TopUpStatusExpired}, "").
+		Where("payment_provider = ? AND status IN ? AND open_order_id <> ?", PaymentProviderHupijiao, []string{common.TopUpStatusPending, common.TopUpStatusExpired, common.TopUpStatusCanceled}, "").
 		Where("create_time >= ? AND create_time < ? AND id > ?", minCreateTime, maxCreateTime, afterID).
 		Order("id ASC").Limit(min(max(limit, 1), 100)).Find(&orders).Error
 	return orders, err
@@ -83,7 +83,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 		}
 
 		// A checkout timeout does not revoke an authenticated payment.
-		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired && topUp.Status != common.TopUpStatusCanceled {
 			return ErrTopUpStatusInvalid
 		}
 

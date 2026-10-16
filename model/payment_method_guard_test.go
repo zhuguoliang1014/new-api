@@ -264,7 +264,7 @@ func TestRechargeEpayUpdatesPaymentMethodToActual(t *testing.T) {
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
 }
 
-func TestRechargeEpayRejectsForeignAndNonPendingOrders(t *testing.T) {
+func TestRechargeEpayRejectsForeignAndUnknownOrders(t *testing.T) {
 	truncateTables(t)
 
 	oldQuotaPerUnit := common.QuotaPerUnit
@@ -280,8 +280,8 @@ func TestRechargeEpayRejectsForeignAndNonPendingOrders(t *testing.T) {
 		assert.Equal(t, 7, getUserQuotaForPaymentGuardTest(t, user.Id))
 	})
 
-	t.Run("order that is not pending", func(t *testing.T) {
-		order := createEpayTestOrder(t, user.Id, "EPAYTESTEXPIRED", PaymentProviderEpay, common.TopUpStatusExpired)
+	t.Run("order with unsupported status", func(t *testing.T) {
+		order := createEpayTestOrder(t, user.Id, "EPAYTESTUNKNOWN", PaymentProviderEpay, "unknown")
 		_, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 		assert.ErrorIs(t, err, ErrTopUpStatusInvalid)
 		assert.Equal(t, 7, getUserQuotaForPaymentGuardTest(t, user.Id))

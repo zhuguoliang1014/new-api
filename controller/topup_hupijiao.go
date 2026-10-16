@@ -219,6 +219,8 @@ func RequestHupijiaoPay(c *gin.Context) {
 	// 保存虎皮椒平台订单号到数据库
 	if openId != "" {
 		topUp.OpenOrderId = openId
+		topUp.PayUrl = payLink
+		topUp.QrcodeUrl = qrcodeUrl
 		if err := topUp.UpdateOpenOrderID(); err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("保存虎皮椒平台订单号失败 trade_no=%s err=%v", tradeNo, err))
 			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存支付订单失败，请稍后重试"})
@@ -409,14 +411,9 @@ func expireTopUpOrderIfTimedOut(topUp *model.TopUp) bool {
 	if topUp.CreateTime+hupijiaoPaymentExpireSeconds > common.GetTimestamp() {
 		return false
 	}
-	if err := model.UpdatePendingTopUpStatus(topUp.TradeNo, topUp.PaymentProvider, common.TopUpStatusExpired); err != nil {
+	if err := model.ExpireUnpaidOrder(topUp.TradeNo, topUp.PaymentProvider); err != nil {
 		common.SysError(fmt.Sprintf("expire pending topup order failed trade_no=%s err=%v", topUp.TradeNo, err))
 		return false
-	}
-	if model.GetSubscriptionOrderByTradeNo(topUp.TradeNo) != nil {
-		if err := model.ExpireSubscriptionOrder(topUp.TradeNo, topUp.PaymentProvider); err != nil {
-			common.SysError(fmt.Sprintf("expire pending subscription order failed trade_no=%s err=%v", topUp.TradeNo, err))
-		}
 	}
 	topUp.Status = common.TopUpStatusExpired
 	topUp.CompleteTime = common.GetTimestamp()
@@ -507,40 +504,7 @@ func CancelTopUpOrder(c *gin.Context) {
 		return
 	}
 
-	// 只能取消待支付订单
-	if topUp.Status != common.TopUpStatusPending {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "只能取消待支付订单",
-		})
-		return
-	}
-
-	err := model.UpdatePendingTopUpStatus(tradeNo, topUp.PaymentProvider, common.TopUpStatusCanceled)
-	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("取消订单失败 trade_no=%s err=%v", tradeNo, err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "取消订单失败",
-		})
-		return
-	}
-	if model.GetSubscriptionOrderByTradeNo(tradeNo) != nil {
-		if err := model.CancelSubscriptionOrder(tradeNo, topUp.PaymentProvider); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("取消订阅订单失败 trade_no=%s err=%v", tradeNo, err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "取消订单失败",
-			})
-			return
-		}
-	}
-
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("用户取消订单 user_id=%d trade_no=%s", userId, tradeNo))
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "订单已取消",
-	})
+	closeOrder(c, topUp)
 }
 
 type hupijiaoOrderStatusResult struct {
@@ -636,7 +600,7 @@ func reconcileHupijiaoOrder(ctx context.Context, topUp *model.TopUp, source stri
 	if topUp.Status == common.TopUpStatusSuccess {
 		return true, nil
 	}
-	if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
+	if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired && topUp.Status != common.TopUpStatusCanceled {
 		return false, model.ErrTopUpStatusInvalid
 	}
 	if topUp.OpenOrderId == "" {
@@ -683,7 +647,11 @@ func GetTopUpOrderStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单号不匹配"})
 		return
 	}
-	paid, err := reconcileHupijiaoOrder(c.Request.Context(), topUp, "poll")
+	if topUp.Status == common.TopUpStatusSuccess {
+		common.ApiSuccess(c, gin.H{"status": topUp.Status, "paid": true})
+		return
+	}
+	paid, err := verifyOrderPayment(c.Request.Context(), topUp, "poll")
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒查单失败 trade_no=%s err=%v", tradeNo, err))
 		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "查询或处理支付失败，请稍后重试"})
@@ -695,103 +663,4 @@ func GetTopUpOrderStatus(c *gin.Context) {
 	}
 	expireTopUpOrderIfTimedOut(topUp)
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单尚未支付", "data": gin.H{"status": topUp.Status, "paid": false}})
-}
-
-// RepayTopUpOrder 重新支付订单（创建新的支付链接）
-func RepayTopUpOrder(c *gin.Context) {
-	if !isHupijiaoTopUpEnabled() {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "虎皮椒支付未启用",
-		})
-		return
-	}
-
-	userId := c.GetInt("id")
-	username := c.GetString("username")
-	tradeNo := c.Param("trade_no")
-
-	if tradeNo == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单号不能为空",
-		})
-		return
-	}
-
-	// 查询订单
-	topUp := model.GetTopUpByTradeNo(tradeNo)
-	if topUp == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
-		return
-	}
-
-	// 验证订单所属
-	if topUp.UserId != userId {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "无权操作此订单",
-		})
-		return
-	}
-
-	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该订单不支持重新支付"})
-		return
-	}
-	paid, err := reconcileHupijiaoOrder(c.Request.Context(), topUp, "repay")
-	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒重新支付前查单失败 trade_no=%s err=%v", tradeNo, err))
-		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "查询或处理支付失败，请稍后重试"})
-		return
-	}
-	if paid {
-		c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单已支付成功！配额已到账", "data": gin.H{"paid": true}})
-		return
-	}
-	if expireTopUpOrderIfTimedOut(topUp) || topUp.Status != common.TopUpStatusPending {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单已过期，请重新下单"})
-		return
-	}
-	// Never replace the provider ID of an unpaid checkout: a late payment on the
-	// old link must remain queryable when its callback is lost.
-	if topUp.OpenOrderId != "" {
-		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请使用原支付链接，或重新下单"})
-		return
-	}
-
-	// 调用虎皮椒API创建新的支付链接
-	payLink, qrcodeUrl, openId, err := createHupijiaoPayment(tradeNo, topUp.Money, username)
-	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("重新支付失败 trade_no=%s err=%v", tradeNo, err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建支付失败: " + err.Error(),
-		})
-		return
-	}
-
-	// 更新虎皮椒平台订单号
-	if openId != "" {
-		topUp.OpenOrderId = openId
-		if err := topUp.UpdateOpenOrderID(); err != nil {
-			logger.LogError(c.Request.Context(), fmt.Sprintf("保存虎皮椒平台订单号失败 trade_no=%s err=%v", tradeNo, err))
-			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "保存支付订单失败，请稍后重试"})
-			return
-		}
-	}
-
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("重新支付订单 user_id=%d trade_no=%s openid=%s", userId, tradeNo, openId))
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data": HupijiaoPayResponse{
-			OrderId:   openId,
-			QrcodeUrl: qrcodeUrl,
-			PayUrl:    payLink,
-			TradeNo:   tradeNo,
-		},
-	})
 }

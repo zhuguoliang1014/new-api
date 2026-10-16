@@ -16,167 +16,116 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import i18next from 'i18next'
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 
 import { useIsAdmin } from '@/hooks/use-admin'
 import { useDebounce } from '@/hooks/use-debounce'
+import { getSelf } from '@/lib/api'
 import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import {
   getUserBillingHistory,
   getAllBillingHistory,
   completeOrder,
-  isApiSuccess,
+  closeOrder,
+  resumeOrder,
 } from '../api'
-import type { TopupRecord } from '../types'
-
-// ============================================================================
-// Billing History Hook
-// ============================================================================
 
 interface UseBillingHistoryOptions {
-  /** Initial page number */
   initialPage?: number
-  /** Initial page size */
   initialPageSize?: number
-  /**
-   * Force the hook to only fetch the current user's orders, even when the
-   * caller is an admin. Use this on user-facing pages like "My Orders" so
-   * admins don't accidentally see every user's orders there.
-   */
   userOnly?: boolean
 }
 
 export function useBillingHistory(options: UseBillingHistoryOptions = {}) {
-  const {
-    initialPage = 1,
-    initialPageSize = 10,
-    userOnly = false,
-  } = options
-  const isAdmin = useIsAdmin()
-  const fetchAsAdmin = isAdmin && !userOnly
-
-  const [records, setRecords] = useState<TopupRecord[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(initialPage)
-  const [pageSize, setPageSize] = useState(initialPageSize)
+  const userId = useAuthStore((state) => state.auth.user?.id)
+  const admin = useIsAdmin()
+  const isAdmin = admin && !options.userOnly
+  const [page, setPage] = useState(options.initialPage ?? 1)
+  const [pageSize, setPageSize] = useState(options.initialPageSize ?? 10)
   const [keyword, setKeyword] = useState('')
   const debouncedKeyword = useDebounce(keyword)
-  const requestIdRef = useRef(0)
-  const [loading, setLoading] = useState(false)
-  const [completing, setCompleting] = useState(false)
-
-  /**
-   * Fetch billing history
-   */
-  const fetchBillingHistory = useCallback(async () => {
-    const requestId = ++requestIdRef.current
-    setLoading(true)
-    try {
-      const response = fetchAsAdmin
+  const queryClient = useQueryClient()
+  const history = useQuery({
+    queryKey: [
+      'billing-history',
+      userId,
+      isAdmin,
+      page,
+      pageSize,
+      debouncedKeyword,
+    ],
+    queryFn: async () => {
+      const response = isAdmin
         ? await getAllBillingHistory(page, pageSize, debouncedKeyword)
         : await getUserBillingHistory(page, pageSize, debouncedKeyword)
-
-      if (requestId !== requestIdRef.current) return
-
-      if (isApiSuccess(response) && response.data) {
-        setRecords(response.data.items || [])
-        setTotal(response.data.total || 0)
-      } else {
-        handleServerError(response, i18next.t('Failed to load billing history'))
-        setRecords([])
-        setTotal(0)
-      }
-    } catch (error) {
-      if (requestId !== requestIdRef.current) return
-      handleServerError(error, i18next.t('Failed to load billing history'))
-      setRecords([])
-      setTotal(0)
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [debouncedKeyword, fetchAsAdmin, page, pageSize])
-
-  /**
-   * Complete a pending order (admin only)
-   */
-  const handleCompleteOrder = useCallback(
-    async (tradeNo: string) => {
-      if (!isAdmin) {
-        toast.error(i18next.t('Admin access required'))
-        return false
-      }
-
-      setCompleting(true)
-      try {
-        const response = await completeOrder({ trade_no: tradeNo })
-        if (isApiSuccess(response)) {
-          toast.success(i18next.t('Order completed successfully'))
-          // Refresh the list
-          await fetchBillingHistory()
-          return true
-        } else {
-          handleServerError(response, i18next.t('Failed to complete order'))
-          return false
-        }
-      } catch (error) {
-        handleServerError(error, i18next.t('Failed to complete order'))
-        return false
-      } finally {
-        setCompleting(false)
-      }
+      return requireServerSuccess(response).data ?? { items: [], total: 0 }
     },
-    [isAdmin, fetchBillingHistory]
-  )
-
-  /**
-   * Change page
-   */
-  const handlePageChange = useCallback((newPage: number) => {
-    setPage(newPage)
-  }, [])
-
-  /**
-   * Change page size
-   */
-  const handlePageSizeChange = useCallback((newPageSize: number) => {
-    setPageSize(newPageSize)
-    setPage(1) // Reset to first page when changing page size
-  }, [])
-
-  /**
-   * Search by keyword
-   */
-  const handleSearch = useCallback((newKeyword: string) => {
-    requestIdRef.current += 1
-    setKeyword(newKeyword)
-    setPage(1) // Reset to first page when searching
-  }, [])
-
-  // Fetch data after the search draft has settled.
-  useEffect(() => {
-    if (keyword !== debouncedKeyword) return
-
-    fetchBillingHistory()
-  }, [debouncedKeyword, fetchBillingHistory, keyword])
-
+    refetchInterval: 5000,
+    refetchOnWindowFocus: true,
+  })
+  const action = useMutation({
+    mutationFn: async (request: {
+      tradeNo: string
+      action: 'complete' | 'close' | 'pay'
+    }) => {
+      if (request.action === 'complete') {
+        if (!isAdmin) throw new Error(i18next.t('Admin access required'))
+        return requireServerSuccess(
+          await completeOrder({ trade_no: request.tradeNo })
+        )
+      }
+      if (request.action === 'close') {
+        return requireServerSuccess(await closeOrder(request.tradeNo, isAdmin))
+      }
+      return requireServerSuccess(await resumeOrder(request.tradeNo))
+    },
+    onSettled: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['billing-history'] })
+    },
+    onError: (error) =>
+      handleServerError(error, i18next.t('Order operation failed')),
+  })
+  const refetchHistory = history.refetch
+  const refresh = useCallback(() => {
+    void refetchHistory()
+  }, [refetchHistory])
+  const handleCompleteOrder = async (tradeNo: string) => {
+    try {
+      await action.mutateAsync({ tradeNo, action: 'complete' })
+      toast.success(i18next.t('Payment verified and order settled'))
+      if (options.userOnly) await getSelf()
+      return true
+    } catch {
+      return false
+    }
+  }
   return {
-    records,
-    total,
+    records: history.data?.items ?? [],
+    total: history.data?.total ?? 0,
     page,
     pageSize,
     keyword,
-    loading,
-    completing,
-    isAdmin: fetchAsAdmin,
-    handlePageChange,
-    handlePageSizeChange,
-    handleSearch,
+    isAdmin,
+    loading: history.isPending,
+    completing: action.isPending,
+    busyOrder: action.isPending ? action.variables?.tradeNo : undefined,
+    handlePageChange: setPage,
+    handlePageSizeChange: (value: number) => {
+      setPageSize(value)
+      setPage(1)
+    },
+    handleSearch: (value: string) => {
+      setKeyword(value)
+      setPage(1)
+    },
     handleCompleteOrder,
-    refresh: fetchBillingHistory,
+    runAction: action.mutateAsync,
+    refresh,
   }
 }

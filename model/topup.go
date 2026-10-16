@@ -21,6 +21,8 @@ type TopUp struct {
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	OpenOrderId     string  `json:"open_order_id" gorm:"type:varchar(100);default:''"`
+	PayUrl          string  `json:"-" gorm:"type:text"`
+	QrcodeUrl       string  `json:"-" gorm:"type:text"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	CreateTime      int64   `json:"create_time"`
@@ -167,6 +169,8 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 			continue
 		}
 		records[i].OrderType = "subscription"
+		records[i].Status = order.Status
+		records[i].CompleteTime = order.CompleteTime
 		// Default to empty so frontend can localize when the plan has no title;
 		// override with the plan title below when available.
 		records[i].OrderTitle = ""
@@ -303,7 +307,7 @@ func (topUp *TopUp) Update() error {
 // arrives after a payment callback has already completed the order.
 func (topUp *TopUp) UpdateOpenOrderID() error {
 	return DB.Model(&TopUp{}).Where("id = ?", topUp.Id).
-		Update("open_order_id", topUp.OpenOrderId).Error
+		Updates(map[string]any{"open_order_id": topUp.OpenOrderId, "pay_url": topUp.PayUrl, "qrcode_url": topUp.QrcodeUrl}).Error
 }
 
 func GetTopUpById(id int) *TopUp {
@@ -380,7 +384,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 			alreadyDone = true
 			return nil
 		}
-		if topUp.Status != common.TopUpStatusPending {
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired && topUp.Status != common.TopUpStatusCanceled {
 			return ErrTopUpStatusInvalid
 		}
 		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {

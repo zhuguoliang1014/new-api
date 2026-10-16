@@ -242,7 +242,36 @@ export async function getAllBillingHistory(
  */
 export async function completeOrder(
   request: CompleteOrderRequest
-): Promise<ApiResponse> {
+): Promise<ApiResponse<OrderPaymentResult>> {
   const res = await api.post('/api/user/topup/complete', request)
+  return res.data
+}
+
+export interface OrderPaymentResult {
+  status?: import('./types').TopupStatus
+  paid?: boolean
+  trade_no?: string
+  order_id?: string
+  pay_url?: string
+  qrcode_url?: string
+  create_time?: number
+}
+
+export async function closeOrder(
+  tradeNo: string,
+  admin: boolean
+): Promise<ApiResponse<OrderPaymentResult>> {
+  const res = admin
+    ? await api.post('/api/user/topup/close', { trade_no: tradeNo })
+    : await api.delete(`/api/user/topup/${encodeURIComponent(tradeNo)}`)
+  return res.data
+}
+
+export async function resumeOrder(
+  tradeNo: string
+): Promise<ApiResponse<OrderPaymentResult>> {
+  const res = await api.post(
+    `/api/user/topup/${encodeURIComponent(tradeNo)}/repay`
+  )
   return res.data
 }

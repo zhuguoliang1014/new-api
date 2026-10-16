@@ -36,11 +36,15 @@ interface StatusConfig {
 export const STATUS_CONFIG: Record<TopupStatus, StatusConfig> = {
   success: {
     variant: 'success',
-    label: 'Success',
+    label: 'Paid',
   },
   pending: {
     variant: 'warning',
-    label: 'Pending',
+    label: 'Awaiting payment',
+  },
+  canceled: {
+    variant: 'neutral',
+    label: 'Canceled',
   },
   expired: {
     variant: 'danger',

@@ -711,18 +711,19 @@ func AdminCompleteTopUp(c *gin.Context) {
 		return
 	}
 
-	// 订单级互斥，防止并发补单
-	LockOrder(req.TradeNo)
-	defer UnlockOrder(req.TradeNo)
-
-	if order := model.GetSubscriptionOrderByTradeNo(req.TradeNo); order != nil {
-		common.ApiErrorMsg(c, "订阅订单不支持手动补单，请等待支付回调确认")
+	topUp := model.GetTopUpByTradeNo(req.TradeNo)
+	if topUp == nil {
+		common.ApiErrorMsg(c, "订单不存在")
 		return
 	}
-
-	if err := model.ManualCompleteTopUp(req.TradeNo, c.ClientIP()); err != nil {
+	paid, err := verifyOrderPayment(c.Request.Context(), topUp, "admin_reconcile")
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	common.ApiSuccess(c, nil)
+	if !paid {
+		common.ApiErrorMsg(c, "支付平台尚未确认付款，不能补单")
+		return
+	}
+	common.ApiSuccess(c, gin.H{"status": common.TopUpStatusSuccess})
 }

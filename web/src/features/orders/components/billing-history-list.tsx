@@ -1,8 +1,15 @@
-import { Search, RefreshCw, Copy, Check } from 'lucide-react'
+import { Search, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatCurrencyFromUSD } from '@/lib/currency'
-import { formatNumber } from '@/lib/format'
-import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import { toast } from 'sonner'
+
+import { ConfirmDialog } from '@/components/confirm-dialog'
+import { CopyButton } from '@/components/copy-button'
+import {
+  HupijiaoPaymentDialog,
+  type HupijiaoPaymentData,
+} from '@/components/payment/hupijiao-payment-dialog'
+import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,13 +23,17 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import { StatusBadge } from '@/components/status-badge'
+import { getHupijiaoTopupOrderStatus } from '@/features/my-wallet/api'
 import { useBillingHistory } from '@/features/wallet/hooks/use-billing-history'
 import {
   formatTimestamp,
   getPaymentMethodName,
   getStatusConfig,
 } from '@/features/wallet/lib/billing'
+import type { TopupRecord } from '@/features/wallet/types'
+import { getSelf } from '@/lib/api'
+import { formatCurrencyFromUSD } from '@/lib/currency'
+import { formatNumber } from '@/lib/format'
 
 interface BillingHistoryListProps {
   scrollAreaClassName?: string
@@ -47,13 +58,91 @@ export function BillingHistoryList({
     keyword,
     loading,
     isAdmin,
+    busyOrder,
+    completing,
+    runAction,
     handlePageChange,
     handlePageSizeChange,
     handleSearch,
     refresh,
   } = useBillingHistory({ userOnly })
   const totalPages = Math.ceil(total / pageSize)
-  const { copyToClipboard, copiedText } = useCopyToClipboard({ notify: false })
+  const [confirmation, setConfirmation] = useState<{
+    order: TopupRecord
+    action: 'complete' | 'close'
+  } | null>(null)
+  const [payment, setPayment] = useState<HupijiaoPaymentData | null>(null)
+  const [paymentAmount, setPaymentAmount] = useState(0)
+
+  useEffect(() => {
+    const tradeNo = payment?.trade_no
+    if (!tradeNo) return
+    let stopped = false
+    const check = async () => {
+      try {
+        const response = await getHupijiaoTopupOrderStatus(tradeNo)
+        if (stopped || !response.success || !response.data) return
+        if (response.data.paid || response.data.status === 'success') {
+          setPayment(null)
+          toast.success(t('Paid'))
+          refresh()
+          await getSelf()
+        } else if (
+          response.data.status === 'expired' ||
+          response.data.status === 'canceled'
+        ) {
+          setPayment(null)
+          refresh()
+        }
+      } catch {
+        // Keep the checkout open on temporary provider failures.
+      }
+    }
+    const timer = window.setInterval(() => {
+      void check()
+    }, 5000)
+    return () => {
+      stopped = true
+      window.clearInterval(timer)
+    }
+  }, [payment?.trade_no, refresh, t])
+
+  const pay = async (order: TopupRecord) => {
+    try {
+      const response = await runAction({
+        tradeNo: order.trade_no,
+        action: 'pay',
+      })
+      if (response.data?.paid) {
+        toast.success(t('Paid'))
+        await getSelf()
+      } else if (response.data) {
+        setPayment(response.data)
+        setPaymentAmount(order.money)
+      }
+    } catch {
+      // The mutation owns the error notification.
+    }
+  }
+
+  const confirm = async () => {
+    if (!confirmation) return
+    try {
+      const response = await runAction({
+        tradeNo: confirmation.order.trade_no,
+        action: confirmation.action,
+      })
+      toast.success(
+        confirmation.action === 'complete' || response.data?.paid
+          ? t('Payment verified and order settled')
+          : t('Order closed')
+      )
+      setConfirmation(null)
+      if (userOnly) await getSelf()
+    } catch {
+      // Keep the dialog open so the user can retry.
+    }
+  }
 
   return (
     <>
@@ -77,7 +166,7 @@ export function BillingHistoryList({
             ]}
             value={pageSize.toString()}
             onValueChange={(value) =>
-              value !== null && handlePageSizeChange(parseInt(value, 10))
+              value !== null && handlePageSizeChange(Number.parseInt(value, 10))
             }
           >
             <SelectTrigger className='w-32'>
@@ -107,21 +196,23 @@ export function BillingHistoryList({
         </div>
 
         <ScrollArea className={scrollAreaClassName}>
-          {loading ? (
+          {loading && (
             <div className='space-y-3'>
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={index} className='rounded-lg border p-4'>
+              {['a', 'b', 'c', 'd', 'e'].map((skeletonKey) => (
+                <div key={skeletonKey} className='rounded-lg border p-4'>
                   <Skeleton className='h-4 w-48' />
                   <Skeleton className='mt-3 h-3 w-full' />
                   <Skeleton className='mt-2 h-3 w-3/4' />
                 </div>
               ))}
             </div>
-          ) : records.length === 0 ? (
+          )}
+          {!loading && records.length === 0 && (
             <div className='text-muted-foreground flex h-[360px] items-center justify-center text-sm'>
               {t('No billing records found')}
             </div>
-          ) : (
+          )}
+          {!loading && records.length > 0 && (
             <div className='space-y-3'>
               {records.map((record) => {
                 const status = getStatusConfig(record.status)
@@ -140,18 +231,12 @@ export function BillingHistoryList({
                           <code className='truncate font-mono text-sm'>
                             {record.trade_no}
                           </code>
-                          <Button
-                            variant='ghost'
+                          <CopyButton
+                            value={record.trade_no}
                             size='sm'
                             className='h-5 w-5 p-0'
-                            onClick={() => copyToClipboard(record.trade_no)}
-                          >
-                            {copiedText === record.trade_no ? (
-                              <Check className='h-3 w-3' />
-                            ) : (
-                              <Copy className='h-3 w-3' />
-                            )}
-                          </Button>
+                            iconClassName='h-3 w-3'
+                          />
                           <StatusBadge
                             label={
                               isSubscription
@@ -176,7 +261,7 @@ export function BillingHistoryList({
                         </div>
                       </div>
                       <StatusBadge
-                        label={status.label}
+                        label={t(status.label)}
                         variant={status.variant}
                         showDot
                         copyable={false}
@@ -227,7 +312,58 @@ export function BillingHistoryList({
                         </div>
                       </div>
                     </div>
-
+                    {(record.status === 'pending' ||
+                      record.status === 'expired' ||
+                      (isAdmin && record.status === 'canceled')) &&
+                      (record.payment_provider === 'hupijiao' ||
+                        record.payment_provider === 'epay') && (
+                        <div className='mt-4 flex flex-wrap justify-end gap-2'>
+                          {isAdmin ? (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              disabled={completing}
+                              onClick={() =>
+                                setConfirmation({
+                                  order: record,
+                                  action: 'complete',
+                                })
+                              }
+                            >
+                              {busyOrder === record.trade_no
+                                ? t('Processing...')
+                                : t('Verify and settle')}
+                            </Button>
+                          ) : (
+                            <Button
+                              size='sm'
+                              disabled={completing}
+                              onClick={() => {
+                                void pay(record)
+                              }}
+                            >
+                              {busyOrder === record.trade_no
+                                ? t('Processing...')
+                                : t('Pay now')}
+                            </Button>
+                          )}
+                          {record.status !== 'canceled' && (
+                            <Button
+                              size='sm'
+                              variant='outline'
+                              disabled={completing}
+                              onClick={() =>
+                                setConfirmation({
+                                  order: record,
+                                  action: 'close',
+                                })
+                              }
+                            >
+                              {isAdmin ? t('Close order') : t('Cancel order')}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                   </div>
                 )
               })}
@@ -261,7 +397,47 @@ export function BillingHistoryList({
           </div>
         ) : null}
       </div>
-
+      <ConfirmDialog
+        open={confirmation !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmation(null)
+        }}
+        title={
+          confirmation?.action === 'complete'
+            ? t('Verify and settle')
+            : t('Close order')
+        }
+        desc={
+          confirmation?.action === 'complete'
+            ? t(
+                'Credit is granted only after the payment platform confirms this order was paid.'
+              )
+            : t(
+                'The payment status will be checked before closing. Confirmed payments will still be credited.'
+              )
+        }
+        confirmText={
+          confirmation?.action === 'complete'
+            ? t('Verify and settle')
+            : t('Confirm')
+        }
+        destructive={confirmation?.action === 'close'}
+        isLoading={completing}
+        handleConfirm={() => {
+          void confirm()
+        }}
+      />
+      <HupijiaoPaymentDialog
+        open={payment !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPayment(null)
+            refresh()
+          }
+        }}
+        payment={payment}
+        amount={paymentAmount}
+      />
     </>
   )
 }

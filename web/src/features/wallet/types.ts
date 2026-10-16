@@ -247,7 +247,7 @@ export interface UserWalletData {
 /**
  * Topup record status
  */
-export type TopupStatus = 'success' | 'pending' | 'expired'
+export type TopupStatus = 'success' | 'pending' | 'expired' | 'canceled'
 
 /**
  * Topup billing record
@@ -265,6 +265,7 @@ export interface TopupRecord {
   money: number
   /** Trade/order number */
   trade_no: string
+  payment_provider?: string
   /** Payment method type */
   payment_method: string
   /** Creation timestamp */
