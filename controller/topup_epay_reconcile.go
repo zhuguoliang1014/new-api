@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -54,13 +55,10 @@ func completeEpayPaidOrder(tradeNo, method, paidMoney, payload, callerIP string)
 }
 
 type epayQueryResult struct {
-	Code       *int   `json:"code"`
-	Status     *int   `json:"status"`
-	MerchantID any    `json:"pid"`
-	TradeNo    string `json:"out_trade_no"`
-	ProviderID string `json:"trade_no"`
-	Method     string `json:"type"`
-	Money      string `json:"money"`
+	Status     int
+	ProviderID string
+	Method     string
+	Money      string
 }
 
 // queryEpayOrder uses the native V1 order query contract, independent of any
@@ -90,18 +88,49 @@ func queryEpayOrder(ctx context.Context, tradeNo string) (*epayQueryResult, erro
 	if err != nil || len(body) > 1<<20 {
 		return nil, fmt.Errorf("cannot read epay query response")
 	}
-	var result epayQueryResult
-	if err := common.Unmarshal(body, &result); err != nil {
+	var response struct {
+		Code       *int            `json:"code"`
+		Status     json.RawMessage `json:"status"`
+		MerchantID any             `json:"pid"`
+		TradeNo    string          `json:"out_trade_no"`
+		ProviderID string          `json:"trade_no"`
+		Method     any             `json:"type"`
+		Money      string          `json:"money"`
+	}
+	if err := common.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("invalid epay query response")
 	}
-	if result.Code == nil || *result.Code != 1 || result.Status == nil {
+	if response.Code == nil || *response.Code != 1 {
 		return nil, fmt.Errorf("epay order query was not successful")
 	}
-	if result.TradeNo != tradeNo || fmt.Sprint(result.MerchantID) != operation_setting.EpayId || result.ProviderID == "" || result.Method == "" {
+	if response.TradeNo != tradeNo || fmt.Sprint(response.MerchantID) != operation_setting.EpayId || response.ProviderID == "" {
 		return nil, fmt.Errorf("epay query order identity mismatch")
 	}
-	if *result.Status != 0 && *result.Status != 1 {
+	result := epayQueryResult{ProviderID: response.ProviderID, Money: response.Money}
+	// Gateways return either JSON integers or strings. Accept only the two
+	// documented states; booleans and fractional values must never grant credit.
+	switch strings.TrimSpace(string(response.Status)) {
+	case "0", `"0"`:
+		result.Status = 0
+	case "1", `"1"`:
+		result.Status = 1
+	default:
 		return nil, fmt.Errorf("epay query returned an unsupported order status")
+	}
+	switch method := response.Method.(type) {
+	case string:
+		result.Method = method
+	case nil:
+		// No method has been selected yet on an unpaid cashier page.
+	case bool:
+		if method {
+			return nil, fmt.Errorf("epay query returned an invalid payment method")
+		}
+	default:
+		return nil, fmt.Errorf("epay query returned an invalid payment method")
+	}
+	if result.Status == 1 && strings.TrimSpace(result.Method) == "" {
+		return nil, fmt.Errorf("epay paid order has no payment method")
 	}
 	return &result, nil
 }
@@ -171,7 +200,7 @@ func runEpayReconciliation(ctx context.Context, cursor epayReconcileResult) (epa
 				}
 				status, err := queryEpayOrder(ctx, order.TradeNo)
 				result.Checked++
-				if err == nil && *status.Status == 1 {
+				if err == nil && status.Status == 1 {
 					payload, marshalErr := common.Marshal(map[string]string{"source": "epay_query", "trade_no": status.ProviderID})
 					err = marshalErr
 					if err == nil {

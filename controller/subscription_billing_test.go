@@ -1092,14 +1092,15 @@ func TestNativeEpayReconciliationRecoversWalletAndSubscriptionWithoutCallbacks(t
 		}
 		assert.Equal(t, "order", r.URL.Query().Get("act"))
 		trade := r.URL.Query().Get("out_trade_no")
-		status, money := 1, "47.50"
+		status, money := "1", "47.50"
+		var method any = "alipay"
 		if trade == unpaid.TradeNo {
-			status, money = 0, "10.00"
+			status, money, method = "0", "10.00", false
 		}
 		if trade == sub.TradeNo {
 			money = "300.00"
 		}
-		body, err := common.Marshal(map[string]any{"code": 1, "status": status, "pid": 2043, "out_trade_no": trade, "trade_no": "provider-" + trade, "type": "alipay", "money": money})
+		body, err := common.Marshal(map[string]any{"code": 1, "status": status, "pid": "2043", "out_trade_no": trade, "trade_no": "provider-" + trade, "type": method, "money": money})
 		require.NoError(t, err)
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(body))}, nil
 	})
@@ -1126,4 +1127,61 @@ func TestNativeEpayReconciliationRecoversWalletAndSubscriptionWithoutCallbacks(t
 	assert.EqualValues(t, 577500000, subs[0].AmountTotal)
 	require.NoError(t, db.First(&unpaid, unpaid.Id).Error)
 	assert.Equal(t, common.TopUpStatusPending, unpaid.Status)
+}
+
+func TestNativeEpayQueryNormalizesGatewayStatesWithoutAcceptingMalformedPaidOrders(t *testing.T) {
+	_, _ = nativeEpayFixture(t)
+	var response map[string]any
+	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
+		body, err := common.Marshal(response)
+		require.NoError(t, err)
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body))}, nil
+	})
+	for _, tc := range []struct {
+		name    string
+		fields  map[string]any
+		status  int
+		wantErr bool
+	}{
+		{name: "paid integer", status: 1},
+		{name: "paid string", fields: map[string]any{"status": "1", "pid": "2043"}, status: 1},
+		{name: "unpaid integer", fields: map[string]any{"status": 0}},
+		{name: "unpaid string without selected channel", fields: map[string]any{"status": "0", "type": false}},
+		{name: "unpaid null method", fields: map[string]any{"status": "0", "type": nil}},
+		{name: "paid false method", fields: map[string]any{"type": false}, wantErr: true},
+		{name: "paid missing method", fields: map[string]any{"type": nil}, wantErr: true},
+		{name: "paid empty method", fields: map[string]any{"type": " "}, wantErr: true},
+		{name: "boolean status", fields: map[string]any{"status": true}, wantErr: true},
+		{name: "fractional status", fields: map[string]any{"status": 1.5}, wantErr: true},
+		{name: "unknown status", fields: map[string]any{"status": "2"}, wantErr: true},
+		{name: "missing status", fields: map[string]any{"status": nil}, wantErr: true},
+		{name: "malformed method", fields: map[string]any{"type": map[string]any{}}, wantErr: true},
+		{name: "boolean method", fields: map[string]any{"type": true}, wantErr: true},
+		{name: "wrong merchant", fields: map[string]any{"pid": "2044"}, wantErr: true},
+		{name: "wrong order", fields: map[string]any{"out_trade_no": "another-order"}, wantErr: true},
+		{name: "missing provider order", fields: map[string]any{"trade_no": ""}, wantErr: true},
+		{name: "unsuccessful query", fields: map[string]any{"code": 0}, wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			response = map[string]any{"code": 1, "status": 1, "pid": 2043, "out_trade_no": "native-query", "trade_no": "provider-query", "type": "alipay", "money": "10.00"}
+			for key, value := range tc.fields {
+				if value == nil {
+					delete(response, key)
+				} else {
+					response[key] = value
+				}
+			}
+			result, err := queryEpayOrder(context.Background(), "native-query")
+			if tc.wantErr {
+				require.Error(t, err)
+				assert.Nil(t, result)
+				assert.NotContains(t, err.Error(), operation_setting.EpayKey)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.status, result.Status)
+			assert.Equal(t, "provider-query", result.ProviderID)
+			assert.Equal(t, "10.00", result.Money)
+		})
+	}
 }
