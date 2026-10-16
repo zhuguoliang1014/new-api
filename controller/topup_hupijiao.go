@@ -2,7 +2,7 @@ package controller
 
 import (
 	"bytes"
-	"errors"
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -10,7 +10,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -331,10 +330,7 @@ func createHupijiaoPayment(tradeNo string, amount float64, username string) (pay
 	return payUrl, qrcodeUrl, openId, nil
 }
 
-// hupijiaoOrderLocks 订单锁，防止并发处理同一订单
-var hupijiaoOrderLocks sync.Map
-
-// HupijiaoWebhook 虎皮椒支付回调处理
+// HupijiaoWebhook acknowledges a paid notification only after settlement commits.
 func HupijiaoWebhook(c *gin.Context) {
 	// 解析回调参数（Form表单）
 	err := c.Request.ParseForm()
@@ -386,23 +382,10 @@ func HupijiaoWebhook(c *gin.Context) {
 		return
 	}
 
-	// 订单锁防止并发
-	lockKey := "hupijiao:" + tradeNo
-	if _, loaded := hupijiaoOrderLocks.LoadOrStore(lockKey, true); loaded {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("虎皮椒订单处理中 trade_no=%s", tradeNo))
-		c.String(http.StatusOK, "success")
-		return
-	}
-	defer hupijiaoOrderLocks.Delete(lockKey)
-
+	delete(params, "hash")
 	payloadBytes, _ := common.Marshal(params)
 	err = completeHupijiaoPaidOrder(tradeNo, totalFee, string(payloadBytes))
 	if err != nil {
-		if errors.Is(err, model.ErrTopUpStatusInvalid) {
-			logger.LogWarn(c.Request.Context(), fmt.Sprintf("虎皮椒支付回调订单已过期 trade_no=%s", tradeNo))
-			c.String(http.StatusOK, "success")
-			return
-		}
 		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒充值处理失败 trade_no=%s err=%v", tradeNo, err))
 		c.String(http.StatusInternalServerError, "fail")
 		return
@@ -413,9 +396,6 @@ func HupijiaoWebhook(c *gin.Context) {
 }
 
 func completeHupijiaoPaidOrder(tradeNo string, amount float64, providerPayload string) error {
-	if topUp := model.GetTopUpByTradeNo(tradeNo); expireTopUpOrderIfTimedOut(topUp) {
-		return model.ErrTopUpStatusInvalid
-	}
 	if order := model.GetSubscriptionOrderByTradeNo(tradeNo); order != nil {
 		return model.CompleteHupijiaoSubscriptionOrder(tradeNo, amount, providerPayload)
 	}
@@ -572,301 +552,149 @@ type hupijiaoOrderStatusResult struct {
 
 // queryHupijiaoOrderStatus 调用虎皮椒API查询订单状态
 // 注意：必须使用 openid (虎皮椒返回的订单ID) 而不是 trade_order_id
-func queryHupijiaoOrderStatus(openid string) (*hupijiaoOrderStatusResult, error) {
-	// 构建查询参数
-	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	nonceStr := fmt.Sprintf("%d", time.Now().UnixNano())
-
+func queryHupijiaoOrderStatus(ctx context.Context, openid string) (*hupijiaoOrderStatusResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	params := map[string]string{
 		"appid":         setting.HupijiaoAppId,
 		"open_order_id": openid,
-		"time":          timestamp,
-		"nonce_str":     nonceStr,
+		"time":          strconv.FormatInt(time.Now().Unix(), 10),
+		"nonce_str":     strconv.FormatInt(time.Now().UnixNano(), 10),
 	}
-
-	// 生成签名
-	signature := generateHupijiaoSignature(params, setting.HupijiaoAppSecret)
-	params["hash"] = signature
-
-	// 序列化为JSON
-	jsonData, err := common.Marshal(params)
+	params["hash"] = generateHupijiaoSignature(params, setting.HupijiaoAppSecret)
+	body, err := common.Marshal(params)
 	if err != nil {
-		return nil, fmt.Errorf("序列化参数失败: %w", err)
+		return nil, err
 	}
-
-	// 发送POST请求到查询接口
-	queryUrl := "https://api.xunhupay.com/payment/query.html"
-	client := service.GetHttpClient()
-	req, err := http.NewRequest("POST", queryUrl, bytes.NewReader(jsonData))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.xunhupay.com/payment/query.html", bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("创建请求失败: %w", err)
+		return nil, err
 	}
-
 	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	resp, err := service.GetHttpClient().Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("请求失败: %w", err)
+		return nil, fmt.Errorf("查询支付平台失败: %w", err)
 	}
 	defer resp.Body.Close()
-
-	// 读取响应
-	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("支付平台 HTTP %d", resp.StatusCode)
+	}
+	body, err = io.ReadAll(io.LimitReader(resp.Body, 1<<20+1))
 	if err != nil {
-		return nil, fmt.Errorf("读取响应失败: %w", err)
+		return nil, err
 	}
+	if len(body) > 1<<20 {
+		return nil, fmt.Errorf("支付平台响应过大")
+	}
+	var result struct {
+		Errcode *int `json:"errcode"`
+		Data    struct {
+			Status        string `json:"status"`
+			TradeNo       string `json:"out_trade_order"`
+			LegacyTradeNo string `json:"trade_order_id"`
+			OpenOrderID   string `json:"open_order_id"`
+			TotalAmount   any    `json:"total_amount"`
+			TotalFee      any    `json:"total_fee"`
+		} `json:"data"`
+	}
+	if err := common.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("支付平台响应格式错误: %w", err)
+	}
+	if result.Errcode == nil {
+		return nil, fmt.Errorf("支付平台响应缺少错误码")
+	}
+	if *result.Errcode != 0 {
+		return nil, fmt.Errorf("支付平台错误码 %d", *result.Errcode)
+	}
+	data := result.Data
+	if data.TradeNo == "" {
+		data.TradeNo = data.LegacyTradeNo
+	}
+	if data.LegacyTradeNo != "" && data.LegacyTradeNo != data.TradeNo {
+		return nil, fmt.Errorf("支付平台订单标识冲突")
+	}
+	if data.TradeNo == "" || data.OpenOrderID == "" || data.Status == "" {
+		return nil, fmt.Errorf("支付平台响应缺少订单标识或状态")
+	}
+	amountValue := data.TotalAmount
+	if amountValue == nil {
+		amountValue = data.TotalFee
+	}
+	amount, err := strconv.ParseFloat(fmt.Sprint(amountValue), 64)
+	if err != nil || math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 {
+		return nil, fmt.Errorf("支付平台金额无效")
+	}
+	return &hupijiaoOrderStatusResult{Paid: data.Status == "OD", Amount: amount, TradeNo: data.TradeNo, OpenOrderId: data.OpenOrderID}, nil
+}
 
-	// 解析响应
-	var result map[string]any
-	err = common.Unmarshal(body, &result)
+// reconcileHupijiaoOrder settles only the exact provider order stored locally.
+// Success means the database transaction committed, including quota/subscription issuance.
+func reconcileHupijiaoOrder(ctx context.Context, topUp *model.TopUp, source string) (bool, error) {
+	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
+		return false, model.ErrPaymentMethodMismatch
+	}
+	if topUp.Status == common.TopUpStatusSuccess {
+		return true, nil
+	}
+	if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
+		return false, model.ErrTopUpStatusInvalid
+	}
+	if topUp.OpenOrderId == "" {
+		return false, nil
+	}
+	status, err := queryHupijiaoOrderStatus(ctx, topUp.OpenOrderId)
 	if err != nil {
-		return nil, fmt.Errorf("解析响应失败: %w, body=%s", err, string(body))
+		return false, err
 	}
-
-	common.SysLog(fmt.Sprintf("虎皮椒查询API响应 openid=%s body=%s", openid, string(body)))
-
-	// 检查错误码
-	errcode := 0
-	if ec, ok := result["errcode"].(float64); ok {
-		errcode = int(ec)
+	if status.TradeNo != topUp.TradeNo || status.OpenOrderId != topUp.OpenOrderId {
+		return false, fmt.Errorf("支付平台订单号不匹配")
 	}
-
-	if errcode != 0 {
-		errmsg := "未知错误"
-		if em, ok := result["errmsg"].(string); ok {
-			errmsg = em
-		}
-		return nil, fmt.Errorf("虎皮椒查询API错误[%d]: %s", errcode, errmsg)
+	if !status.Paid {
+		return false, nil
 	}
-
-	// 响应数据在 data 字段中
-	dataObj, _ := result["data"].(map[string]any)
-	if dataObj == nil {
-		return nil, fmt.Errorf("虎皮椒查询API返回数据为空")
+	payload, err := common.Marshal(map[string]string{"source": source, "open_order_id": status.OpenOrderId})
+	if err != nil {
+		return false, err
 	}
-
-	// 提取订单状态和金额
-	status := ""
-	if s, ok := dataObj["status"].(string); ok {
-		status = s
+	if err := completeHupijiaoPaidOrder(topUp.TradeNo, status.Amount, string(payload)); err != nil {
+		return false, err
 	}
-	tradeNo := ""
-	if v, ok := dataObj["trade_order_id"].(string); ok {
-		tradeNo = v
-	}
-	openOrderId := ""
-	if v, ok := dataObj["open_order_id"].(string); ok {
-		openOrderId = v
-	}
-
-	totalFee := 0.0
-	if tf, ok := dataObj["total_amount"].(string); ok {
-		totalFee, _ = strconv.ParseFloat(tf, 64)
-	} else if tf, ok := dataObj["total_amount"].(float64); ok {
-		totalFee = tf
-	} else if tf, ok := dataObj["total_fee"].(string); ok {
-		totalFee, _ = strconv.ParseFloat(tf, 64)
-	} else if tf, ok := dataObj["total_fee"].(float64); ok {
-		totalFee = tf
-	}
-
-	// OD = 已支付
-	isPaid := (status == "OD")
-	return &hupijiaoOrderStatusResult{
-		Paid:        isPaid,
-		Amount:      totalFee,
-		TradeNo:     tradeNo,
-		OpenOrderId: openOrderId,
-	}, nil
+	logger.LogInfo(ctx, fmt.Sprintf("虎皮椒查单结算成功 source=%s trade_no=%s", source, topUp.TradeNo))
+	return true, nil
 }
 
 // GetTopUpOrderStatus 查询订单状态（主动查询虎皮椒平台）
 func GetTopUpOrderStatus(c *gin.Context) {
-	userId := c.GetInt("id")
 	tradeNo := c.Param("trade_no")
-
 	if tradeNo == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单号不能为空",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单号不能为空"})
 		return
 	}
-
-	// 查询本地订单
 	topUp := model.GetTopUpByTradeNo(tradeNo)
 	if topUp == nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "订单不存在",
-		})
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订单不存在"})
 		return
 	}
-
-	// 验证订单所属
-	if topUp.UserId != userId {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "无权查看此订单",
-		})
+	if topUp.UserId != c.GetInt("id") {
+		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "无权查看此订单"})
 		return
 	}
-
-	if expireTopUpOrderIfTimedOut(topUp) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "订单已过期",
-			"data": gin.H{
-				"status": common.TopUpStatusExpired,
-				"paid":   false,
-			},
-		})
+	if openid := c.Query("openid"); openid != "" && openid != topUp.OpenOrderId {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单号不匹配"})
 		return
 	}
-
-	if queryOpenId := c.Query("openid"); queryOpenId != "" && queryOpenId != topUp.OpenOrderId {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单号不匹配",
-		})
-		return
-	}
-	if topUp.OpenOrderId == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "订单尚未支付，请完成支付后再试",
-			"data": gin.H{
-				"status": topUp.Status,
-				"paid":   false,
-			},
-		})
-		return
-	}
-	openid := topUp.OpenOrderId
-
-	// 如果订单已经完成，直接返回
-	if topUp.Status == common.TopUpStatusSuccess {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "订单已支付",
-			"data": gin.H{
-				"status": "success",
-				"paid":   true,
-			},
-		})
-		return
-	}
-
-	// 如果订单不是待支付状态，返回当前状态
-	if topUp.Status != common.TopUpStatusPending {
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "订单未支付",
-			"data": gin.H{
-				"status": topUp.Status,
-				"paid":   false,
-			},
-		})
-		return
-	}
-
-	// 只对虎皮椒订单查询支付平台
-	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "该订单不支持查询",
-		})
-		return
-	}
-
-	// 调用虎皮椒API查询订单状态（使用openid）
-	orderStatus, err := queryHupijiaoOrderStatus(openid)
+	paid, err := reconcileHupijiaoOrder(c.Request.Context(), topUp, "poll")
 	if err != nil {
-		logger.LogError(c.Request.Context(), fmt.Sprintf("查询虎皮椒订单失败 trade_no=%s openid=%s err=%v", tradeNo, openid, err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "查询订单失败: " + err.Error(),
-		})
+		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒查单失败 trade_no=%s err=%v", tradeNo, err))
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "查询或处理支付失败，请稍后重试"})
 		return
 	}
-	if orderStatus.TradeNo != "" && orderStatus.TradeNo != tradeNo {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("虎皮椒查询订单号不匹配 trade_no=%s response_trade_no=%s openid=%s", tradeNo, orderStatus.TradeNo, openid))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单号不匹配",
-		})
+	if paid {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单已支付", "data": gin.H{"status": common.TopUpStatusSuccess, "paid": true}})
 		return
 	}
-	if orderStatus.OpenOrderId != "" && orderStatus.OpenOrderId != openid {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("虎皮椒查询平台订单号不匹配 trade_no=%s openid=%s response_openid=%s", tradeNo, openid, orderStatus.OpenOrderId))
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单号不匹配",
-		})
-		return
-	}
-
-	if !orderStatus.Paid {
-		// 未支付
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "订单尚未支付，请完成支付后再试",
-			"data": gin.H{
-				"paid": false,
-			},
-		})
-		return
-	}
-
-	// 验证金额（允许0.01元误差）
-	if orderStatus.Amount < topUp.Money-0.01 {
-		logger.LogWarn(c.Request.Context(), fmt.Sprintf("支付金额不匹配 trade_no=%s expected=%.2f actual=%.2f", tradeNo, topUp.Money, orderStatus.Amount))
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": fmt.Sprintf("支付金额不正确，应付%.2f元，实付%.2f元", topUp.Money, orderStatus.Amount),
-			"data": gin.H{
-				"paid": true,
-			},
-		})
-		return
-	}
-
-	payloadBytes, _ := common.Marshal(map[string]string{
-		"source":        "poll",
-		"open_order_id": openid,
-	})
-	err = completeHupijiaoPaidOrder(tradeNo, orderStatus.Amount, string(payloadBytes))
-	if err != nil {
-		// 可能是订单已处理或其他错误
-		if err == model.ErrTopUpStatusInvalid {
-			c.JSON(http.StatusOK, gin.H{
-				"success": true,
-				"message": "订单已处理",
-				"data": gin.H{
-					"status": "success",
-					"paid":   true,
-				},
-			})
-			return
-		}
-
-		logger.LogError(c.Request.Context(), fmt.Sprintf("处理充值失败 trade_no=%s err=%v", tradeNo, err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "处理充值失败",
-		})
-		return
-	}
-
-	logger.LogInfo(c.Request.Context(), fmt.Sprintf("主动查询支付成功 user_id=%d trade_no=%s amount=%.2f", userId, tradeNo, orderStatus.Amount))
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "支付成功！配额已到账",
-		"data": gin.H{
-			"status": "success",
-			"paid":   true,
-		},
-	})
+	expireTopUpOrderIfTimedOut(topUp)
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单尚未支付", "data": gin.H{"status": topUp.Status, "paid": false}})
 }
 
 // RepayTopUpOrder 重新支付订单（创建新的支付链接）
@@ -910,57 +738,29 @@ func RepayTopUpOrder(c *gin.Context) {
 		return
 	}
 
-	if expireTopUpOrderIfTimedOut(topUp) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "订单已过期，请重新下单",
-		})
-		return
-	}
-
-	// 只能重新支付待支付订单
-	if topUp.Status != common.TopUpStatusPending {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "只能重新支付待支付订单",
-		})
-		return
-	}
-
-	// 检查订单是否是虎皮椒支付
 	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "该订单不支持重新支付",
-		})
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该订单不支持重新支付"})
 		return
 	}
-
-	// 如果已有 openid，先查询虎皮椒平台确认是否已支付
+	paid, err := reconcileHupijiaoOrder(c.Request.Context(), topUp, "repay")
+	if err != nil {
+		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒重新支付前查单失败 trade_no=%s err=%v", tradeNo, err))
+		c.JSON(http.StatusBadGateway, gin.H{"success": false, "message": "查询或处理支付失败，请稍后重试"})
+		return
+	}
+	if paid {
+		c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单已支付成功！配额已到账", "data": gin.H{"paid": true}})
+		return
+	}
+	if expireTopUpOrderIfTimedOut(topUp) || topUp.Status != common.TopUpStatusPending {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "订单已过期，请重新下单"})
+		return
+	}
+	// Never replace the provider ID of an unpaid checkout: a late payment on the
+	// old link must remain queryable when its callback is lost.
 	if topUp.OpenOrderId != "" {
-		orderStatus, queryErr := queryHupijiaoOrderStatus(topUp.OpenOrderId)
-		if queryErr == nil &&
-			orderStatus.Paid &&
-			(orderStatus.TradeNo == "" || orderStatus.TradeNo == tradeNo) &&
-			(orderStatus.OpenOrderId == "" || orderStatus.OpenOrderId == topUp.OpenOrderId) {
-			payloadBytes, _ := common.Marshal(map[string]string{
-				"source":        "repay",
-				"open_order_id": topUp.OpenOrderId,
-			})
-			rechargeErr := completeHupijiaoPaidOrder(tradeNo, orderStatus.Amount, string(payloadBytes))
-			if rechargeErr != nil && rechargeErr != model.ErrTopUpStatusInvalid {
-				logger.LogError(c.Request.Context(), fmt.Sprintf("重新支付时处理充值失败 trade_no=%s err=%v", tradeNo, rechargeErr))
-			}
-			logger.LogInfo(c.Request.Context(), fmt.Sprintf("重新支付时发现已支付 user_id=%d trade_no=%s amount=%.2f", userId, tradeNo, orderStatus.Amount))
-			c.JSON(http.StatusOK, gin.H{
-				"success": true,
-				"message": "订单已支付成功！配额已到账",
-				"data": gin.H{
-					"paid": true,
-				},
-			})
-			return
-		}
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "请使用原支付链接，或重新下单"})
+		return
 	}
 
 	// 调用虎皮椒API创建新的支付链接

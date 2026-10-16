@@ -4,6 +4,7 @@ package model
 // upstream merges only touch the small hook points in topup.go.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
@@ -18,6 +19,18 @@ const (
 	PaymentMethodHupijiao   = "hupijiao"
 	PaymentProviderHupijiao = "hupijiao"
 )
+
+// ListUnsettledHupijiaoTopUps pages through recoverable checkouts without
+// letting old unpaid orders starve newer payments. The time window bounds
+// automatic reconciliation; authenticated callbacks remain valid after it.
+func ListUnsettledHupijiaoTopUps(ctx context.Context, minCreateTime, maxCreateTime int64, afterID, limit int) ([]TopUp, error) {
+	var orders []TopUp
+	err := DB.WithContext(ctx).
+		Where("payment_provider = ? AND status IN ? AND open_order_id <> ?", PaymentProviderHupijiao, []string{common.TopUpStatusPending, common.TopUpStatusExpired}, "").
+		Where("create_time >= ? AND create_time < ? AND id > ?", minCreateTime, maxCreateTime, afterID).
+		Order("id ASC").Limit(min(max(limit, 1), 100)).Find(&orders).Error
+	return orders, err
+}
 
 // normalizeHupijiaoTopUpAmount converts the stored Amount (US-cents-ish) into
 // dollars for display. Returns (amount, true) when the topup is Hupijiao;
@@ -69,7 +82,8 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 			return nil
 		}
 
-		if topUp.Status != common.TopUpStatusPending {
+		// A checkout timeout does not revoke an authenticated payment.
+		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired {
 			return ErrTopUpStatusInvalid
 		}
 
@@ -105,7 +119,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 
 	if err != nil {
 		common.SysError("hupijiao topup failed: " + err.Error())
-		return errors.New("充值失败，请稍后重试")
+		return fmt.Errorf("充值失败，请稍后重试: %w", err)
 	}
 
 	if quotaToAdd > 0 {

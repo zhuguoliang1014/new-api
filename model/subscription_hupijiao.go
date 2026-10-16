@@ -52,7 +52,8 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 		}
 
 		// 验证订单状态
-		if order.Status != common.TopUpStatusPending {
+		// A checkout timeout does not revoke an authenticated payment.
+		if order.Status != common.TopUpStatusPending && order.Status != common.TopUpStatusExpired {
 			return ErrSubscriptionOrderStatusInvalid
 		}
 
