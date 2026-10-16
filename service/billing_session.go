@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
@@ -513,6 +514,13 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
+	// Image generation is paid from the wallet even when a matching plan has
+	// quota. Select the source before a plan can replace the group's price.
+	if imageGenerationRequiresWallet(c, relayInfo) {
+		logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_only request_id=%q user_id=%d model=%q reason=image_generation", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
+		return tryWallet()
+	}
+
 	hasSubscription, err := model.HasActiveUserSubscription(relayInfo.UserId)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
@@ -530,4 +538,45 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 	logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_fallback request_id=%q user_id=%d model=%q reason=no_eligible_subscription_with_sufficient_quota", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
 	return tryWallet()
+}
+
+// imageGenerationRequiresWallet recognizes output generation, not image inputs
+// in ordinary vision requests. Tool-enabled requests reserve wallet funds before
+// the upstream decides whether to invoke image generation.
+func imageGenerationRequiresWallet(c *gin.Context, info *relaycommon.RelayInfo) bool {
+	if value, ok := c.Get(jsplugin.ContextKeyPinnedEndpoint); ok {
+		if pinned, ok := value.(jsplugin.PinnedEndpoint); ok && pinned.Protocol == jsplugin.ProtocolOpenAIImage {
+			return true
+		}
+	}
+	if info.RelayFormat == types.RelayFormatOpenAIImage || info.ImageRequestCount > 0 ||
+		common.IsImageGenerationModel(info.OriginModelName) || common.IsImageGenerationModel(info.GetUpstreamModelName()) {
+		return true
+	}
+	switch request := info.Request.(type) {
+	case *dto.ImageRequest:
+		return true
+	case *dto.OpenAIResponsesRequest:
+		for _, tool := range request.GetToolsMap() {
+			if tool["type"] == "image_generation" {
+				return true
+			}
+		}
+	case *dto.GeminiChatRequest:
+		for _, modality := range request.GenerationConfig.ResponseModalities {
+			if strings.EqualFold(modality, "image") {
+				return true
+			}
+		}
+	case *dto.GeneralOpenAIRequest:
+		var modalities []string
+		if common.Unmarshal(request.Modalities, &modalities) == nil {
+			for _, modality := range modalities {
+				if strings.EqualFold(modality, "image") {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

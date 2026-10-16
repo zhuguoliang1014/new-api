@@ -10,9 +10,11 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -76,6 +78,10 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 				channel, metadataChannel                  int
 				wallet                                    int
 				priorPlans, exhausted, overflow, rejected bool
+				request                                   dto.Request
+				format                                    types.RelayFormat
+				pluginProtocol                            string
+				upstreamModel                             string
 			}{
 				{name: "GPT before metadata initialization", model: "gpt-4o", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
 				{name: "Claude on OpenAI transport skips GPT plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
@@ -91,6 +97,20 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 				{name: "skip mismatched and exhausted subscriptions before matching later plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, source: BillingSourceSubscription},
 				{name: "all matching subscriptions exhausted falls back to wallet", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, exhausted: true, source: BillingSourceWallet},
 				{name: "all subscriptions and wallet insufficient rejects without charging", model: "claude-sonnet-4-5", preference: "wallet_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 50, priorPlans: true, exhausted: true, rejected: true},
+				{name: "image model cannot spend GPT subscription", model: "gpt-image-2", allowed: "1", wallet: 1000, source: BillingSourceWallet},
+				{name: "image variant cannot spend unrestricted subscription", model: "gpt-image-2.5-flare", wallet: 1000, source: BillingSourceWallet},
+				{name: "image request with custom alias uses wallet", model: "custom-image", request: &dto.ImageRequest{}, wallet: 1000, source: BillingSourceWallet},
+				{name: "image protocol with custom alias uses wallet", model: "custom-image", format: types.RelayFormatOpenAIImage, wallet: 1000, source: BillingSourceWallet},
+				{name: "image rejects empty wallet despite funded plan", model: "gpt-image-2", allowed: "1", rejected: true},
+				{name: "image rejects insufficient wallet despite funded plan", model: "gpt-image-2.5-sunburst", allowed: "1", wallet: 50, rejected: true},
+				{name: "responses image tool uses wallet", model: "gpt-4o", allowed: "1", request: &dto.OpenAIResponsesRequest{Tools: []byte(`[{"type":"image_generation"}]`)}, wallet: 1000, source: BillingSourceWallet},
+				{name: "Gemini image output uses wallet", model: "gemini-custom", allowed: "24", request: &dto.GeminiChatRequest{GenerationConfig: dto.GeminiChatGenerationConfig{ResponseModalities: []string{"TEXT", "IMAGE"}}}, wallet: 1000, source: BillingSourceWallet},
+				{name: "chat image output uses wallet", model: "gpt-custom", allowed: "1", request: &dto.GeneralOpenAIRequest{Modalities: []byte(`["image","text"]`)}, wallet: 1000, source: BillingSourceWallet},
+				{name: "ordinary chat request retains subscription", model: "gpt-4o", allowed: "1", request: &dto.GeneralOpenAIRequest{}, wallet: 1000, source: BillingSourceSubscription},
+				{name: "plugin image alias uses wallet", model: "custom-plugin", pluginProtocol: jsplugin.ProtocolOpenAIImage, wallet: 1000, source: BillingSourceWallet},
+				{name: "plugin video remains eligible for subscription", model: "custom-plugin", pluginProtocol: "openai_video", wallet: 1000, source: BillingSourceSubscription},
+				{name: "mapped image alias uses wallet", model: "custom-alias", metadataChannel: constant.ChannelTypeOpenAI, upstreamModel: "gpt-image-2", wallet: 1000, source: BillingSourceWallet},
+				{name: "vision input still uses subscription", model: "gpt-4o", allowed: "1", request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "user", Content: []any{map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/image.png"}}}}}}, wallet: 1000, source: BillingSourceSubscription},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					user := model.User{Username: fmt.Sprintf("billing_channel_%d", i), AffCode: fmt.Sprintf("bc%d", i), Quota: tc.wallet, Status: common.UserStatusEnabled}
@@ -141,6 +161,9 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 					})
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+					if tc.pluginProtocol != "" {
+						c.Set(jsplugin.ContextKeyPinnedEndpoint, jsplugin.PinnedEndpoint{Protocol: tc.pluginProtocol})
+					}
 					if tc.channel != 0 {
 						common.SetContextKey(c, constant.ContextKeyChannelType, tc.channel)
 					}
@@ -148,9 +171,11 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 						RequestId: fmt.Sprintf("billing-channel-%d", i), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key,
 						OriginModelName: tc.model, ForcePreConsume: true,
 						UserSetting: dto.UserSetting{BillingPreference: tc.preference},
+						Request:     tc.request, RelayFormat: tc.format,
+						PriceData: hosttypes.PriceData{GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 2.25}},
 					}
 					if tc.metadataChannel != 0 {
-						info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: tc.metadataChannel}
+						info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: tc.metadataChannel, UpstreamModelName: tc.upstreamModel}
 					}
 					var apiErr *types.NewAPIError
 					require.NotPanics(t, func() { apiErr = PreConsumeBilling(c, 100, info) })
@@ -163,6 +188,10 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 						require.Nil(t, apiErr)
 						require.NotNil(t, info.Billing)
 						assert.Equal(t, tc.source, info.BillingSource)
+						if tc.source == BillingSourceWallet {
+							assert.False(t, info.SubscriptionUsesPlanRatio)
+							assert.Equal(t, 2.25, info.PriceData.GroupRatioInfo.GroupRatio)
+						}
 						assert.Equal(t, 100, info.Billing.GetPreConsumedQuota())
 						require.NoError(t, info.Billing.Settle(80))
 					}
@@ -186,6 +215,11 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 						assert.Zero(t, prior.AmountUsed, "skipped subscriptions must not be charged")
 					}
 					assert.Equal(t, wantSub, sub.AmountUsed)
+					if tc.source == BillingSourceWallet || tc.rejected {
+						var reservations int64
+						require.NoError(t, db.Model(&model.SubscriptionPreConsumeRecord{}).Where("user_subscription_id = ?", sub.Id).Count(&reservations).Error)
+						assert.Zero(t, reservations, "wallet requests must never reserve subscription quota")
+					}
 					assert.Equal(t, wantToken, token.RemainQuota)
 					assert.Equal(t, wantWallet, user.Quota)
 				})
