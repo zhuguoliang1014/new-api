@@ -106,6 +106,6 @@ func isEpayWebhookConfigured() bool {
 }
 
 func isEpayWebhookEnabled() bool {
-	return isEpayTopUpEnabled()
+	// Honor existing orders after disabling new checkouts for this gateway.
+	return isEpayWebhookConfigured()
 }
-

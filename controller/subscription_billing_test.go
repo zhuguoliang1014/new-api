@@ -1018,6 +1018,10 @@ func nativeEpayFixture(t *testing.T) (*gorm.DB, *model.User) {
 
 func TestNativeEpayRMBToUSDAndMigrationBenefits(t *testing.T) {
 	db, user := nativeEpayFixture(t)
+	// Switching to another gateway must stop new native checkouts while
+	// continuing to settle already-created orders, including duplicate notices.
+	operation_setting.PayMethods = nil
+	require.False(t, isEpayTopUpEnabled())
 	for _, tc := range []struct {
 		amount int64
 		money  float64
