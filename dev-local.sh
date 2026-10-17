@@ -95,6 +95,7 @@ check_port "${FRONTEND_PORT}" frontend
 # ---- 进程管理 ----
 BACKEND_PID=""
 FRONTEND_PID=""
+DB_TUNNEL_SOCKET=""
 cleanup() {
   log "收到退出信号，正在停止子进程..."
   [ -n "${BACKEND_PID}"  ] && kill  "${BACKEND_PID}"  >/dev/null 2>&1 || true
@@ -102,9 +103,37 @@ cleanup() {
   sleep 0.3
   [ -n "${BACKEND_PID}"  ] && pkill -P "${BACKEND_PID}"  >/dev/null 2>&1 || true
   [ -n "${FRONTEND_PID}" ] && pkill -P "${FRONTEND_PID}" >/dev/null 2>&1 || true
+  if [ -n "${DB_TUNNEL_SOCKET}" ]; then
+    ssh -S "${DB_TUNNEL_SOCKET}" -O exit "${DB_TUNNEL_SSH_HOST}" >/dev/null 2>&1 || true
+    log "已关闭数据库 SSH 隧道"
+  fi
   log "已停止。日志保留在 ${LOG_DIR}/"
 }
 trap cleanup EXIT INT TERM
+
+# ---- 可选：经 SSH 隧道连接远程数据库 ----
+# 在 .env 中设置 DB_TUNNEL_SSH_HOST / DB_TUNNEL_LOCAL_PORT / DB_TUNNEL_REMOTE 后启用，
+# SQL_DSN 需指向 127.0.0.1:${DB_TUNNEL_LOCAL_PORT}。退出脚本时自动关闭隧道。
+DB_TUNNEL_SSH_HOST="${DB_TUNNEL_SSH_HOST:-}"
+if [ -n "${DB_TUNNEL_SSH_HOST}" ]; then
+  DB_TUNNEL_LOCAL_PORT="${DB_TUNNEL_LOCAL_PORT:?启用隧道时必须设置 DB_TUNNEL_LOCAL_PORT}"
+  DB_TUNNEL_REMOTE="${DB_TUNNEL_REMOTE:?启用隧道时必须设置 DB_TUNNEL_REMOTE}"
+  if lsof -i ":${DB_TUNNEL_LOCAL_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+    die "隧道端口 ${DB_TUNNEL_LOCAL_PORT} 已被占用，请先关闭占用进程"
+  fi
+  if [ "${NODE_TYPE:-}" != "slave" ]; then
+    die "连接远程数据库时必须在 .env 中设置 NODE_TYPE=slave，避免本地执行迁移和后台任务"
+  fi
+  socket="${LOG_DIR}/db-tunnel.sock"
+  rm -f "${socket}"
+  log "建立数据库 SSH 隧道: 127.0.0.1:${DB_TUNNEL_LOCAL_PORT} -> ${DB_TUNNEL_SSH_HOST} ${DB_TUNNEL_REMOTE}"
+  ssh -f -N -M -S "${socket}" \
+    -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+    -L "127.0.0.1:${DB_TUNNEL_LOCAL_PORT}:${DB_TUNNEL_REMOTE}" "${DB_TUNNEL_SSH_HOST}" \
+    || die "数据库 SSH 隧道建立失败，请检查 ssh ${DB_TUNNEL_SSH_HOST} 是否可用"
+  DB_TUNNEL_SOCKET="${socket}"
+  warn "当前连接远程数据库（从节点模式），所有写操作会直接作用于该库"
+fi
 
 # ---- 带前缀输出 ----
 prefix_stream() {
@@ -116,7 +145,7 @@ prefix_stream() {
 }
 
 log "后端端口: ${BACKEND_PORT}   前端端口: ${FRONTEND_PORT}"
-log "SQL_DSN: ${SQL_DSN}"
+log "数据库连接已配置（连接信息不输出）"
 log "前端代理 /api,/mj,/pg -> ${VITE_REACT_APP_SERVER_URL}"
 log "日志目录: ${LOG_DIR}"
 
