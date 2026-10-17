@@ -23,6 +23,7 @@ import {
   useSystemConfigStore,
 } from '@/stores/system-config-store'
 
+import type { PlanSavings } from '../../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../../types'
 import { AvailablePlansCard } from '../available-plans-card'
 
@@ -68,6 +69,8 @@ async function renderPlans(
     language?: string
     purchases?: UserSubscriptionRecord[]
     paymentEnabled?: boolean
+    planSavings?: Map<number, PlanSavings>
+    comparisonGroup?: string
   } = {}
 ) {
   vi.spyOn(api, 'get').mockImplementation(async (url) => {
@@ -81,6 +84,16 @@ async function renderPlans(
           data: {
             subscriptions: [],
             all_subscriptions: options.purchases || [],
+          },
+        },
+      }
+    }
+    if (url === '/api/user/self/groups') {
+      return {
+        data: {
+          success: true,
+          data: {
+            '【新】GPT稳定号池': { desc: 'GPT stable', ratio: 0.36 },
           },
         },
       }
@@ -99,6 +112,8 @@ async function renderPlans(
       <TooltipProvider>
         <AvailablePlansCard
           topupInfo={options.paymentEnabled === false ? null : topupInfo}
+          planSavings={options.planSavings}
+          comparisonGroup={options.comparisonGroup}
         />
       </TooltipProvider>
     </I18nextProvider>
@@ -356,4 +371,92 @@ it('submits the native Epay subscription checkout when the original gateway is d
   expect(
     post.mock.calls.some(([url]) => String(url).includes('hupijiao'))
   ).toBe(false)
+})
+
+it('keeps the savings summary compact and puts the comparison group inside details', async () => {
+  await renderPlans([plan(), plan({ id: 2, title: '凌云版' })], {
+    comparisonGroup: 'GPT stable',
+    planSavings: new Map([
+      [1, { planRatio: 0.2597, rechargeRatio: 0.36, savings: 0.2785 }],
+    ]),
+  })
+  const card = within(screen.getByRole('article', { name: '苍穹版' }))
+  expect(card.getByText('Save about 27% vs wallet payment')).toBeVisible()
+  expect(card.queryByText('Wallet GPT · GPT stable')).not.toBeInTheDocument()
+  expect(
+    card.queryByText('Assumes quota is used before expiry or reset')
+  ).not.toBeInTheDocument()
+  expect(card.queryByText(/0\.36x/)).not.toBeInTheDocument()
+  expect(card.queryByText(/cheaper than recharge/)).not.toBeInTheDocument()
+  await userEvent.click(
+    card.getByRole('button', { name: 'How savings are calculated' })
+  )
+  expect(card.getByText('Wallet GPT · GPT stable')).toBeVisible()
+  const otherCard = within(screen.getByRole('article', { name: '凌云版' }))
+  expect(otherCard.queryByText(/Save about/)).not.toBeInTheDocument()
+  expect(
+    otherCard.queryByRole('button', { name: 'How savings are calculated' })
+  ).not.toBeInTheDocument()
+})
+
+it('reveals pricing multipliers and their meaning through keyboard-accessible details', async () => {
+  await renderPlans([plan()], {
+    planSavings: new Map([
+      [1, { planRatio: 0.2597, rechargeRatio: 0.36, savings: 0.2785 }],
+    ]),
+  })
+  const card = within(screen.getByRole('article', { name: '苍穹版' }))
+  expect(card.queryByText('Wallet GPT')).not.toBeInTheDocument()
+  const trigger = card.getByRole('button', {
+    name: 'How savings are calculated',
+  })
+  expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  expect(card.getByText('Wallet GPT')).toBeVisible()
+  expect(
+    card.getByText('Assumes quota is used before expiry or reset')
+  ).toBeVisible()
+  expect(card.getByText('0.36x')).toBeVisible()
+  expect(card.getByText('0.26x')).toBeVisible()
+  expect(
+    card.queryByText(
+      'Multipliers describe GPT usage costs; wallet recharge is credited at its own rate.'
+    )
+  ).not.toBeInTheDocument()
+})
+
+it.each([
+  ['en', 'Save about 27% vs wallet payment'],
+  ['zhCN', '比余额支付省约 27%'],
+  ['zhTW', '比餘額支付省約 27%'],
+  ['fr', 'Environ 27 % de moins qu’avec le solde'],
+  ['ja', '残高払いより約27%お得'],
+  ['ru', 'Примерно на 27% дешевле оплаты с баланса'],
+  ['vi', 'Rẻ hơn khoảng 27% so với trả bằng số dư'],
+])(
+  'explains savings in %s without falling back to the English key',
+  async (language, headline) => {
+    await renderPlans([plan()], {
+      language,
+      comparisonGroup: 'GPT stable',
+      planSavings: new Map([
+        [1, { planRatio: 0.2597, rechargeRatio: 0.36, savings: 0.2785 }],
+      ]),
+    })
+    expect(screen.getByText(headline)).toBeVisible()
+  }
+)
+
+it('updates savings explanations when the interface language changes', async () => {
+  const { i18n } = await renderPlans([plan()], {
+    planSavings: new Map([
+      [1, { planRatio: 0.2597, rechargeRatio: 0.36, savings: 0.2785 }],
+    ]),
+  })
+  expect(screen.getByText('Save about 27% vs wallet payment')).toBeVisible()
+  await act(() => i18n.changeLanguage('zhCN'))
+  expect(screen.getByText('比余额支付省约 27%')).toBeVisible()
+  expect(screen.getByRole('button', { name: '费用说明' })).toBeVisible()
 })

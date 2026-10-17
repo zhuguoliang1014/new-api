@@ -10,6 +10,7 @@ import {
   useTopupInfo,
 } from '@/features/wallet/hooks'
 import { mergePresetAmounts } from '@/features/wallet/lib'
+import { useStatus } from '@/hooks/use-status'
 import { getSelf } from '@/lib/api'
 
 import {
@@ -17,6 +18,7 @@ import {
   getHupijiaoTopupOrderStatus,
   isApiSuccess,
 } from '../api'
+import type { RechargePricing } from '../lib/subscription-savings'
 import type {
   HupijiaoPaymentData,
   MyWalletTopupInfo,
@@ -101,6 +103,7 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
   const redemption = useRedemption()
   const hupijiao = useHupijiaoPayment()
   const nativePayment = usePayment()
+  const { status } = useStatus()
   const nativeEnabled =
     !!topupInfo?.enable_online_topup &&
     !!topupInfo.pay_methods?.some((method) => method.type === 'alipay')
@@ -125,6 +128,16 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
         ? topupInfo?.discount || {}
         : parseDiscountMap(topupInfo?.hupijiao_discount),
     [nativeEnabled, topupInfo?.discount, topupInfo?.hupijiao_discount]
+  )
+  const rechargeUnitPrice = nativeEnabled
+    ? Number(status?.price ?? 0)
+    : Number(topupInfo?.hupijiao_price ?? 0)
+  const rechargePricing = useMemo<RechargePricing | null>(
+    () =>
+      topupInfo && onlinePaymentEnabled && rechargeUnitPrice > 0
+        ? { unitPrice: rechargeUnitPrice }
+        : null,
+    [topupInfo, onlinePaymentEnabled, rechargeUnitPrice]
   )
 
   const calculatePaymentAmount = useCallback(
@@ -308,6 +321,7 @@ export function useMyWallet(initialTab: WalletTab = 'recharge') {
     selectedPreset,
     presetAmounts,
     priceRatio,
+    rechargePricing,
     paymentAmount,
     calculating,
     paymentLoading,

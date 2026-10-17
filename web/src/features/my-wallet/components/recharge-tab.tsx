@@ -279,14 +279,18 @@ export function RechargeTab({
                   {t('Payment Method')}
                 </Label>
                 <Button
+                  variant='outline'
                   onClick={onAlipayClick}
                   disabled={belowMin || !!paymentLoading || topupAmount <= 0}
                   className='h-11 w-full justify-center gap-2 rounded-lg sm:w-auto sm:min-w-48 sm:px-6'
                 >
                   {paymentLoading === 'alipay' ? (
-                    <Loader2 className='h-4 w-4 animate-spin' />
+                    <Loader2
+                      className='size-5 animate-spin'
+                      aria-hidden='true'
+                    />
                   ) : (
-                    getPaymentIcon('alipay', 'h-4 w-4')
+                    getPaymentIcon('alipay', 'size-5')
                   )}
                   <span>{t('Alipay')}</span>
                 </Button>

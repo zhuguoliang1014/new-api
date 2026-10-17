@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import { HupijiaoPaymentDialog } from '@/components/payment/hupijiao-payment-dialog'
+import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PaymentConfirmDialog } from '@/features/wallet/components/dialogs/payment-confirm-dialog'
 import { PAYMENT_TYPES } from '@/features/wallet/constants'
@@ -13,6 +14,7 @@ import { RechargeTab } from './components/recharge-tab'
 import { SubscriptionTab } from './components/subscription-tab'
 import { TransferDialog } from './components/transfer-dialog'
 import { type WalletTab, useMyWallet } from './hooks/use-my-wallet'
+import { useSubscriptionSavings } from './hooks/use-subscription-savings'
 
 interface MyWalletProps {
   initialTab?: WalletTab
@@ -21,6 +23,8 @@ interface MyWalletProps {
 export function MyWallet(props: MyWalletProps) {
   const { t } = useTranslation()
   const wallet = useMyWallet(props.initialTab)
+  const subscriptionSavings = useSubscriptionSavings(wallet.rechargePricing)
+  const savingsPercent = Math.floor(subscriptionSavings.maxSavings * 100)
 
   const alipayMethod = useMemo(
     () => ({
@@ -49,7 +53,7 @@ export function MyWallet(props: MyWalletProps) {
               }
               className='gap-4'
             >
-              <div className='overflow-x-auto pb-1'>
+              <div className='overflow-x-auto pt-2 pr-2 pb-1'>
                 <TabsList className='min-w-max p-1 group-data-horizontal/tabs:h-auto'>
                   <TabsTrigger
                     value='recharge'
@@ -64,14 +68,25 @@ export function MyWallet(props: MyWalletProps) {
                   </TabsTrigger>
                   <TabsTrigger
                     value='subscription'
-                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                    className='relative h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
                   >
                     <span className='text-base leading-none font-semibold'>
-                      {t('Subscription')}
+                      {t('GPT Subscription')}
                     </span>
                     <span className='text-muted-foreground text-[11px] leading-none font-normal'>
-                      {t('Lower unit price')}
+                      {t('GPT only · plan quota')}
                     </span>
+                    {savingsPercent > 0 && (
+                      <Badge
+                        data-slot='subscription-savings-badge'
+                        variant='destructive'
+                        className='bg-destructive text-destructive-foreground absolute -top-2 -right-2 h-4 px-1.5 text-[10px] leading-none'
+                      >
+                        {t('Save up to {{percent}}%', {
+                          percent: savingsPercent,
+                        })}
+                      </Badge>
+                    )}
                   </TabsTrigger>
                   <TabsTrigger
                     value='affiliate'
@@ -90,6 +105,8 @@ export function MyWallet(props: MyWalletProps) {
               <TabsContent value='subscription' className='mt-0'>
                 <SubscriptionTab
                   topupInfo={wallet.topupInfo}
+                  planSavings={subscriptionSavings.byPlan}
+                  comparisonGroup={subscriptionSavings.comparisonGroup}
                   onPurchaseComplete={wallet.refreshUser}
                 />
               </TabsContent>

@@ -48,15 +48,15 @@ function subscription(id: number): UserSubscriptionRecord {
 }
 
 async function renderSubscriptions(records: UserSubscriptionRecord[]) {
-  vi.spyOn(api, 'get').mockImplementation(async (url) => ({
-    data: {
-      success: true,
-      data:
-        url === '/api/subscription/self'
-          ? { subscriptions: records, all_subscriptions: records }
-          : [],
-    },
-  }))
+  vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    let data: unknown = []
+    if (url === '/api/subscription/self') {
+      data = { subscriptions: records, all_subscriptions: records }
+    } else if (url === '/api/user/self/groups') {
+      data = { '【新】GPT稳定号池': { desc: 'GPT stable', ratio: 0.36 } }
+    }
+    return { data: { success: true, data } }
+  })
   const result = render(
     <QueryClientProvider client={new QueryClient()}>
       <TooltipProvider>
@@ -158,6 +158,14 @@ it('keeps multiple subscriptions compact until keyboard expansion enables orderi
 
 it('keeps the empty subscription overview short and the catalog visible', async () => {
   await renderSubscriptions([])
+  expect(
+    screen.getByText('Wallet for all models, subscription for GPT')
+  ).toBeVisible()
+  expect(
+    screen.getByText(
+      'Wallet balance can be used for any model. Subscription quota is for GPT models only and follows the plan’s expiry and reset rules.'
+    )
+  ).toBeVisible()
   expect(screen.getByText('No subscription records')).toBeVisible()
   expect(screen.getByText('No plans available')).toBeVisible()
   expect(

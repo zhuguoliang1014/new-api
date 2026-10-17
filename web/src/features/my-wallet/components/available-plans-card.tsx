@@ -3,6 +3,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,11 +42,14 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
+import type { PlanSavings } from '../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../types'
 import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
 
 interface AvailablePlansCardProps {
   topupInfo: MyWalletTopupInfo | null
+  planSavings?: Map<number, PlanSavings>
+  comparisonGroup?: string
   onPurchaseComplete?: () => void
 }
 
@@ -245,6 +254,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
             const reached = limit > 0 && count >= limit
             const soldCount = Number(p.sold_count || 0)
             const resetPeriod = formatResetPeriod(plan, t)
+            const savings = props.planSavings?.get(plan.id)
 
             const sale = computeSaleWindow(plan, nowSec)
             const isSaleable =
@@ -366,6 +376,56 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     <p className='mt-1.5 text-3xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                       {quotaLabel}
                     </p>
+                    {savings && (
+                      <div
+                        data-slot='plan-savings'
+                        className='mt-3 space-y-1.5'
+                      >
+                        <p className='text-sm font-semibold text-green-700 dark:text-green-400'>
+                          {t('Save about {{percent}}% vs wallet payment', {
+                            percent: Math.floor(savings.savings * 100),
+                          })}
+                        </p>
+                        <Accordion>
+                          <AccordionItem value='savings-details'>
+                            <AccordionTrigger className='text-muted-foreground gap-2 py-1 text-xs font-normal'>
+                              {t('How savings are calculated')}
+                            </AccordionTrigger>
+                            <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
+                              <dl className='space-y-1'>
+                                <div className='flex items-start justify-between gap-3'>
+                                  <dt className='min-w-0 break-words'>
+                                    {props.comparisonGroup
+                                      ? t('Wallet GPT · {{group}}', {
+                                          group: props.comparisonGroup,
+                                        })
+                                      : t('Wallet GPT')}
+                                  </dt>
+                                  <dd className='shrink-0 tabular-nums'>
+                                    {formatNumber(
+                                      savings.rechargeRatio,
+                                      locale
+                                    )}
+                                    x
+                                  </dd>
+                                </div>
+                                <div className='flex items-start justify-between gap-3'>
+                                  <dt>{t('Subscription equivalent')}</dt>
+                                  <dd className='shrink-0 tabular-nums'>
+                                    {formatNumber(savings.planRatio, locale)}x
+                                  </dd>
+                                </div>
+                              </dl>
+                              <div>
+                                {t(
+                                  'Assumes quota is used before expiry or reset'
+                                )}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        </Accordion>
+                      </div>
+                    )}
                     {soldCount > 0 && (
                       <p className='text-muted-foreground mt-1 text-xs'>
                         {t('Sold {{count}}', {

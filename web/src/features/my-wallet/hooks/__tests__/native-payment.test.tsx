@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 
@@ -45,7 +46,14 @@ it.each([true, false])(
     const submit = vi
       .spyOn(paymentLib, 'submitPaymentForm')
       .mockImplementation(() => {})
-    const { result } = renderHook(useMyWallet)
+    const client = new QueryClient()
+    const { result } = renderHook(useMyWallet, {
+      wrapper: (props) => (
+        <QueryClientProvider client={client}>
+          {props.children}
+        </QueryClientProvider>
+      ),
+    })
     await waitFor(() => expect(result.current.topupAmount).toBe(30))
     await waitFor(() => expect(result.current.paymentAmount).toBe(30))
     expect(result.current.presetAmounts.map((p) => p.value)).toEqual([30, 50])
