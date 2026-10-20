@@ -18,6 +18,7 @@ import (
 	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -42,6 +43,7 @@ import (
 func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 	useTransaction := len(committed) == 0 || !committed[0]
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	dialect := common.DatabaseTypeSQLite
 	var driver gorm.Dialector = sqlite.Open(":memory:")
 	switch os.Getenv("TEST_SUBSCRIPTION_CONTROLLER_DIALECT") {
@@ -300,7 +302,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "plan update cannot change in-flight retry or replay ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, retry: true, changeRatioAfterReserve: true},
 				{name: "realtime retains configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, realtime: true},
 				{name: "task retains configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, task: true, changeRatioAfterReserve: true},
-				{name: "images retain configured plan ratio for quantity changes", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0, image: true},
+				{name: "images retain wallet group rate despite configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, wallet: 1000, selected: -1, image: true},
 				{name: "GPT-only plan uses rate one", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "GPT prefix without dash", model: "gpt5-custom", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "Claude skips GPT plan", model: "claude-sonnet-4-5", plans: []planSpec{special}, wallet: 1000, selected: -1},
@@ -352,9 +354,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "in-flight task charges additional usage after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, task: true, taskExtra: true},
 				{name: "failed in-flight task refunds once after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, task: true, taskRefund: true},
 				{name: "image request skips frozen plan and reserves wallet quantity", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 1000, selected: -1, image: true},
-				{name: "image request skips frozen plan and reserves active plan quantity", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0}, selected: 1, image: true},
-				{name: "in-flight images retain original plan after freeze and count increase", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, image: true},
-				{name: "failed in-flight images refund original and extra reservations after freeze", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freezeAfterReserve: true, image: true, refund: true},
+				{name: "image request bypasses frozen and active plans", model: "gpt-4o", plans: []planSpec{special, general}, frozenPlans: []int{0}, wallet: 1000, selected: -1, image: true},
+				{name: "in-flight images retain wallet funding after plan freeze and count increase", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: -1, freezeAfterReserve: true, image: true},
+				{name: "failed in-flight images refund wallet reservations after plan freeze", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: -1, freezeAfterReserve: true, image: true, refund: true},
 				{name: "image override cannot use frozen quota to cover wallet shortage", model: "gpt-4o", plans: []planSpec{special}, frozenPlans: []int{0}, wallet: 100, selected: -1, image: true, imageReserveRejected: true, refund: true},
 			} {
 				if tc.task && mode != "ratio" {
@@ -509,7 +511,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						if tc.freezeAfterReserve {
 							// The holiday transition itself is exercised by the model
 							// tests. Here switch state at the real billing boundary.
-							require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", subs[tc.selected].Id).
+							require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", subs[max(tc.selected, 0)].Id).
 								Updates(map[string]any{"status": "frozen", "frozen_at": common.GetTimestamp()}).Error)
 						}
 						if wantedRate == 0 && tc.selected < 0 {
@@ -614,7 +616,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 									usage.TotalTokens, usage.InputTokens, usage.InputTokenDetails.TextTokens = total, total, total
 									require.NoError(t, service.PreWssConsumeQuota(c, info, usage))
 								}
-								service.PostWssConsumeQuota(c, info, tc.model, usage, "")
+								service.PostWssConsumeQuota(c, info, tc.model, usage, nil)
 							} else {
 								service.PostTextConsumeQuota(c, info, &dto.Usage{PromptTokens: 81, TotalTokens: 81}, nil)
 							}
@@ -662,7 +664,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							used += expectedCharge
 						}
 						assert.EqualValues(t, used, sub.AmountUsed)
-						if slices.Contains(tc.frozenPlans, i) && !tc.resumeBeforeReserve || tc.freezeAfterReserve && i == tc.selected {
+						if slices.Contains(tc.frozenPlans, i) && !tc.resumeBeforeReserve || tc.freezeAfterReserve && i == max(tc.selected, 0) {
 							assert.Equal(t, "frozen", sub.Status)
 						}
 					}

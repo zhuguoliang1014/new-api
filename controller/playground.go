@@ -12,6 +12,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -205,7 +206,7 @@ func PlaygroundPromptRefine(c *gin.Context) {
 
 func preparePlayground(c *gin.Context, relayFormat types.RelayFormat) *types.NewAPIError {
 	if c.GetBool("use_access_token") {
-		return types.NewError(errors.New("暂不支持使用 access token"), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
+		return types.NewError(errors.New(i18n.T(c, i18n.MsgRelayAccessTokenUnsupported)), types.ErrorCodeAccessDenied, types.ErrOptionWithSkipRetry())
 	}
 
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, nil, nil)
@@ -265,7 +266,7 @@ func writePlaygroundAPIError(c *gin.Context, apiError *types.NewAPIError) {
 	if status < http.StatusBadRequest {
 		status = http.StatusInternalServerError
 	}
-	c.JSON(status, gin.H{"error": apiError.ToOpenAIError()})
+	c.JSON(status, gin.H{"error": apiError.ToOpenAIError(common.UpstreamAddresses(c)...)})
 }
 
 func writePlaygroundError(c *gin.Context, status int, message string) {

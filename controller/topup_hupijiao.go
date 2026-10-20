@@ -115,13 +115,13 @@ func bindHupijiaoTopupQuotaCents(c *gin.Context) (usdCents int64, msg string) {
 	}
 	cents, err := parseHupijiaoQuotaToUsdCents(strconv.FormatFloat(a, 'f', -1, 64))
 	if err != nil {
-		return 0, "充值额度超出系统可表示范围"
+		return 0, common.NewMessage("Top-up quota exceeds the range the system can represent").Error()
 	}
 	if cents < 1 {
 		return 0, hupijiaoMinQuotaHintMsg()
 	}
 	if math.IsNaN(common.QuotaPerUnit) || math.IsInf(common.QuotaPerUnit, 0) || common.QuotaPerUnit <= 0 {
-		return 0, "充值额度超出系统可表示范围"
+		return 0, common.NewMessage("Top-up quota exceeds the range the system can represent").Error()
 	}
 	creditedQuota, err := validateCreditedQuota(decimal.NewFromInt(cents).Div(decimal.NewFromInt(100)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
 	if err != nil {

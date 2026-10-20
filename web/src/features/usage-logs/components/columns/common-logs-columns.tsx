@@ -63,7 +63,9 @@ import {
   hasAnyCacheTokens,
   parseLogOther,
   isViolationFeeLog,
+  logTokenName,
   renderAuditContent,
+  renderLogContent,
 } from '../../lib/format'
 import {
   isDisplayableLogType,
@@ -121,7 +123,7 @@ function formatTopupContent(
   if (!money) return content
 
   const prefix = methodLabel ? `${methodLabel}充值` : '充值'
-  return `${prefix}: ¥${parseFloat(money)}`
+  return `${prefix}: ¥${Number.parseFloat(money)}`
 }
 function buildDetailSegments(
   log: UsageLog,
@@ -152,7 +154,7 @@ function buildTypeDetailSegments(
 ): DetailSegment[] {
   // Top-up, audit, and login logs can carry a localized operation descriptor.
   if (log.type === 1 || log.type === 3 || log.type === 7) {
-    const text = renderAuditContent(other, t)
+    const text = renderAuditContent(other, t) ?? renderLogContent(other, t)
     return text ? [{ text }] : []
   }
 
@@ -227,7 +229,7 @@ function buildTypeDetailSegments(
       })
     } else {
       segments.push({
-        text: `${t('Dynamic Pricing')} · ${t('No matching results')}`,
+        text: `${t('Dynamic Pricing')} · ${other.matched_tier || t('Special billing expression')}`,
         muted: true,
       })
     }
@@ -283,7 +285,7 @@ function buildTypeDetailSegments(
       }
     } else {
       segments.push({
-        text: `${t('Dynamic Pricing')} · ${t('No matching results')}`,
+        text: `${t('Dynamic Pricing')} · ${other.matched_tier || t('Special billing expression')}`,
         muted: true,
       })
     }
@@ -624,7 +626,7 @@ export function useCommonLogsColumns(
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const tokenName = log.token_name
+        const tokenName = logTokenName(log, t)
         if (!tokenName) return null
 
         const other = parseLogOther(log.other)
@@ -645,7 +647,7 @@ export function useCommonLogsColumns(
                   <StatusBadge
                     label={displayName}
                     icon={KeyRound}
-                    copyText={sensitiveVisible ? tokenName : undefined}
+                    copyText={sensitiveVisible ? log.token_name : undefined}
                     size='sm'
                     showDot={false}
                     className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
@@ -740,7 +742,7 @@ export function useCommonLogsColumns(
       },
       {
         accessorKey: 'prompt_tokens',
-        header: 'Tokens',
+        header: t('Tokens', { context: 'usage' }),
         cell: ({ row }) => {
           const log = row.original
           if (!isDisplayableLogType(log.type)) return null
@@ -883,7 +885,7 @@ export function useCommonLogsColumns(
           } else if (log.content) {
             detailPreview = (
               <span className='text-muted-foreground truncate group-hover:underline'>
-                {log.content}
+                {renderLogContent(other, t) ?? log.content}
               </span>
             )
           }

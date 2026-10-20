@@ -152,9 +152,13 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /api/user/hupijiao/amount":               accessTokenScopeRule("wallet:read"),
 	"POST /api/user/hupijiao/pay":                  accessTokenScopeRule("wallet:write"),
 	"GET /api/subscription/self/history":           accessTokenScopeRule("wallet:read"),
+	"PUT /api/subscription/self/:id/freeze":        accessTokenScopeRule("wallet:write"),
 	"PUT /api/subscription/self/priority":          accessTokenScopeRule("wallet:write"),
 	"POST /api/subscription/hupijiao/pay":          accessTokenScopeRule("wallet:write"),
 	"GET /api/subscription/order/:trade_no/status": accessTokenScopeRule("wallet:read"),
+
+	"GET /api/option/homepage_models": accessTokenScopeRule("option:read"),
+	"PUT /api/option/homepage_models": accessTokenScopeRule("option:write"),
 
 	// router/api-router.go: /api/option
 	"GET /api/option/":                                           accessTokenScopeRule("option:read"),
@@ -254,6 +258,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/log/search":                       accessTokenScopeRule("log:read"),
 	"GET /api/log/self":                         accessTokenScopeRule("usage:read"),
 	"GET /api/log/self/search":                  accessTokenScopeRule("usage:read"),
+	"GET /api/log/export":                       accessTokenScopeRule("log:read"),
+	"GET /api/log/self/export":                  accessTokenScopeRule("usage:read"),
 	"GET /api/data/":                            accessTokenScopeRule("log:read"),
 	"GET /api/data/users":                       accessTokenScopeRule("log:read"),
 	"GET /api/data/self":                        accessTokenScopeRule("usage:read"),

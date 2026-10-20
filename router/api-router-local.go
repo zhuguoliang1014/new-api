@@ -23,6 +23,11 @@ func RegisterLocalRoutes(
 	apiRouter *gin.RouterGroup,
 	subscriptionRoute *gin.RouterGroup,
 ) {
+	apiRouter.GET("/homepage/models", controller.GetHomepageModels)
+	options := apiRouter.Group("/option", middleware.RootAuth())
+	options.GET("/homepage_models", controller.GetHomepageModelsConfig)
+	options.PUT("/homepage_models", controller.UpdateHomepageModelsConfig)
+
 	// Hupijiao webhooks (no auth — verified by signature in handler)
 	apiRouter.POST("/hupijiao/webhook", middleware.AnonymousRequestBodyLimit(), controller.HupijiaoWebhook)
 	apiRouter.POST("/hupijiao/subscription/webhook", middleware.AnonymousRequestBodyLimit(), controller.HupijiaoSubscriptionWebhook)

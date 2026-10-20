@@ -308,7 +308,7 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 						}))
 						if step.frozen {
 							_, err := AdminResetUserSubscriptionsByPlan(user.Id, resetPlan.Id, true)
-							require.ErrorContains(t, err, "没有有效")
+							require.EqualError(t, err, "This user has no active subscription to this plan")
 							result, err := AdminResetPlanSubscriptions(resetPlan.Id, true)
 							require.NoError(t, err)
 							assert.Zero(t, result.ResetCount)

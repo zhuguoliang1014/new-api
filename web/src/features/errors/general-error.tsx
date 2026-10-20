@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect } from 'react'
 import { useNavigate, useRouter } from '@tanstack/react-router'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/ui/button'
@@ -38,27 +38,6 @@ function getHttpStatus(error: unknown): number | undefined {
   return typeof status === 'number' ? status : undefined
 }
 
-function isChunkLoadError(err: unknown): boolean {
-  if (!err) return false
-  const msg = err instanceof Error ? err.message : String(err)
-  const name = err instanceof Error ? err.name : ''
-  return (
-    name === 'ChunkLoadError' ||
-    /Loading chunk [\w\d-]+ failed/i.test(msg) ||
-    /Failed to fetch dynamically imported module/i.test(msg) ||
-    /error loading dynamically imported module/i.test(msg) ||
-    /Importing a module script failed/i.test(msg)
-  )
-}
-
-function reloadForStaleChunks() {
-  const key = 'chunk-reload-at'
-  const last = Number(sessionStorage.getItem(key) || 0)
-  if (Date.now() - last < 30_000) return
-  sessionStorage.setItem(key, String(Date.now()))
-  window.location.reload()
-}
-
 export function GeneralError({
   className,
   minimal = false,
@@ -67,13 +46,26 @@ export function GeneralError({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { history } = useRouter()
-
-  // If this error is a stale-chunk fetch failure (post-deploy), reload silently
-  // instead of showing the error screen to the user.
   useEffect(() => {
-    if (isChunkLoadError(error)) {
-      reloadForStaleChunks()
+    if (
+      !(error instanceof Error) ||
+      (error.name !== 'ChunkLoadError' &&
+        !/^Loading (CSS )?chunk .+ failed\./.test(error.message))
+    ) {
+      return
     }
+
+    // Recover only when the failed route is displayed, never on intent preload.
+    // Keep the marker across reloads so a persistent failure shows this page.
+    try {
+      const key = `tanstack_router_reload:${error.message}`
+      if (sessionStorage.getItem(key)) return
+      sessionStorage.setItem(key, '1')
+    } catch {
+      // Without a persistent marker, reloading could loop indefinitely.
+      return
+    }
+    window.location.reload()
   }, [error])
 
   const status = getHttpStatus(error)
@@ -85,16 +77,11 @@ export function GeneralError({
     ? t('Please wait a moment before trying again.')
     : t('Please try again later.')
 
-  // Don't render the error UI if we're about to reload for a stale chunk
-  if (isChunkLoadError(error)) return null
-
   return (
     <div className={cn('h-svh w-full', className)}>
       <div className='m-auto flex h-full w-full flex-col items-center justify-center gap-2'>
-        {!minimal && (
-          <h1 className='text-[7rem] leading-tight font-bold'>
-            {status ?? 500}
-          </h1>
+        {!minimal && status !== undefined && (
+          <h1 className='text-[7rem] leading-tight font-bold'>{status}</h1>
         )}
         <span className='font-medium'>{title}</span>
         <p className='text-muted-foreground text-center'>

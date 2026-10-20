@@ -434,7 +434,11 @@ it.each([true, false])(
     await user.click(screen.getByRole('button', { name: 'Open menu' }))
     expect(post).not.toHaveBeenCalled()
     await user.click(screen.getByRole('menuitem', { name: 'Copy Key' }))
-    await waitFor(() => expect(post).toHaveBeenCalledWith('/api/token/7/key'))
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith('/api/token/7/key', undefined, {
+        signal: undefined,
+      })
+    )
     if (success) {
       await waitFor(() =>
         expect(copy).toHaveBeenCalledWith('sk-fake-key-for-test-only')

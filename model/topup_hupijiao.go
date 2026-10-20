@@ -10,6 +10,7 @@ import (
 	"math"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -124,7 +125,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 
 	if quotaToAdd > 0 {
 		syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "hupijiao topup")
-		RecordTopupLog(topUp.UserId, fmt.Sprintf("支付宝充值 %.2f 元", topUp.Money), "", topUp.PaymentMethod, PaymentMethodHupijiao)
+		RecordTopupLog(topUp.UserId, common.NewMessage("Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}", map[string]any{"quota": logger.FormatQuota(quotaToAdd), "amount": fmt.Sprintf("%.2f", topUp.Money)}), "", topUp.PaymentMethod, PaymentMethodHupijiao)
 		UpgradeUserGroupOnTopup(topUp.UserId)
 	}
 

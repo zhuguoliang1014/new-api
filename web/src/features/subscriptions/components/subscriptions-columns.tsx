@@ -19,12 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 import type { ColumnDef } from '@tanstack/react-table'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+
 import { BadgeCell, DataTableColumnHeader } from '@/components/data-table'
 import { GroupBadge } from '@/components/group-badge'
-import { formatCnyCurrencyAmount } from '@/lib/currency'
-import { formatQuota } from '@/lib/format'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
+import { formatCnyCurrencyAmount } from '@/lib/currency'
+import { formatQuota } from '@/lib/format'
 
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
@@ -133,14 +134,14 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         cell: ({ row }) =>
           row.original.plan.enabled ? (
             <StatusBadge
-              label={t('Enable')}
+              label={t('Enabled')}
               variant='success'
               copyable={false}
               className='-ml-1.5'
             />
           ) : (
             <StatusBadge
-              label={t('Disable')}
+              label={t('Disabled')}
               variant='neutral'
               copyable={false}
               className='-ml-1.5'
