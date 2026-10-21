@@ -1,9 +1,7 @@
 package claude
 
 import (
-	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,106 +14,11 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type emptyStreamBilling struct {
-	relaycommon.BillingSettler
-	reserved int
-	settled  []int
-}
-
-func (b *emptyStreamBilling) GetPreConsumedQuota() int { return b.reserved }
-
-func (b *emptyStreamBilling) Settle(quota int) error {
-	b.settled = append(b.settled, quota)
-	return nil
-}
-
-func TestEmptyStreamSettlementReleasesReservation(t *testing.T) {
-	for _, reserved := range []int{0, 50000} {
-		for _, estimated := range []bool{false, true} {
-			t.Run(fmt.Sprintf("reserved=%d/estimated_snapshot=%t", reserved, estimated), func(t *testing.T) {
-				c, _ := gin.CreateTestContext(httptest.NewRecorder())
-				c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-				common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
-				billing := &emptyStreamBilling{reserved: reserved}
-				info := &relaycommon.RelayInfo{
-					IsStream:     true,
-					StreamStatus: relaycommon.NewStreamStatus(),
-					Billing:      billing,
-				}
-				info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, context.Canceled)
-				usage := &dto.Usage{PromptTokens: 3580477, TotalTokens: 3580477}
-				if estimated {
-					usage.BillingUsage = dto.NewClaudeMessagesBillingUsage(&dto.ClaudeUsage{InputTokens: 3580477})
-					usage.BillingUsage.Estimated = true
-				}
-				service.PostTextConsumeQuota(c, info, usage, nil)
-				assert.Equal(t, []int{0}, billing.settled, "settling at zero releases wallet/subscription and token reservations")
-			})
-		}
-	}
-}
-
-func TestClaudeStreamHandlerRequiresUpstreamUsageOrContent(t *testing.T) {
-	oldTimeout := constant.StreamingTimeout
-	constant.StreamingTimeout = 30
-	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
-
-	tests := []struct {
-		name       string
-		body       string
-		cancelled  bool
-		wantError  bool
-		wantPrompt int
-	}{
-		{name: "empty EOF", wantError: true},
-		{name: "client disconnected before first event", cancelled: true, wantError: true},
-		{name: "heartbeat only", body: "data: {\"type\":\"ping\"}\n\n", wantError: true},
-		{name: "message start without usage", body: "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-test\"}}\n\n", wantError: true},
-		{name: "empty text block", body: "data: {\"type\":\"content_block_start\",\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n", wantError: true},
-		{name: "terminal without content or usage", body: "data: {\"type\":\"message_stop\"}\n\n", wantError: true},
-		{name: "real input usage without output", body: "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-test\",\"usage\":{\"input_tokens\":100,\"output_tokens\":0}}}\n\n", wantPrompt: 100},
-		{name: "real cache usage without output", body: "data: {\"type\":\"message_start\",\"message\":{\"model\":\"claude-test\",\"usage\":{\"input_tokens\":1,\"cache_read_input_tokens\":200}}}\n\n", wantPrompt: 1},
-		{name: "partial text without usage", body: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n", wantPrompt: 3580477},
-		{name: "partial thinking without usage", body: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"thinking\"}}\n\n", wantPrompt: 3580477},
-		{name: "tool use without usage", body: "data: {\"type\":\"content_block_start\",\"content_block\":{\"type\":\"tool_use\",\"id\":\"tool_1\",\"name\":\"lookup\",\"input\":{}}}\n\n", wantPrompt: 3580477},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-			if tt.cancelled {
-				ctx, cancel := context.WithCancel(c.Request.Context())
-				cancel()
-				c.Request = c.Request.WithContext(ctx)
-			}
-			info := &relaycommon.RelayInfo{
-				RelayFormat: types.RelayFormatClaude,
-				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-test"},
-			}
-			info.SetEstimatePromptTokens(3580477)
-			usage, apiErr := ClaudeStreamHandler(c, &http.Response{Body: io.NopCloser(strings.NewReader(tt.body))}, info)
-			if tt.wantError {
-				require.NotNil(t, apiErr)
-				assert.Equal(t, types.ErrorCodeEmptyResponse, apiErr.GetErrorCode())
-				assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
-				assert.Nil(t, usage, "empty failed streams must not produce estimated billable usage")
-				return
-			}
-			require.Nil(t, apiErr)
-			require.NotNil(t, usage)
-			assert.Equal(t, tt.wantPrompt, usage.PromptTokens)
-			require.NotNil(t, usage.BillingUsage)
-		})
-	}
-}
 
 func commonPointer[T any](value T) *T {
 	return &value

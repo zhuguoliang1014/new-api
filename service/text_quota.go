@@ -388,19 +388,6 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []*common.Message) {
-	// A local prompt estimate is not billable evidence when the stream never
-	// received an upstream event. Settle at zero to release any reservation.
-	if relayInfo.IsStream && relayInfo.StreamStatus != nil && relayInfo.ReceivedResponseCount == 0 &&
-		(usage == nil || common.GetContextKeyBool(ctx, constant.ContextKeyLocalCountTokens) &&
-			usage.CompletionTokens == 0 && usage.PromptTokensDetails.CachedTokens == 0 &&
-			usage.PromptTokensDetails.CacheCreationTokensTotal() == 0 &&
-			(usage.BillingUsage == nil || usage.BillingUsage.Estimated)) {
-		logger.LogWarn(ctx, "empty upstream stream: refunding reservation without charging estimated input")
-		if err := SettleBilling(ctx, relayInfo, 0); err != nil {
-			logger.LogError(ctx, "error refunding empty stream reservation: "+err.Error())
-		}
-		return
-	}
 	originUsage := usage
 	billingUsage := effectiveBillingUsage(usage)
 	if usage == nil {
