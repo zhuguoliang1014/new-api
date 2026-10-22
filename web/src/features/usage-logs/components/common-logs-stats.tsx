@@ -29,8 +29,10 @@ import {
 import { toIntlLocale } from '@/i18n/languages'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatLogQuota } from '@/lib/format'
+import { ROLE } from '@/lib/roles'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getLogStats, getUserLogStats } from '../api'
 import { DEFAULT_LOG_STATS } from '../constants'
@@ -58,11 +60,14 @@ function StatBadge(props: {
 export function CommonLogsStats() {
   const { t, i18n } = useTranslation()
   const { isAdminView: isAdmin } = useLogsViewScope()
+  const isRoot = useAuthStore(
+    (state) => state.auth.user?.role === ROLE.SUPER_ADMIN
+  )
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
 
   const { data: stats, isLoading } = useQuery({
-    queryKey: ['usage-logs-stats', isAdmin, searchParams],
+    queryKey: ['usage-logs-stats', isAdmin, isRoot, searchParams],
     queryFn: async () => {
       const params = buildApiParams({
         page: 1,
@@ -87,7 +92,7 @@ export function CommonLogsStats() {
     return (
       <div className='flex flex-wrap items-center gap-2'>
         <Skeleton className='h-7 w-[150px] rounded-md' />
-        <Skeleton className='h-7 w-[150px] rounded-md' />
+        {isRoot && <Skeleton className='h-7 w-[150px] rounded-md' />}
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
       </div>
@@ -127,16 +132,18 @@ export function CommonLogsStats() {
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
         accent='bg-sky-500/70'
       />
-      <Tooltip>
-        <TooltipTrigger render={<span tabIndex={0} />}>
-          <StatBadge
-            label={t('Actual Cost')}
-            value={actualCost}
-            accent='bg-emerald-500/70'
-          />
-        </TooltipTrigger>
-        <TooltipContent>{costExplanation}</TooltipContent>
-      </Tooltip>
+      {isRoot && (
+        <Tooltip>
+          <TooltipTrigger render={<span tabIndex={0} />}>
+            <StatBadge
+              label={t('Actual Cost')}
+              value={actualCost}
+              accent='bg-emerald-500/70'
+            />
+          </TooltipTrigger>
+          <TooltipContent>{costExplanation}</TooltipContent>
+        </Tooltip>
+      )}
       <StatBadge
         label={t('RPM')}
         value={stats?.rpm || 0}

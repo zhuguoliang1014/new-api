@@ -284,8 +284,8 @@ export interface LogOtherData {
  * Log statistics data
  */
 export interface LogStatistics {
-  actual_cost_cny: number | null
-  actual_cost_estimated: boolean
+  actual_cost_cny?: number | null
+  actual_cost_estimated?: boolean
   quota: number
   rpm: number
   tpm: number

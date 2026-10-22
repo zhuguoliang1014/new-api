@@ -56,10 +56,12 @@ function StatsFixture() {
   )
 }
 
-async function renderStats(cost: number | null, estimated = false) {
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 1, username: 'alice', role: ROLE.ADMIN })
+async function renderStats(
+  cost: number | null,
+  estimated = false,
+  role: number = ROLE.SUPER_ADMIN
+) {
+  useAuthStore.getState().auth.setUser({ id: 1, username: 'alice', role })
   const get = vi.spyOn(api, 'get').mockResolvedValue({
     data: {
       success: true,
@@ -98,7 +100,7 @@ async function renderStats(cost: number | null, estimated = false) {
       </TooltipProvider>
     </QueryClientProvider>
   )
-  await screen.findByText('Actual Cost')
+  await screen.findByText('Usage')
   await waitFor(() => expect(client.isFetching()).toBe(0))
   return get
 }
@@ -161,5 +163,18 @@ test.each([
     expect(screen.getByText(value)).toBeVisible()
     await user.hover(screen.getByText('Actual Cost'))
     expect(await screen.findByText(new RegExp(explanation))).toBeVisible()
+  }
+)
+
+test.each([ROLE.USER, ROLE.ADMIN, ROLE.GUEST])(
+  'role %s cannot see actual cost even when a response contains it',
+  async (role) => {
+    const user = userEvent.setup()
+    await renderStats(2.5974025974, true, role)
+    expect(screen.queryByText('Actual Cost')).not.toBeInTheDocument()
+    expect(screen.queryByText(/2\.5974/)).not.toBeInTheDocument()
+    expect(screen.getByText('RPM')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: 'My logs' }))
+    expect(screen.queryByText('Actual Cost')).not.toBeInTheDocument()
   }
 )

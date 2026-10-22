@@ -688,7 +688,7 @@ type Stat struct {
 	Tpm                 int      `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, includeActualCost bool) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -736,9 +736,11 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		common.SysError(common.LogText("failed to query log stat: %s", err.Error()))
 		return stat, common.NewMessage("Failed to query statistics")
 	}
-	if err := populateActualCost(tx, &stat); err != nil {
-		common.SysError(common.LogText("failed to query log stat: %s", err.Error()))
-		return stat, common.NewMessage("Failed to query statistics")
+	if includeActualCost {
+		if err := populateActualCost(tx, &stat); err != nil {
+			common.SysError(common.LogText("failed to query log stat: %s", err.Error()))
+			return stat, common.NewMessage("Failed to query statistics")
+		}
 	}
 	var rateStat struct {
 		Rpm int

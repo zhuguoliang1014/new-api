@@ -319,7 +319,7 @@ func TestLogActualCostDatabaseMatrix(t *testing.T) {
 			}
 			query := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d", now-100, now+100)
 			for _, handler := range []gin.HandlerFunc{GetLogsStat, func(c *gin.Context) { c.Set("username", "alice"); GetLogsSelfStat(c) }} {
-				response := callLogHandler(t, handler, 1, common.RoleAdminUser, query+"&username=alice&model_name=gpt-%25&token_name=key-a&channel=9&group=vip")[0]
+				response := callLogHandler(t, handler, 1, common.RoleRootUser, query+"&username=alice&model_name=gpt-%25&token_name=key-a&channel=9&group=vip")[0]
 				require.Equal(t, true, response["success"], response)
 				data := response["data"].(map[string]any)
 				assert.EqualValues(t, 10000000, data["quota"])
@@ -338,7 +338,7 @@ func TestLogActualCostDatabaseMatrix(t *testing.T) {
 				{"missing", 0, false, true},
 				{"nobody", 0, false, false},
 			} {
-				response := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username="+check.username)[0]
+				response := callLogHandler(t, GetLogsStat, 1, common.RoleRootUser, query+"&username="+check.username)[0]
 				require.Equal(t, true, response["success"], response)
 				data := response["data"].(map[string]any)
 				if check.unknown {
@@ -348,10 +348,22 @@ func TestLogActualCostDatabaseMatrix(t *testing.T) {
 				}
 				assert.Equal(t, check.estimated, data["actual_cost_estimated"])
 			}
+			for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser, common.RoleGuestUser} {
+				for _, handler := range []gin.HandlerFunc{GetLogsStat, func(c *gin.Context) { c.Set("username", "alice"); GetLogsSelfStat(c) }} {
+					response := callLogHandler(t, handler, 1, role, query+"&username=alice&include_actual_cost=true&role=100")[0]
+					require.Equal(t, true, response["success"], response)
+					data := response["data"].(map[string]any)
+					assert.EqualValues(t, 10000000, data["quota"])
+					assert.NotContains(t, data, "actual_cost_cny", "role %d", role)
+					assert.NotContains(t, data, "actual_cost_estimated", "role %d", role)
+					assert.Contains(t, data, "rpm")
+					assert.Contains(t, data, "tpm")
+				}
+			}
 			// Never pick an arbitrary order if multiple successful payments
 			// match the same historical subscription timestamp.
 			require.NoError(t, mainDB.Create(&model.SubscriptionOrder{UserId: 2, PlanId: 1, Money: 999, TradeNo: "ambiguous", Status: common.TopUpStatusSuccess, CompleteTime: now - 200, PaymentProvider: model.PaymentProviderHupijiao}).Error)
-			ambiguous := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username=bob")[0]
+			ambiguous := callLogHandler(t, GetLogsStat, 1, common.RoleRootUser, query+"&username=bob")[0]
 			require.Equal(t, true, ambiguous["success"])
 			ambiguousData := ambiguous["data"].(map[string]any)
 			assert.Equal(t, true, ambiguousData["actual_cost_estimated"])
@@ -359,9 +371,19 @@ func TestLogActualCostDatabaseMatrix(t *testing.T) {
 			// Recurring grants cannot be costed as though one cycle were the
 			// entire paid allowance. The API must expose an unknown amount.
 			require.NoError(t, mainDB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("quota_reset_period", model.SubscriptionResetDaily).Error)
-			response := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username=bob")[0]
+			response := callLogHandler(t, GetLogsStat, 1, common.RoleRootUser, query+"&username=bob")[0]
 			require.Equal(t, true, response["success"])
 			assert.Nil(t, response["data"].(map[string]any)["actual_cost_cny"])
+			// Non-root statistics must not depend on private purchase records.
+			require.NoError(t, mainDB.Migrator().DropTable(&model.SubscriptionOrder{}))
+			for _, handler := range []gin.HandlerFunc{GetLogsStat, func(c *gin.Context) { c.Set("username", "alice"); GetLogsSelfStat(c) }} {
+				response := callLogHandler(t, handler, 1, common.RoleAdminUser, query+"&username=alice")[0]
+				require.Equal(t, true, response["success"], response)
+				data := response["data"].(map[string]any)
+				assert.EqualValues(t, 10000000, data["quota"])
+				assert.NotContains(t, data, "actual_cost_cny")
+				assert.NotContains(t, data, "actual_cost_estimated")
+			}
 		})
 	}
 }
