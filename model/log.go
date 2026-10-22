@@ -672,9 +672,11 @@ func streamLogs(tx *gorm.DB, order string, fn func(*Log) error) error {
 }
 
 type Stat struct {
-	Quota int `json:"quota"`
-	Rpm   int `json:"rpm"`
-	Tpm   int `json:"tpm"`
+	ActualCostCNY       *float64 `json:"actual_cost_cny" gorm:"-"`
+	ActualCostEstimated bool     `json:"actual_cost_estimated" gorm:"-"`
+	Quota               int      `json:"quota"`
+	Rpm                 int      `json:"rpm"`
+	Tpm                 int      `json:"tpm"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
@@ -722,6 +724,10 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 
 	// 执行查询
 	if err := tx.Scan(&stat).Error; err != nil {
+		common.SysError(common.LogText("failed to query log stat: %s", err.Error()))
+		return stat, common.NewMessage("Failed to query statistics")
+	}
+	if err := populateActualCost(tx, &stat); err != nil {
 		common.SysError(common.LogText("failed to query log stat: %s", err.Error()))
 		return stat, common.NewMessage("Failed to query statistics")
 	}

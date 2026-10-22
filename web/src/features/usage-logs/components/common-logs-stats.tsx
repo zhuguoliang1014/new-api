@@ -21,6 +21,13 @@ import { getRouteApi } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatLogQuota } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
@@ -49,7 +56,7 @@ function StatBadge(props: {
 }
 
 export function CommonLogsStats() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { isAdminView: isAdmin } = useLogsViewScope()
   const searchParams = route.useSearch()
   const { sensitiveVisible } = useUsageLogsContext()
@@ -78,11 +85,38 @@ export function CommonLogsStats() {
 
   if (isLoading) {
     return (
-      <div className='flex items-center gap-2'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
       </div>
+    )
+  }
+
+  let actualCost = '••••'
+  if (sensitiveVisible) {
+    actualCost = formatCnyCurrencyAmount(stats?.actual_cost_cny, {
+      digitsLarge: 4,
+      digitsSmall: 6,
+      abbreviate: false,
+      locale: toIntlLocale(i18n.resolvedLanguage || i18n.language),
+    })
+    if (stats?.actual_cost_cny != null && stats.actual_cost_estimated) {
+      actualCost = `≈${actualCost}`
+    }
+  }
+
+  let costExplanation = t(
+    'CNY equivalent: wallet usage is converted at 1:1; subscription usage is multiplied by the purchase price divided by the credited quota.'
+  )
+  if (stats?.actual_cost_cny == null) {
+    costExplanation = t(
+      'Actual cost is unavailable because some subscription purchase or allowance records cannot be verified, or the plan has a recurring allowance.'
+    )
+  } else if (stats.actual_cost_estimated) {
+    costExplanation = t(
+      'Estimated CNY cost: some historical purchase records are missing or ambiguous, so the current plan price or the subscription allowance is used.'
     )
   }
 
@@ -93,6 +127,16 @@ export function CommonLogsStats() {
         value={sensitiveVisible ? formatLogQuota(stats?.quota || 0) : '••••'}
         accent='bg-sky-500/70'
       />
+      <Tooltip>
+        <TooltipTrigger render={<span tabIndex={0} />}>
+          <StatBadge
+            label={t('Actual Cost')}
+            value={actualCost}
+            accent='bg-emerald-500/70'
+          />
+        </TooltipTrigger>
+        <TooltipContent>{costExplanation}</TooltipContent>
+      </Tooltip>
       <StatBadge
         label={t('RPM')}
         value={stats?.rpm || 0}

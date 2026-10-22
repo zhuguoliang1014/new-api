@@ -31,6 +31,8 @@ import type { LogStatistics, LogCategory } from './types'
  * Default log statistics when no data is available
  */
 export const DEFAULT_LOG_STATS: LogStatistics = {
+  actual_cost_cny: null,
+  actual_cost_estimated: false,
   quota: 0,
   rpm: 0,
   tpm: 0,

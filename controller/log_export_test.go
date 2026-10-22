@@ -244,3 +244,124 @@ func TestAcquireLogExportLock(t *testing.T) {
 		})
 	}
 }
+
+func TestLogActualCostDatabaseMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousMaster := common.IsMasterNode
+	common.IsMasterNode = true
+	t.Cleanup(func() { common.IsMasterNode = previousMaster })
+	for _, tc := range []struct {
+		kind, env string
+		typ       common.DatabaseType
+	}{
+		{"sqlite", "", common.DatabaseTypeSQLite},
+		{"mysql", "AUDIT_MYSQL_DSN", common.DatabaseTypeMySQL},
+		{"postgres", "AUDIT_POSTGRES_DSN", common.DatabaseTypePostgreSQL},
+		{"clickhouse", "AUDIT_CLICKHOUSE_DSN", common.DatabaseTypeClickHouse},
+	} {
+		t.Run(tc.kind, func(t *testing.T) {
+			dsn := os.Getenv(tc.env)
+			if tc.env != "" && dsn == "" {
+				t.Skip(tc.env + " is not configured")
+			}
+			db, isolatedDSN := newAuditTestDatabase(t, tc.kind, dsn)
+			mainDB, mainType := db, tc.typ
+			if tc.kind == "clickhouse" {
+				mainDB, _ = newAuditTestDatabase(t, "sqlite", "")
+				mainType = common.DatabaseTypeSQLite
+			}
+			useLogExportDatabases(t, mainDB, db, mainType, tc.typ)
+			if tc.kind != "clickhouse" {
+				t.Setenv("LOG_SQL_DSN", "")
+				require.NoError(t, model.InitLogDB())
+			}
+			require.NoError(t, mainDB.AutoMigrate(&model.SubscriptionPlan{}, &model.UserSubscription{}, &model.SubscriptionOrder{}))
+			if tc.kind == "clickhouse" {
+				t.Setenv("LOG_SQL_DSN", isolatedDSN)
+				require.NoError(t, model.InitLogDB())
+			} else {
+				require.NoError(t, db.AutoMigrate(&model.Log{}))
+			}
+			versionSQL := "SELECT version()"
+			if tc.kind == "sqlite" {
+				versionSQL = "SELECT sqlite_version()"
+			}
+			var version string
+			require.NoError(t, model.LOG_DB.Raw(versionSQL).Scan(&version).Error)
+			t.Logf("actual cost database: %s %s", tc.kind, version)
+			now := time.Now().Unix()
+			// The current plan grants 1980 at 550 CNY. The original purchase
+			// cost 500 and granted 1930; neither current value may rewrite history.
+			plan := model.SubscriptionPlan{Id: 1, Title: "historical", PriceCNY: 550, TotalAmount: 990000000, QuotaResetPeriod: model.SubscriptionResetNever}
+			require.NoError(t, mainDB.Create(&plan).Error)
+			subs := []model.UserSubscription{
+				{Id: 1, UserId: 1, PlanId: 1, AmountTotal: 965000000, CreatedAt: now - 100},
+				{Id: 2, UserId: 2, PlanId: 1, AmountTotal: 577500000, CreatedAt: now - 200},
+				{Id: 3, UserId: 3, PlanId: 1, AmountTotal: 577500000, CreatedAt: now - 300},
+			}
+			require.NoError(t, mainDB.Session(&gorm.Session{SkipHooks: true}).Create(&subs).Error)
+			orders := []model.SubscriptionOrder{
+				{UserId: 1, PlanId: 1, Money: 500, TradeNo: "paid-original", Status: common.TopUpStatusSuccess, CompleteTime: now - 100, PaymentProvider: model.PaymentProviderHupijiao},
+				{UserId: 2, PlanId: 1, Money: 300, TradeNo: "paid-300", Status: common.TopUpStatusSuccess, CompleteTime: now - 200, PaymentProvider: model.PaymentProviderEpay},
+			}
+			require.NoError(t, mainDB.Create(&orders).Error)
+			logs := []model.Log{
+				{UserId: 1, Username: "alice", CreatedAt: now - 10, Type: model.LogTypeConsume, ModelName: "gpt-a", TokenName: "key-a", ChannelId: 9, Group: "vip", Quota: 5000000, Other: `{"billing_source":"wallet"}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 10, Type: model.LogTypeConsume, ModelName: "gpt-a", TokenName: "key-a", ChannelId: 9, Group: "vip", Quota: 5000000, Other: `{"billing_source":"subscription","subscription_id":1,"subscription_total":965000000,"billing_group_ratio":2}`},
+				{UserId: 2, Username: "bob", CreatedAt: now - 10, Type: model.LogTypeConsume, ModelName: "gpt-b", Quota: 5000000, Other: `{"billing_source":"subscription","subscription_id":2,"subscription_total":577500000}`},
+				{UserId: 3, Username: "estimate", CreatedAt: now - 10, Type: model.LogTypeConsume, ModelName: "gpt-c", Quota: 5000000, Other: `{"billing_source":"subscription","subscription_id":3}`},
+				{UserId: 4, Username: "missing", CreatedAt: now - 10, Type: model.LogTypeConsume, Quota: 5000000, Other: `{"billing_source":"subscription","subscription_id":999}`},
+				{UserId: 1, Username: "alice", CreatedAt: now - 10000, Type: model.LogTypeConsume, ModelName: "gpt-a", Quota: 5000000},
+				{UserId: 1, Username: "alice", CreatedAt: now - 10, Type: model.LogTypeRefund, ModelName: "gpt-a", Quota: 5000000},
+			}
+			for i := range logs {
+				require.NoError(t, model.LOG_DB.Create(&logs[i]).Error)
+			}
+			query := fmt.Sprintf("start_timestamp=%d&end_timestamp=%d", now-100, now+100)
+			for _, handler := range []gin.HandlerFunc{GetLogsStat, func(c *gin.Context) { c.Set("username", "alice"); GetLogsSelfStat(c) }} {
+				response := callLogHandler(t, handler, 1, common.RoleAdminUser, query+"&username=alice&model_name=gpt-%25&token_name=key-a&channel=9&group=vip")[0]
+				require.Equal(t, true, response["success"], response)
+				data := response["data"].(map[string]any)
+				assert.EqualValues(t, 10000000, data["quota"])
+				assert.InDelta(t, 10+10.0*500/1930, data["actual_cost_cny"], 1e-10)
+				assert.Equal(t, false, data["actual_cost_estimated"])
+				assert.EqualValues(t, 2, data["rpm"])
+			}
+			for _, check := range []struct {
+				username  string
+				cost      float64
+				estimated bool
+				unknown   bool
+			}{
+				{"bob", 10.0 * 300 / 1155, false, false},
+				{"estimate", 10.0 * 550 / 1155, true, false},
+				{"missing", 0, false, true},
+				{"nobody", 0, false, false},
+			} {
+				response := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username="+check.username)[0]
+				require.Equal(t, true, response["success"], response)
+				data := response["data"].(map[string]any)
+				if check.unknown {
+					assert.Nil(t, data["actual_cost_cny"])
+				} else {
+					assert.InDelta(t, check.cost, data["actual_cost_cny"], 1e-10)
+				}
+				assert.Equal(t, check.estimated, data["actual_cost_estimated"])
+			}
+			// Never pick an arbitrary order if multiple successful payments
+			// match the same historical subscription timestamp.
+			require.NoError(t, mainDB.Create(&model.SubscriptionOrder{UserId: 2, PlanId: 1, Money: 999, TradeNo: "ambiguous", Status: common.TopUpStatusSuccess, CompleteTime: now - 200, PaymentProvider: model.PaymentProviderHupijiao}).Error)
+			ambiguous := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username=bob")[0]
+			require.Equal(t, true, ambiguous["success"])
+			ambiguousData := ambiguous["data"].(map[string]any)
+			assert.Equal(t, true, ambiguousData["actual_cost_estimated"])
+			assert.InDelta(t, 10.0*550/1155, ambiguousData["actual_cost_cny"], 1e-10)
+			// Recurring grants cannot be costed as though one cycle were the
+			// entire paid allowance. The API must expose an unknown amount.
+			require.NoError(t, mainDB.Model(&model.SubscriptionPlan{}).Where("id = ?", plan.Id).Update("quota_reset_period", model.SubscriptionResetDaily).Error)
+			response := callLogHandler(t, GetLogsStat, 1, common.RoleAdminUser, query+"&username=bob")[0]
+			require.Equal(t, true, response["success"])
+			assert.Nil(t, response["data"].(map[string]any)["actual_cost_cny"])
+		})
+	}
+}
