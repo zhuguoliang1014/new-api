@@ -60,6 +60,7 @@ export interface ChatCompletionMessage {
 export interface ContentPart {
   type: 'text' | 'image_url'
   text?: string
+  cache_control?: { type: 'ephemeral' }
   image_url?: {
     url: string
   }
@@ -67,6 +68,7 @@ export interface ContentPart {
 
 export interface ChatCompletionRequest {
   model: string
+  prompt_cache_key?: string
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean

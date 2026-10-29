@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	relaymedia "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/media"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -77,6 +79,52 @@ func TestOpenAIChatRequestToClaudeMessagesNormalizesToolInputSchema(t *testing.T
 			assert.JSONEq(t, string(wantSchema), string(tool.InputSchema))
 		})
 	}
+}
+
+func TestOpenAIChatRequestToClaudeMessagesPreservesCacheBreakpoints(t *testing.T) {
+	relaymedia.SetMediaResolver(relaymedia.MediaResolver{
+		GetBase64Data: func(context.Context, types.FileSource, ...string) (string, string, error) {
+			return "aGVsbG8=", "image/png", nil
+		},
+	})
+	t.Cleanup(func() { relaymedia.SetMediaResolver(relaymedia.MediaResolver{}) })
+	var request dto.GeneralOpenAIRequest
+	require.NoError(t, kitutil.Unmarshal([]byte(`{
+		"model":"claude-test","max_tokens":128,
+		"messages":[
+			{"role":"system","content":[{"type":"text","text":"Instructions","cache_control":{"type":"ephemeral","ttl":"1h"}}]},
+			{"role":"user","content":[
+				{"type":"text","text":"Uncached"},
+				{"type":"text","text":"Cached text","cache_control":{"type":"ephemeral"}},
+				{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="},"cache_control":{"type":"ephemeral","ttl":"5m"}}
+			]},
+			{"role":"assistant","content":[{"type":"text","text":"Cached answer","cache_control":{"type":"ephemeral"}}]}
+		]
+	}`), &request))
+
+	converted, err := OpenAIChatRequestToClaudeMessages(context.Background(), nil, request)
+	require.NoError(t, err)
+	encoded, err := kitutil.Marshal(converted)
+	require.NoError(t, err)
+	var result struct {
+		System   []dto.ClaudeMediaMessage `json:"system"`
+		Messages []struct {
+			Content []dto.ClaudeMediaMessage `json:"content"`
+		} `json:"messages"`
+	}
+	require.NoError(t, kitutil.Unmarshal(encoded, &result))
+	require.Len(t, result.System, 1)
+	assert.JSONEq(t, `{"type":"ephemeral","ttl":"1h"}`, string(result.System[0].CacheControl))
+	require.Len(t, result.Messages, 2)
+	content := result.Messages[0].Content
+	require.Len(t, content, 3)
+	assert.Empty(t, content[0].CacheControl)
+	assert.Equal(t, "Cached text", content[1].GetText())
+	assert.JSONEq(t, `{"type":"ephemeral"}`, string(content[1].CacheControl))
+	assert.Equal(t, "image", content[2].Type)
+	assert.JSONEq(t, `{"type":"ephemeral","ttl":"5m"}`, string(content[2].CacheControl))
+	require.Len(t, result.Messages[1].Content, 1)
+	assert.JSONEq(t, `{"type":"ephemeral"}`, string(result.Messages[1].Content[0].CacheControl))
 }
 
 func TestOpenAIChatRequestToClaudeMessagesMergesAdjacentAssistantToolCalls(t *testing.T) {

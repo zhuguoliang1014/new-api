@@ -44,6 +44,96 @@ func (*imageReservation) NeedsRefund() bool          { return false }
 
 func (s *imageReservation) ReserveBeforeSubmit(quota int) error { return s.Reserve(quota) }
 
+func TestPlaygroundConvertsChatRequestsThroughPassThroughChannels(t *testing.T) {
+	service.InitHttpClient()
+	settings := model_setting.GetGlobalSettings()
+	saved := *settings
+	t.Cleanup(func() { *settings = saved })
+
+	for _, tc := range []struct {
+		name        string
+		playground  bool
+		global      bool
+		channel     bool
+		channelType int
+	}{
+		{name: "claude channel passthrough", playground: true, channel: true, channelType: constant.ChannelTypeAnthropic},
+		{name: "claude global passthrough", playground: true, global: true, channelType: constant.ChannelTypeAnthropic},
+		{name: "openai playground model mapping", playground: true, channel: true, channelType: constant.ChannelTypeOpenAI},
+		{name: "api channel passthrough preserved", channel: true, channelType: constant.ChannelTypeAnthropic},
+		{name: "api global passthrough preserved", global: true, channelType: constant.ChannelTypeAnthropic},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			settings.PassThroughRequestEnabled = tc.global
+			type capturedRequest struct {
+				path string
+				body []byte
+			}
+			captured := make(chan capturedRequest, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusBadRequest)
+					return
+				}
+				captured <- capturedRequest{path: r.URL.Path, body: body}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = io.WriteString(w, `{"error":{"message":"fixture upstream rejection","type":"authentication_error"}}`)
+			}))
+			t.Cleanup(upstream.Close)
+
+			body := `{"model":"chat-alias","max_tokens":123,"prompt_cache_key":"playground-conversation","messages":[{"role":"system","content":[{"type":"text","text":"Stable instructions","cache_control":{"type":"ephemeral","ttl":"1h"}}]},{"role":"user","content":[{"type":"text","text":"Hello","cache_control":{"type":"ephemeral"}}]}]}`
+			path := "/v1/chat/completions"
+			if tc.playground {
+				path = "/pg/chat/completions"
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			common.SetContextKey(c, constant.ContextKeyChannelType, tc.channelType)
+			common.SetContextKey(c, constant.ContextKeyChannelBaseUrl, upstream.URL)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, "chat-alias")
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: tc.channel})
+			c.Set("model_mapping", `{"chat-alias":"upstream-model"}`)
+			request := &dto.GeneralOpenAIRequest{}
+			require.NoError(t, common.UnmarshalBodyReusable(c, request))
+			storage, err := common.GetBodyStorage(c)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = storage.Close() })
+			info := relaycommon.GenRelayInfoOpenAI(c, request)
+
+			apiErr := TextHelper(c, info)
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, http.StatusUnauthorized, apiErr.StatusCode)
+			assert.Contains(t, apiErr.Error(), "fixture upstream rejection")
+			require.Len(t, captured, 1)
+			out := <-captured
+			if tc.channelType == constant.ChannelTypeAnthropic {
+				assert.Equal(t, "/v1/messages", out.path)
+			} else {
+				assert.Equal(t, "/v1/chat/completions", out.path)
+			}
+			if !tc.playground {
+				assert.Equal(t, body, string(out.body))
+				return
+			}
+			assert.Equal(t, "upstream-model", gjson.GetBytes(out.body, "model").String())
+			assert.Equal(t, int64(123), gjson.GetBytes(out.body, "max_tokens").Int())
+			if tc.channelType == constant.ChannelTypeAnthropic {
+				assert.Equal(t, "Stable instructions", gjson.GetBytes(out.body, "system.0.text").String())
+				assert.Equal(t, "1h", gjson.GetBytes(out.body, "system.0.cache_control.ttl").String())
+				assert.Equal(t, "user", gjson.GetBytes(out.body, "messages.0.role").String())
+				assert.Equal(t, "ephemeral", gjson.GetBytes(out.body, "messages.0.content.0.cache_control.type").String())
+				assert.False(t, gjson.GetBytes(out.body, "prompt_cache_key").Exists())
+			} else {
+				assert.Equal(t, "playground-conversation", gjson.GetBytes(out.body, "prompt_cache_key").String())
+			}
+		})
+	}
+}
+
 func TestImageRequestReservesFinalQuantityBeforeUpstream(t *testing.T) {
 	service.InitHttpClient()
 	for _, tc := range []struct {

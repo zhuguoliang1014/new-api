@@ -783,6 +783,11 @@ func (m *Message) ParseContent() []MediaContent {
 		if !ok {
 			continue
 		}
+		var cacheControl json.RawMessage
+		if value, exists := contentItem["cache_control"]; exists && value != nil {
+			cacheControl, _ = kitutil.Marshal(value)
+		}
+		contentStart := len(contentList)
 
 		switch contentType {
 		case ContentTypeText:
@@ -864,6 +869,9 @@ func (m *Message) ParseContent() []MediaContent {
 					},
 				})
 			}
+		}
+		if len(contentList) > contentStart {
+			contentList[len(contentList)-1].CacheControl = cacheControl
 		}
 	}
 

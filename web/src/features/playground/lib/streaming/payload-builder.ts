@@ -33,15 +33,40 @@ export function buildChatCompletionPayload(
   parameterEnabled: ParameterEnabled
 ): ChatCompletionRequest {
   // Filter and format valid messages
-  const processedMessages = messages
-    .filter(isValidMessage)
-    .map(formatMessageForAPI)
+  const validMessages = messages.filter(isValidMessage)
+  const processedMessages = validMessages.map(formatMessageForAPI)
 
   const payload: ChatCompletionRequest = {
     model: config.model,
     group: config.group,
     messages: processedMessages,
     stream: config.stream,
+  }
+
+  const model = config.model.toLowerCase()
+  const firstMessage = validMessages[0]
+  if (
+    firstMessage &&
+    (model.startsWith('gpt-') || model.startsWith('codex-'))
+  ) {
+    // Keep the routing key stable across turns, edits, and retries.
+    payload.prompt_cache_key = `playground-${firstMessage.key}`
+  }
+
+  const lastMessage = processedMessages.at(-1)
+  if (model.startsWith('claude-') && lastMessage) {
+    const content = lastMessage.content
+    if (typeof content === 'string' && content.trim() !== '') {
+      lastMessage.content = [
+        { type: 'text', text: content, cache_control: { type: 'ephemeral' } },
+      ]
+    } else if (Array.isArray(content)) {
+      lastMessage.content = content.map((part, index) =>
+        index === content.length - 1
+          ? { ...part, cache_control: { type: 'ephemeral' } }
+          : part
+      )
+    }
   }
 
   if (parameterEnabled.temperature) {
