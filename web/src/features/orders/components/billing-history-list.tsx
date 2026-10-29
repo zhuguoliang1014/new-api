@@ -228,15 +228,23 @@ export function BillingHistoryList({
                     <div className='flex items-start justify-between gap-3'>
                       <div className='min-w-0 flex-1 space-y-1'>
                         <div className='flex min-w-0 flex-wrap items-center gap-2'>
-                          <code className='truncate font-mono text-sm'>
-                            {record.trade_no}
-                          </code>
-                          <CopyButton
-                            value={record.trade_no}
-                            size='sm'
-                            className='h-5 w-5 p-0'
-                            iconClassName='h-3 w-3'
-                          />
+                          <div className='flex max-w-full min-w-0 items-center gap-1'>
+                            <span className='shrink-0 text-sm'>
+                              {t('Order number:')}
+                            </span>
+                            <CopyButton
+                              value={record.trade_no}
+                              size='sm'
+                              className='h-5 min-w-0 shrink flex-row-reverse gap-2 p-0 font-normal'
+                              iconClassName='h-3 w-3'
+                              aria-label={`${t('Copy to clipboard')}: ${record.trade_no}`}
+                              notify
+                            >
+                              <code className='truncate font-mono text-sm'>
+                                {record.trade_no}
+                              </code>
+                            </CopyButton>
+                          </div>
                           <StatusBadge
                             label={
                               isSubscription

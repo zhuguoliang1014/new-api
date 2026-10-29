@@ -7,7 +7,9 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
+import { toast } from 'sonner'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import zh from '@/i18n/locales/zh.json'
@@ -20,6 +22,10 @@ import { BillingHistoryList } from '../billing-history-list'
 const originalAnimations = Object.getOwnPropertyDescriptor(
   Element.prototype,
   'getAnimations'
+)
+const originalExecCommand = Object.getOwnPropertyDescriptor(
+  document,
+  'execCommand'
 )
 let status = 'pending'
 let client: QueryClient
@@ -54,6 +60,11 @@ beforeEach(async () => {
 
 afterEach(async () => {
   vi.useRealTimers()
+  if (originalExecCommand) {
+    Object.defineProperty(document, 'execCommand', originalExecCommand)
+  } else {
+    Reflect.deleteProperty(document, 'execCommand')
+  }
   if (originalAnimations) {
     Object.defineProperty(
       Element.prototype,
@@ -189,4 +200,52 @@ it('refreshes status from the server without manual refresh and translates cance
   })
   expect(await screen.findByText('已过期')).toBeInTheDocument()
   expect(screen.getByRole('button', { name: '去支付' })).toBeEnabled()
+})
+
+it.each([false, true])(
+  'copies only the order number and shows a success toast when clicked (userOnly: %s)',
+  async (userOnly) => {
+    const user = userEvent.setup()
+    const writeText = vi.spyOn(navigator.clipboard, 'writeText')
+    const success = vi.spyOn(toast, 'success')
+    render(
+      <QueryClientProvider client={client}>
+        <BillingHistoryList userOnly={userOnly} />
+      </QueryClientProvider>
+    )
+
+    await user.click(await screen.findByText(order.trade_no))
+
+    expect(writeText).toHaveBeenCalledWith(order.trade_no)
+    expect(success).toHaveBeenCalledWith('已复制到剪贴板')
+    expect(screen.getByText('订单号：')).toBeInTheDocument()
+  }
+)
+
+it('shows an error instead of a success toast when copying the order number fails', async () => {
+  const user = userEvent.setup()
+  vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(
+    new Error('denied')
+  )
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: () => false,
+  })
+  vi.spyOn(console, 'warn').mockImplementation(() => {})
+  const success = vi.spyOn(toast, 'success')
+  const error = vi.spyOn(toast, 'error')
+  render(
+    <QueryClientProvider client={client}>
+      <BillingHistoryList />
+    </QueryClientProvider>
+  )
+
+  await user.click(
+    await screen.findByRole('button', {
+      name: `复制到剪贴板: ${order.trade_no}`,
+    })
+  )
+
+  expect(error).toHaveBeenCalledWith('复制到剪贴板失败')
+  expect(success).not.toHaveBeenCalled()
 })

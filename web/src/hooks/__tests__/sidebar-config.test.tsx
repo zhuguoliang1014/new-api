@@ -74,7 +74,7 @@ function sidebarFor(admin?: object, user?: object, canConfigure = true) {
 }
 
 describe('security sidebar visibility', () => {
-  it('old configurations show Security & Access and preserve local wallet, orders, community, and API Keys', () => {
+  it('old configurations preserve wallet, orders, Security & Access, and API Keys without the removed WeChat page', () => {
     const { result } = sidebarFor(
       { personal: { enabled: true, personal: true, topup: true } },
       { personal: { enabled: true, personal: true } }
@@ -83,7 +83,7 @@ describe('security sidebar visibility', () => {
       result.current
         .find((group) => group.id === 'personal')
         ?.items.map((item) => ('url' in item ? item.url : undefined))
-    ).toEqual(['/my-wallet', '/orders', '/profile', '/wechat', '/security'])
+    ).toEqual(['/my-wallet', '/orders', '/profile', '/security'])
     expect(
       result.current
         .flatMap((group) => group.items)

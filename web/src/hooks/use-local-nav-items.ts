@@ -1,7 +1,6 @@
 import type { TFunction } from 'i18next'
 import { Receipt, ScrollText, Wallet } from 'lucide-react'
 
-import { IconWeChat } from '@/assets/brand-icons'
 import type { NavItem, SidebarData } from '@/components/layout/types'
 import { LOCAL_CONFIG } from '@/lib/local-config'
 
@@ -33,16 +32,6 @@ function getLocalAdminItems(t: TFunction): NavItem[] {
   ]
 }
 
-function getLocalCommunityItems(t: TFunction): NavItem[] {
-  return [
-    {
-      title: t('WeChat Community'),
-      url: '/wechat',
-      icon: IconWeChat,
-    },
-  ]
-}
-
 // Inserts local items into the matching upstream group; falls back to
 // appending a new group if the upstream group is missing.
 function injectInto(
@@ -66,15 +55,9 @@ export function injectLocalNavItems(
   base: SidebarData,
   t: TFunction
 ): SidebarData {
-  // Personal: prepend Wallet/Orders and place the community link after Profile.
+  // Personal: prepend Wallet/Orders.
   const personalItems = getLocalPersonalItems(t)
   let next = injectInto(base, 'personal', personalItems, 0)
-  next = injectInto(
-    next,
-    'personal',
-    getLocalCommunityItems(t),
-    personalItems.length + 1
-  )
   // Admin: insert Order History after Channels (index 1).
   next = injectInto(next, 'admin', getLocalAdminItems(t), 1)
   return next
