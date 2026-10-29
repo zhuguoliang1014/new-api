@@ -20,10 +20,17 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 import z from 'zod'
 
 import { Rankings } from '@/features/rankings'
+import { UserRankings } from '@/features/user-rankings'
 import { getModuleAccessForGuard } from '@/lib/nav-modules'
 import { useAuthStore } from '@/stores/auth-store'
 
 const rankingsSearchSchema = z.object({
+  view: z.enum(['users', 'models']).optional().catch(undefined),
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .catch(undefined),
   period: z
     .enum(['today', 'week', 'month', 'year'])
     .optional()
@@ -50,5 +57,14 @@ export const Route = createFileRoute('/rankings/')({
       }
     }
   },
-  component: Rankings,
+  component: RankingsPage,
 })
+
+function RankingsPage() {
+  const search = Route.useSearch()
+  return search.view === 'models' || (!search.view && search.period) ? (
+    <Rankings />
+  ) : (
+    <UserRankings />
+  )
+}
