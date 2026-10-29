@@ -1123,3 +1123,201 @@ func TestOAuthBindIgnoresLegacyGitHubUsernames(t *testing.T) {
 		})
 	}
 }
+
+// TEST_SECURITY_DIALECT plus TEST_MYSQL_DSN / TEST_POSTGRES_DSN exercise
+// registration and rewards on the real supported engines with separate logs.
+func startYaohuoOAuthLogin(t *testing.T, router *gin.Engine) (string, *http.Cookie) {
+	t.Helper()
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest("POST", "/api/oauth/state", strings.NewReader(`{"provider":"yaohuo","intent":"login"}`))
+	request.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(response, request)
+	var result struct {
+		Success bool `json:"success"`
+		Data    struct {
+			FlowToken string `json:"flow_token"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+	require.True(t, result.Success, response.Body.String())
+	cookies := response.Result().Cookies()
+	require.Len(t, cookies, 1)
+	assert.True(t, cookies[0].HttpOnly)
+	assert.True(t, cookies[0].Secure)
+	assert.Equal(t, http.SameSiteLaxMode, cookies[0].SameSite)
+	assert.Empty(t, cookies[0].Domain)
+	assert.Equal(t, "/", cookies[0].Path)
+	assert.Equal(t, 600, cookies[0].MaxAge)
+	assert.True(t, strings.HasPrefix(cookies[0].Name, "__Host-"))
+	return result.Data.FlowToken, cookies[0]
+}
+
+func TestYaohuoSignupReward(t *testing.T) {
+	existing, _ := setupSecurityEnrollmentTest(t)
+	previousSecure := common.SessionCookieSecure
+	previousAddress := system_setting.ServerAddress
+	common.SessionCookieSecure = false
+	system_setting.ServerAddress = "https://example.com"
+	t.Cleanup(func() {
+		common.SessionCookieSecure = previousSecure
+		system_setting.ServerAddress = previousAddress
+	})
+	require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
+	require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+	previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
+	common.RegisterEnabled, common.QuotaForNewUser = true, 0
+	t.Cleanup(func() { common.RegisterEnabled, common.QuotaForNewUser = previousRegister, previousQuota })
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/token" {
+			require.NoError(t, r.ParseForm())
+			if r.Form.Get("code") != "verified-code" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _ = w.Write([]byte(`{"access_token":"test-provider-token","token_type":"Bearer"}`))
+			return
+		}
+		assert.Equal(t, "Bearer test-provider-token", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"userid":12345,"nickname":"yaohuo-new-user"}`))
+	}))
+	t.Cleanup(upstream.Close)
+	provider := oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{
+		Id: 42, Slug: "yaohuo", Name: "妖火网", Enabled: true, ClientId: "test-client", ClientSecret: "test-secret", AuthStyle: 1,
+		TokenEndpoint: upstream.URL + "/token", UserInfoEndpoint: upstream.URL + "/profile", UserIdField: "userid", UsernameField: "nickname",
+	})
+	require.NoError(t, oauth.RegisterCustom("yaohuo", provider))
+	t.Cleanup(func() { oauth.Unregister("yaohuo") })
+	router := gin.New()
+	router.GET("/api/oauth/:provider", HandleOAuth)
+	router.POST("/api/oauth/state", GenerateOAuthCode)
+	// Invalid, expired and wrong-provider states must not create users or rewards.
+	for _, scenario := range []string{"missing", "expired", "wrong-provider", "missing-cookie", "other-browser", "bad-code", "registration-disabled", "success"} {
+		t.Run(scenario, func(t *testing.T) {
+			state, cookie := startYaohuoOAuthLogin(t, router)
+			if scenario == "wrong-provider" {
+				require.NoError(t, model.DB.Model(&model.AuthFlow{}).Where("provider = ?", "yaohuo").Update("provider", "other").Error)
+			}
+			if scenario == "expired" {
+				require.NoError(t, model.DB.Model(&model.AuthFlow{}).Where("provider = ?", "yaohuo").Update("expires_at", time.Now().Add(-time.Minute)).Error)
+			}
+			if scenario == "missing" {
+				state = "invalid"
+			}
+			code := "verified-code"
+			if scenario == "bad-code" {
+				code = "bad-code"
+			}
+			common.RegisterEnabled = scenario != "registration-disabled"
+			response := httptest.NewRecorder()
+			request := httptest.NewRequest("GET", "/api/oauth/yaohuo?state="+state+"&code="+code, nil)
+			if scenario == "other-browser" {
+				_, cookie = startYaohuoOAuthLogin(t, router)
+			}
+			if scenario != "missing-cookie" {
+				request.AddCookie(cookie)
+			}
+			router.ServeHTTP(response, request)
+			var result struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			assert.Equal(t, scenario == "success", result.Success, response.Body.String())
+			var rewards int64
+			require.NoError(t, model.DB.Model(&model.OAuthSignupReward{}).Count(&rewards).Error)
+			if scenario != "success" {
+				assert.Zero(t, rewards)
+				return
+			}
+			cleared := false
+			for _, responseCookie := range response.Result().Cookies() {
+				if responseCookie.Name == cookie.Name {
+					assert.Equal(t, -1, responseCookie.MaxAge)
+					assert.Empty(t, responseCookie.Value)
+					cleared = true
+				}
+			}
+			assert.True(t, cleared, "the browser binding cookie must be cleared with the callback response")
+			assert.EqualValues(t, 1, rewards)
+			user, err := model.GetUserByOAuthBinding(42, "12345")
+			require.NoError(t, err)
+			assert.Equal(t, 2500000, user.Quota)
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("user_id = ?", user.Id).Find(&logs).Error)
+			require.Len(t, logs, 1)
+			assert.Contains(t, logs[0].Content, "Yaohuo sign-up bonus")
+			assert.NotContains(t, logs[0].Content, "test-provider-token")
+			// Replaying the callback cannot log in or award again.
+			response = httptest.NewRecorder()
+			router.ServeHTTP(response, request.Clone(context.Background()))
+			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
+			assert.False(t, result.Success)
+		})
+	}
+	verifiedUser := &oauth.OAuthUser{ProviderUserID: "12345", Username: "yaohuo-new-user"}
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest("GET", "/api/oauth/yaohuo", nil)
+	user, _, err := findOrCreateOAuthUser(c, provider, verifiedUser, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 2500000, user.Quota, "repeat login must not award again")
+	// Removing the binding (including account deletion) must not erase the receipt.
+	require.NoError(t, model.DeleteUserOAuthBinding(user.Id, 42))
+	require.NoError(t, model.DB.Delete(user).Error)
+	verifiedUser.Username = "yaohuo-re-registered"
+	replacement, _, err := findOrCreateOAuthUser(c, provider, verifiedUser, nil, "")
+	require.NoError(t, err)
+	assert.Zero(t, replacement.Quota, "the provider identity already claimed the reward")
+	// Existing accounts that link Yaohuo receive no registration reward.
+	require.NoError(t, model.CreateUserOAuthBinding(&model.UserOAuthBinding{UserId: existing.Id, ProviderId: 42, ProviderUserId: "existing-subject"}))
+	linked, _, err := findOrCreateOAuthUser(c, provider, &oauth.OAuthUser{ProviderUserID: "existing-subject"}, nil, "")
+	require.NoError(t, err)
+	assert.Zero(t, linked.Quota)
+	ordinary := &model.User{Username: "ordinary-registration", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, ordinary.Insert(0))
+	assert.Zero(t, ordinary.Quota)
+	other := oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 43, Slug: "other", Name: "Other"})
+	otherUser, _, err := findOrCreateOAuthUser(c, other, &oauth.OAuthUser{ProviderUserID: "other-subject", Username: "other-registration"}, nil, "")
+	require.NoError(t, err)
+	assert.Zero(t, otherUser.Quota)
+}
+
+func TestYaohuoSignupRewardRollback(t *testing.T) {
+	setupSecurityEnrollmentTest(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
+	require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+	previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
+	common.RegisterEnabled = true
+	t.Cleanup(func() { common.RegisterEnabled, common.QuotaForNewUser = previousRegister, previousQuota })
+	provider := oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 42, Slug: "yaohuo", Name: "妖火网"})
+	for _, test := range []struct {
+		name, subject string
+		initial, want int
+		failure       bool
+	}{
+		{"overflow", "overflow-subject", common.MaxWalletQuota, 0, true},
+		{"invalid binding", "", 0, 0, true},
+		{"preserve general bonus", "valid-subject", 500000, 3000000, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			common.QuotaForNewUser = test.initial
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("GET", "/api/oauth/yaohuo", nil)
+			var before int64
+			require.NoError(t, model.DB.Model(&model.User{}).Count(&before).Error)
+			user, _, err := findOrCreateOAuthUser(c, provider, &oauth.OAuthUser{ProviderUserID: test.subject, Username: "reward-test"}, nil, "")
+			if !test.failure {
+				require.NoError(t, err)
+				assert.Equal(t, test.want, user.Quota)
+				return
+			}
+			require.Error(t, err)
+			var after, rewards, bindings int64
+			require.NoError(t, model.DB.Model(&model.User{}).Count(&after).Error)
+			require.NoError(t, model.DB.Model(&model.OAuthSignupReward{}).Count(&rewards).Error)
+			require.NoError(t, model.DB.Model(&model.UserOAuthBinding{}).Count(&bindings).Error)
+			assert.Equal(t, before, after)
+			assert.Zero(t, rewards)
+			assert.Zero(t, bindings)
+		})
+	}
+}

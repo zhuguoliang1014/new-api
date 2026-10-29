@@ -1,11 +1,73 @@
 package model
 
 import (
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
+
+// OAuthSignupReward survives account deletion and OAuth unlinking so the same
+// provider identity cannot collect a registration reward more than once.
+type OAuthSignupReward struct {
+	IdentityHash string `gorm:"type:varchar(64);primaryKey"`
+	ClaimId      string `gorm:"type:varchar(32);not null"`
+	UserId       int    `gorm:"not null;index"`
+	Quota        int    `gorm:"not null"`
+	CreatedAt    time.Time
+}
+
+func (OAuthSignupReward) TableName() string {
+	return "oauth_signup_rewards"
+}
+
+// GrantOAuthSignupRewardWithTx is only called while creating a new OAuth user,
+// after its verified provider binding has been inserted in the same transaction.
+func GrantOAuthSignupRewardWithTx(tx *gorm.DB, user *User, provider, subject string) (int, error) {
+	if provider != "yaohuo" {
+		return 0, nil
+	}
+	if user.Id <= 0 || subject == "" {
+		return 0, errors.New("OAuth signup reward requires a user and provider identity")
+	}
+	quota, err := common.WalletQuotaFromDecimalStrict(decimal.NewFromInt(5).Mul(decimal.NewFromFloat(common.QuotaPerUnit)))
+	if err != nil || quota <= 0 {
+		return 0, errors.New("invalid OAuth signup reward quota")
+	}
+	reward := OAuthSignupReward{
+		IdentityHash: fmt.Sprintf("%x", sha256.Sum256([]byte(provider+"\x00"+subject))),
+		ClaimId:      common.GetUUID(),
+		UserId:       user.Id, Quota: quota,
+	}
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&reward)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	// MySQL's clientFoundRows can report an unchanged duplicate as an affected
+	// row. Check ownership of this exact claim attempt instead of RowsAffected.
+	var claimed int64
+	if err := tx.Model(&OAuthSignupReward{}).Where("identity_hash = ? AND claim_id = ?", reward.IdentityHash, reward.ClaimId).Count(&claimed).Error; err != nil {
+		return 0, err
+	}
+	if claimed == 0 {
+		return 0, nil
+	}
+	result = tx.Model(&User{}).Where("id = ? AND quota >= 0 AND quota <= ?", user.Id, common.MaxWalletQuota-quota).
+		UpdateColumn("quota", gorm.Expr("quota + ?", quota))
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return 0, errors.New("OAuth signup reward would exceed wallet quota bounds")
+	}
+	user.Quota += quota
+	return quota, nil
+}
 
 // UserOAuthBinding stores the binding relationship between users and custom OAuth providers
 type UserOAuthBinding struct {

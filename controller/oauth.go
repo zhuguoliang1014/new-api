@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,15 +12,37 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 const oauthAuthFlowTTL = 10 * time.Minute
+
+// The host-only cookie binds a Yaohuo login transaction to the browser that
+// started it. The latest flow replaces an earlier pending flow in that browser.
+func yaohuoLoginCookie(state string) *http.Cookie {
+	secure := common.SessionCookieSecure || strings.HasPrefix(strings.ToLower(system_setting.ServerAddress), "https://")
+	name := "new_api_yaohuo_oauth"
+	if secure {
+		name = "__Host-" + name
+	}
+	cookie := &http.Cookie{
+		Name: name, Value: state, Path: "/", HttpOnly: true,
+		Secure: secure, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(oauthAuthFlowTTL.Seconds()), Expires: time.Now().Add(oauthAuthFlowTTL),
+	}
+	if state == "" {
+		cookie.MaxAge = -1
+		cookie.Expires = time.Unix(1, 0)
+	}
+	return cookie
+}
 
 type oauthStateRequest struct {
 	Provider string          `json:"provider"`
@@ -130,6 +153,9 @@ func GenerateOAuthCode(c *gin.Context) {
 		writeSecurityOperationError(c, err)
 		return
 	}
+	if request.Provider == "yaohuo" && request.Intent == model.AuthFlowIntentLogin {
+		http.SetCookie(c.Writer, yaohuoLoginCookie(state))
+	}
 	bindingStarted = request.Intent == model.AuthFlowIntentBind
 	data := gin.H{"flow_token": state, "expires_at": expiresAt.Unix()}
 	if flowPayload.Telegram != nil {
@@ -160,6 +186,16 @@ func HandleOAuth(c *gin.Context) {
 	if err != nil {
 		writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
 		return
+	}
+	if providerName == "yaohuo" && pendingFlow.Intent == model.AuthFlowIntentLogin {
+		cookie := yaohuoLoginCookie("")
+		browserState, err := c.Cookie(cookie.Name)
+		if err != nil || subtle.ConstantTimeCompare([]byte(browserState), []byte(state)) != 1 {
+			writeAccountStatusError(c, http.StatusForbidden, "State parameter is empty or mismatched")
+			return
+		}
+		// A callback that reaches the provider must restart authorization on error.
+		http.SetCookie(c.Writer, cookie)
 	}
 
 	consumeMatch := model.AuthFlowMatch{
@@ -519,6 +555,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
+		var signupReward int
 		// Custom provider: create user and binding in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
@@ -536,7 +573,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 				return err
 			}
 
-			return nil
+			var err error
+			signupReward, err = model.GrantOAuthSignupRewardWithTx(tx, user, genericProvider.GetConfig().Slug, oauthUser.ProviderUserID)
+			return err
 		})
 		if err != nil {
 			return nil, nil, err
@@ -544,6 +583,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 		// Perform post-transaction tasks (logs, sidebar config, inviter rewards)
 		user.FinalizeOAuthUserCreation(inviterId)
+		if signupReward > 0 {
+			model.RecordLog(user.Id, model.LogTypeSystem, common.NewMessage("Yaohuo sign-up bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(signupReward)}))
+		}
 	} else {
 		// Built-in provider: create user and update provider ID in a transaction
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
