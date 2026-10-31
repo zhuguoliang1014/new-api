@@ -40,7 +40,7 @@ type ImagePlaygroundStore = {
   selectedRecordId: string | null
   /** The id of the active style preset, or null for no style. */
   selectedStyleId: string | null
-  job: ImageJob | null
+  jobs: ImageJob[]
   error: string | null
   storageUnavailable: boolean
   historyLoaded: boolean
@@ -60,13 +60,13 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
     records: [],
     selectedRecordId: null,
     selectedStyleId: null,
-    job: null,
+    jobs: [],
     error: null,
     storageUnavailable: false,
     historyLoaded: false,
     setScope: (scope) => {
       if (scope === get().scope) return
-      get().job?.controller.abort()
+      for (const job of get().jobs) job.controller.abort()
       for (const reference of get().references) {
         URL.revokeObjectURL(reference.preview)
       }
@@ -77,7 +77,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         records: [],
         selectedRecordId: null,
         selectedStyleId: null,
-        job: null,
+        jobs: [],
         error: null,
         storageUnavailable: false,
         historyLoaded: false,
@@ -171,10 +171,10 @@ function warnBeforeReload(event: BeforeUnloadEvent): void {
 
 useImagePlaygroundStore.subscribe((state, previous) => {
   const pending =
-    Boolean(state.job) ||
+    state.jobs.some((job) => !job.error) ||
     state.records.some((record) => record.localSaveStatus === 'saving')
   const wasPending =
-    Boolean(previous.job) ||
+    previous.jobs.some((job) => !job.error) ||
     previous.records.some((record) => record.localSaveStatus === 'saving')
   if (pending === wasPending) return
   if (pending) window.addEventListener('beforeunload', warnBeforeReload)

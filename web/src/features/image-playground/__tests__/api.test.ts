@@ -138,3 +138,41 @@ describe('agent image playground contracts', () => {
     ).rejects.toThrow('usable images')
   })
 })
+
+it.each([false, true])(
+  'pins the requested group and model for a concurrent request (references: %s)',
+  async (withReferences) => {
+    const post = vi
+      .spyOn(imageRelayClient, 'post')
+      .mockResolvedValue({ data: { data: [{ b64_json: 'aW1hZ2U=' }] } })
+    const group = '【生图】超分高质量1-10k'
+    await generateImages(
+      {
+        ...parameters,
+        group,
+        model: 'gpt-image-2.5',
+        size: '10240x5760',
+        quality: 'high',
+      },
+      withReferences
+        ? [new File(['image'], 'ref.png', { type: 'image/png' })]
+        : [],
+      new AbortController().signal
+    )
+    expect(post).toHaveBeenCalledOnce()
+    const [, body, config] = post.mock.calls[0]
+    expect(config).toMatchObject({
+      skipAuthRefresh: true,
+      headers: {
+        'X-Studio-Group': encodeURIComponent(group),
+        'X-Studio-Model': 'gpt-image-2.5',
+      },
+    })
+    expect(
+      body instanceof FormData
+        ? body.get('size')
+        : (body as { size: string }).size
+    ).toBe('10240x5760')
+    expect(config).not.toHaveProperty('headers.Authorization')
+  }
+)

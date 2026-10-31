@@ -38,15 +38,14 @@ import type { ImageRecord } from '../types'
 import { DownloadCreationButton } from './download-creation-button'
 import { ImageActions } from './studio-image'
 
-export function StudioCreationActions() {
+export function StudioCreationActions(props: { record?: ImageRecord }) {
   const { t } = useTranslation()
-  const record = useImagePlaygroundStore(
+  const selectedRecord = useImagePlaygroundStore(
     (state) =>
       state.records.find((item) => item.id === state.selectedRecordId) ??
       state.records[0]
   )
-  const selectedId = useImagePlaygroundStore((state) => state.selectedRecordId)
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
+  const record = props.record ?? selectedRecord
   const error = useImagePlaygroundStore((state) => state.error)
   const [deleting, setDeleting] = useState<ImageRecord | null>(null)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -92,7 +91,7 @@ export function StudioCreationActions() {
           </Button>
         </div>
       )}
-      {record && (!busy || selectedId) && (
+      {record && (
         <div
           className='studio-creation-actions'
           aria-label={t('My creations')}
@@ -134,7 +133,7 @@ export function StudioCreationActions() {
             type='button'
             variant='ghost'
             size='sm'
-            disabled={busy}
+
             onClick={() => {
               useImagePlaygroundStore.getState().reuseRecord(record)
               document
@@ -151,7 +150,7 @@ export function StudioCreationActions() {
             size='icon'
             className='studio-delete'
             aria-label={t('Delete creation')}
-            disabled={busy || record.localSaveStatus === 'saving'}
+            disabled={record.localSaveStatus === 'saving'}
             onClick={() => setDeleting(record)}
           >
             <Trash2 size={14} aria-hidden='true' />

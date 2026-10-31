@@ -16,23 +16,58 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Sparkles } from 'lucide-react'
+import { ArrowUpRight, Check } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { EmptyState } from '@/components/empty-state'
+import { Button } from '@/components/ui/button'
+
+import { stylePresets } from '../lib/style-presets'
+import { useImagePlaygroundStore } from '../store'
 
 export function StudioInspiration() {
   const { t } = useTranslation()
+  const selected = useImagePlaygroundStore((state) => state.selectedStyleId)
   return (
     <div className='studio-inspiration'>
-      <EmptyState
-        icon={Sparkles}
-        title={t('Make room for imagination.')}
-        description={t(
-          'Start with a thought in the floating composer below. Your next image begins here.'
-        )}
-        className='studio-empty-state'
-      />
+      <div className='studio-inspiration-heading'>
+        <span className='studio-eyebrow'>{t('A little inspiration')}</span>
+        <h2>{t('What will you create today?')}</h2>
+        <p>{t('Start with a few words, or find a style that feels right.')}</p>
+      </div>
+      <div
+        className='studio-inspiration-grid'
+        role='group'
+        aria-label={t('Style inspiration')}
+      >
+        {stylePresets.map((style) => (
+          <Button
+            key={style.id}
+            type='button'
+            variant='ghost'
+            className='studio-inspiration-card'
+            aria-label={t('Try {{style}}', { style: t(style.label) })}
+            aria-pressed={selected === style.id}
+            onClick={() => {
+              useImagePlaygroundStore.setState({ selectedStyleId: style.id })
+            }}
+          >
+            <span className='studio-inspiration-art'>
+              <img src={style.previewSrc} alt='' loading='lazy' />
+            </span>
+            <span className='studio-inspiration-caption'>
+              <span>{t(style.label)}</span>
+              {selected === style.id ? (
+                <Check size={15} />
+              ) : (
+                <ArrowUpRight size={15} />
+              )}
+            </span>
+          </Button>
+        ))}
+      </div>
+      <p className='studio-inspiration-note'>
+        {t('Style references only. Your creations will appear here.')}
+      </p>
     </div>
   )
 }

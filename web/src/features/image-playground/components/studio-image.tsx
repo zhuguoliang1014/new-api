@@ -120,7 +120,6 @@ export function ImageActions(props: {
       const blob = await getImageBlob(props.image.src)
       if (scope !== getImageAuthScope()) return
       const store = useImagePlaygroundStore.getState()
-      if (store.job) return
       // Validate before replacing the existing draft/reference selection.
       const file = new File(
         [blob],
@@ -153,7 +152,6 @@ export function ImageActions(props: {
       setWorking(false)
     }
   }
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
   return (
     <div className='studio-image-actions'>
       <Button
@@ -168,9 +166,7 @@ export function ImageActions(props: {
       <Button
         variant='ghost'
         size='sm'
-        disabled={
-          working || busy || /^dall-e-/i.test(props.record.parameters.model)
-        }
+        disabled={working || /^dall-e-/i.test(props.record.parameters.model)}
         onClick={() => void editWithReference()}
       >
         {working ? (

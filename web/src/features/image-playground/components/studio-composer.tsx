@@ -18,12 +18,10 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
 import {
-  Bot,
+  ArrowUpRight,
   Loader2,
   Plus,
-  SlidersHorizontal,
-  Sparkles,
-  Square,
+  Settings2,
   WandSparkles,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -33,21 +31,20 @@ import { useTranslation } from 'react-i18next'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormMessage,
 } from '@/components/ui/form'
+import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { useStudioAgentConfig } from '../hooks/use-studio-agent-config'
+import { useStudioGroups } from '../hooks/use-studio-groups'
+import { stylePresets } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 import {
   getImageModelOptions,
@@ -55,66 +52,60 @@ import {
   type ImageParameters,
 } from '../types'
 import { StudioAgentSettings } from './studio-agent-settings'
-import { StudioCreationActions } from './studio-creation-actions'
-import { StudioParameters, StudioQuickParameters } from './studio-parameters'
+import { StudioCostEstimate } from './studio-cost-estimate'
+import { StudioParameters } from './studio-parameters'
 import { StudioReferences } from './studio-references'
-import { StudioStyleSelector } from './studio-style-selector'
 
-type StudioComposerProps = {
+export function StudioComposer(props: {
   refining: boolean
   onRefine: (prompt: string) => Promise<string>
   onGenerate: (parameters: ImageParameters) => void
-}
-
-export function StudioComposer(props: StudioComposerProps) {
+}) {
   const { t } = useTranslation()
   const parameters = useImagePlaygroundStore((state) => state.parameters)
-  const job = useImagePlaygroundStore((state) => state.job)
-  const saving = useImagePlaygroundStore((state) =>
-    state.records.some(
-      (record) =>
-        record.id === state.job?.id && record.localSaveStatus === 'saving'
-    )
+  const activeCount = useImagePlaygroundStore(
+    (state) => state.jobs.filter((job) => !job.error).length
   )
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
-  const agentConfig = useStudioAgentConfig()
-  const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null)
-  const needsSetup = Boolean(
-    agentConfig.config &&
-    (!agentConfig.config.prompt || !agentConfig.config.image)
+  const groups = useStudioGroups()
+  const [promptSettingsOpen, setPromptSettingsOpen] = useState(false)
+  const agentConfig = useStudioAgentConfig(promptSettingsOpen)
+  const selectedStyleId = useImagePlaygroundStore(
+    (state) => state.selectedStyleId
   )
   const isComposingRef = useRef(false)
-
+  const group = groups.data?.find((item) => item.id === parameters.group)
   const form = useForm<ImageParameters>({
     resolver: zodResolver(imageParametersSchema),
     values: parameters,
   })
-
-  const modelOptions = getImageModelOptions(parameters.model)
-  const configuredModel = agentConfig.config?.image?.model
   useEffect(() => {
-    if (configuredModel) setParameters({ model: configuredModel })
-  }, [configuredModel, setParameters])
-  const busy = Boolean(job)
+    if (!groups.data?.length) return
+    const selected = groups.data.find((item) => item.id === parameters.group)
+    if (!selected) {
+      const first = groups.data.find((item) => item.available) ?? groups.data[0]
+      setParameters({
+        group: first.id,
+        model: first.models[0] ?? '',
+        size: 'auto',
+      })
+    } else if (!selected.models.includes(parameters.model)) {
+      setParameters({ model: selected.models[0] ?? '', size: 'auto' })
+    }
+  }, [groups.data, parameters.group, parameters.model, setParameters])
+  const modelOptions = getImageModelOptions(parameters.model)
   const canGenerate = Boolean(
     parameters.prompt.trim() &&
-    !busy &&
-    !props.refining &&
-    !agentConfig.isLoading &&
-    agentConfig.config?.prompt &&
-    agentConfig.config.image
+    group?.available &&
+    group.models.includes(parameters.model) &&
+    activeCount < 4 &&
+    !props.refining
   )
   const canRefine = Boolean(
-    parameters.prompt.trim() &&
-    !busy &&
-    !props.refining &&
-    !agentConfig.isLoading &&
-    agentConfig.config?.prompt
+    parameters.prompt.trim() && agentConfig.config?.prompt && !props.refining
   )
-
   return (
-    <div className='studio-dock'>
-      <StudioCreationActions />
+    <aside className='studio-dock' aria-label={t('Creation settings')}>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit((values) => {
@@ -122,32 +113,184 @@ export function StudioComposer(props: StudioComposerProps) {
           })}
           className='studio-dock-form'
         >
-          <StudioStyleSelector />
-          <div className='studio-dock-input'>
-            <StudioReferences
-              supportsReferences={modelOptions.supportsReferences}
-              onAddFiles={(files) => {
-                try {
-                  useImagePlaygroundStore.getState().addReferences(files)
-                } catch (error) {
-                  handleServerError(error)
+          <div className='studio-panel-scroll'>
+            <div className='studio-section-heading'>
+              <div>
+                <h2>{t('Create an image')}</h2>
+                <p>{t('Turn your idea into an image')}</p>
+              </div>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                aria-label={t('New draft')}
+                onClick={() => {
+                  useImagePlaygroundStore.getState().clearDraft()
+                  document
+                    .querySelector<HTMLTextAreaElement>('#studio-prompt')
+                    ?.focus()
+                }}
+              >
+                <Plus size={17} />
+              </Button>
+            </div>
+            <div className='studio-field studio-group-field'>
+              <Label htmlFor='studio-group'>{t('Generation group')}</Label>
+              <NativeSelect
+                id='studio-group'
+                className='studio-native-select'
+                value={parameters.group ?? ''}
+                disabled={groups.isLoading}
+                onChange={(event) => {
+                  const next = groups.data?.find(
+                    (item) => item.id === event.target.value
+                  )
+                  if (next) {
+                    setParameters({
+                      group: next.id,
+                      model: next.models.includes(parameters.model)
+                        ? parameters.model
+                        : (next.models[0] ?? ''),
+                      size: 'auto',
+                    })
+                  }
+                }}
+              >
+                {!group && (
+                  <NativeSelectOption value=''>
+                    {groups.isLoading ? t('Loading...') : t('Select a group')}
+                  </NativeSelectOption>
+                )}
+                {groups.data?.map((item) => (
+                  <NativeSelectOption key={item.id} value={item.id}>
+                    {item.name} · {item.ratio}×
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+              {group && (
+                <p className='studio-field-hint'>{group.description}</p>
+              )}
+              {group && !group.available && (
+                <p className='studio-field-error' role='alert'>
+                  {t(
+                    'This group is unavailable. Check its API key or choose another group.'
+                  )}
+                </p>
+              )}
+              {groups.isSuccess && groups.data.length === 0 && (
+                <p className='studio-field-error' role='alert'>
+                  {t('No image groups are available for this account.')}
+                </p>
+              )}
+              {groups.isError && (
+                <div className='studio-field-error' role='alert'>
+                  {t('Could not load generation groups.')}{' '}
+                  <Button
+                    type='button'
+                    variant='link'
+                    onClick={() => void groups.refetch()}
+                  >
+                    {t('Retry')}
+                  </Button>
+                </div>
+              )}
+            </div>
+            <div className='studio-field'>
+              <Label htmlFor='studio-model'>{t('Model')}</Label>
+              <NativeSelect
+                id='studio-model'
+                className='studio-native-select'
+                value={parameters.model}
+                disabled={!group?.models.length}
+                onChange={(event) =>
+                  setParameters({ model: event.target.value })
                 }
-              }}
-            />
-            {/* Prompt input */}
+              >
+                {group?.models.map((model) => (
+                  <NativeSelectOption key={model} value={model}>
+                    {model}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className='studio-prompt-heading'>
+              <Label htmlFor='studio-prompt'>{t('Image prompt')}</Label>
+              <Button
+                type='button'
+                variant='ghost'
+                size='sm'
+                disabled={!canRefine}
+                aria-busy={props.refining}
+                aria-label={
+                  props.refining ? t('Refining...') : t('Refine prompt')
+                }
+                title={
+                  !agentConfig.config?.prompt
+                    ? t('Prompt refinement is not configured')
+                    : undefined
+                }
+                onClick={async () => {
+                  const original = parameters.prompt
+                  try {
+                    const refined = await props.onRefine(original)
+                    if (
+                      useImagePlaygroundStore.getState().parameters.prompt ===
+                      original
+                    ) {
+                      setParameters({ prompt: refined })
+                    }
+                  } catch (error) {
+                    if ((error as { name?: string }).name !== 'AbortError') {
+                      handleServerError(error)
+                    }
+                  }
+                }}
+              >
+                {props.refining ? (
+                  <Loader2 size={13} className='animate-spin' />
+                ) : (
+                  <WandSparkles size={13} />
+                )}
+                {props.refining ? t('Refining...') : t('Refine')}
+              </Button>
+              <Dialog
+                open={promptSettingsOpen}
+                onOpenChange={setPromptSettingsOpen}
+                title={t('Prompt refinement')}
+                trigger={
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    aria-label={t('Prompt refinement settings')}
+                  >
+                    <Settings2 size={13} />
+                  </Button>
+                }
+              >
+                <StudioAgentSettings
+                  state={agentConfig}
+                  promptOnly
+                  onSaved={() => setPromptSettingsOpen(false)}
+                />
+              </Dialog>
+            </div>
             <FormField
               control={form.control}
               name='prompt'
               render={({ field }) => (
-                <FormItem className='studio-dock-prompt-item'>
+                <FormItem>
                   <FormControl id='studio-prompt'>
                     <Textarea
                       {...field}
                       id='studio-prompt'
                       aria-label={t('Image prompt')}
-                      disabled={busy || props.refining}
                       maxLength={32000}
-                      rows={2}
+                      rows={5}
+                      className='studio-dock-prompt'
+                      placeholder={t(
+                        'Describe your image: subject, setting, light and details…'
+                      )}
                       onChange={(event) => {
                         field.onChange(event)
                         setParameters({ prompt: event.target.value })
@@ -158,10 +301,6 @@ export function StudioComposer(props: StudioComposerProps) {
                       onCompositionEnd={() => {
                         isComposingRef.current = false
                       }}
-                      placeholder={t(
-                        'A subject, a setting, a mood… What do you want to see?'
-                      )}
-                      className='studio-dock-prompt'
                       onPaste={(event) => {
                         const files = [...event.clipboardData.files].filter(
                           (file) => file.type.startsWith('image/')
@@ -201,141 +340,68 @@ export function StudioComposer(props: StudioComposerProps) {
                 </FormItem>
               )}
             />
-          </div>
-          <Collapsible>
-            {/* Bottom toolbar: params left, actions right */}
-            <div className='studio-dock-toolbar'>
-              <div className='studio-dock-controls'>
-                <StudioQuickParameters />
-              </div>
-              {/* Right actions */}
-              <div className='studio-dock-actions'>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='sm'
-                  className='studio-dock-refine'
-                  aria-label={
-                    props.refining ? t('Refining...') : t('Refine prompt')
-                  }
-                  disabled={!canRefine}
-                  aria-busy={props.refining}
-                  onClick={async () => {
-                    try {
-                      const refined = await props.onRefine(parameters.prompt)
-                      setParameters({ prompt: refined })
-                      form.setValue('prompt', refined)
-                    } catch (error) {
-                      if ((error as { name?: string }).name !== 'AbortError') {
-                        handleServerError(error)
-                      }
-                    }
-                  }}
-                >
-                  {props.refining ? (
-                    <Loader2
-                      size={14}
-                      className='animate-spin motion-reduce:animate-none'
-                    />
-                  ) : (
-                    <WandSparkles size={14} aria-hidden='true' />
-                  )}
-                  {props.refining ? t('Refining...') : t('Refine')}
-                </Button>
-
-                <CollapsibleTrigger
-                  render={
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon'
-                      className='studio-dock-icon-btn'
-                      aria-label={t('Advanced settings')}
-                      title={t('Advanced settings')}
-                    />
-                  }
-                >
-                  <SlidersHorizontal size={16} aria-hidden='true' />
-                </CollapsibleTrigger>
-                <Dialog
-                  open={settingsOpen ?? needsSetup}
-                  onOpenChange={setSettingsOpen}
-                  title={t('Agent settings')}
-                  description={t(
-                    'Choose one API key and model for prompt refinement, and another for image generation.'
-                  )}
-                  contentClassName='studio-agent-dialog'
-                  trigger={
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon'
-                      className='studio-dock-icon-btn'
-                      aria-label={t('Agent settings')}
-                      title={t('Agent settings')}
-                      disabled={busy || props.refining}
-                    >
-                      <Bot size={17} aria-hidden='true' />
-                    </Button>
-                  }
-                >
-                  <StudioAgentSettings
-                    state={agentConfig}
-                    onSaved={() => setSettingsOpen(false)}
-                  />
-                </Dialog>
-                <Button
-                  type='button'
-                  variant='ghost'
-                  size='icon'
-                  className='studio-dock-icon-btn'
-                  aria-label={t('Create')}
-                  disabled={busy || props.refining}
-                  onClick={() => {
-                    useImagePlaygroundStore.getState().clearDraft()
-                    document
-                      .querySelector<HTMLTextAreaElement>('#studio-prompt')
-                      ?.focus()
-                  }}
-                >
-                  <Plus size={16} aria-hidden='true' />
-                </Button>
-                {job && !saving && (
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    className='studio-dock-refine'
-                    onClick={() => job.controller.abort()}
-                  >
-                    <Square size={14} aria-hidden='true' />
-                    {t('Stop waiting')}
-                  </Button>
-                )}
-                <Button
-                  type='submit'
-                  disabled={!canGenerate}
-                  aria-label={t('Generate image')}
-                  className='studio-dock-generate'
-                >
-                  {busy ? (
-                    <Loader2
-                      size={16}
-                      className='animate-spin motion-reduce:animate-none'
-                    />
-                  ) : (
-                    <Sparkles size={16} aria-hidden='true' />
-                  )}
-                  {saving && t('Saving...')}
-                  {!saving && (busy ? t('Creating...') : t('Generate'))}
-                </Button>
-              </div>
+            <div className='studio-reference-heading'>
+              <Label htmlFor='studio-reference'>{t('Reference images')}</Label>
+              <span>{t('Optional')}</span>
             </div>
-            <CollapsibleContent className='studio-dock-advanced'>
-              <StudioParameters />
-            </CollapsibleContent>
-          </Collapsible>
+            <StudioReferences
+              supportsReferences={modelOptions.supportsReferences}
+              onAddFiles={(files) => {
+                try {
+                  useImagePlaygroundStore.getState().addReferences(files)
+                } catch (error) {
+                  handleServerError(error)
+                }
+              }}
+            />
+            <div className='studio-section-divider' />
+            <StudioParameters group={group} />
+            <div className='studio-field'>
+              <Label htmlFor='studio-style'>{t('Style')}</Label>
+              <NativeSelect
+                id='studio-style'
+                className='studio-native-select'
+                value={selectedStyleId ?? ''}
+                onChange={(event) =>
+                  useImagePlaygroundStore.setState({
+                    selectedStyleId: event.target.value || null,
+                  })
+                }
+              >
+                <NativeSelectOption value=''>
+                  {t('No style')}
+                </NativeSelectOption>
+                {stylePresets.map((preset) => (
+                  <NativeSelectOption key={preset.id} value={preset.id}>
+                    {t(preset.label)}
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+          </div>
+          <div className='studio-submit-area'>
+            <Button
+              type='submit'
+              className='studio-dock-generate'
+              disabled={!canGenerate}
+              aria-label={t('Generate image')}
+              title={t('⌘ / Ctrl + Enter to generate')}
+            >
+              <ArrowUpRight size={18} />
+              {t('Generate')}
+              <span>
+                {parameters.count} {t('image(s)')}
+              </span>
+            </Button>
+            <StudioCostEstimate group={group} />
+            {activeCount >= 4 && (
+              <p role='status'>
+                {t('Four tasks are running. Submit again when one finishes.')}
+              </p>
+            )}
+          </div>
         </form>
       </Form>
-    </div>
+    </aside>
   )
 }

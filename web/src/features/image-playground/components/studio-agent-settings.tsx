@@ -27,6 +27,7 @@ type AgentSlot = keyof PlaygroundAgentConfig
 type StudioAgentSettingsProps = {
   state: ReturnType<typeof useStudioAgentConfig>
   onSaved?: () => void
+  promptOnly?: boolean
 }
 
 export function StudioAgentSettings(props: StudioAgentSettingsProps) {
@@ -64,13 +65,14 @@ export function StudioAgentSettings(props: StudioAgentSettingsProps) {
     if (
       !draft.prompt?.token_id ||
       !draft.prompt.model ||
-      !draft.image?.token_id ||
-      !draft.image.model
+      (!props.promptOnly && (!draft.image?.token_id || !draft.image.model))
     ) {
       return
     }
     try {
-      const saved = await state.save(draft)
+      const saved = await state.save(
+        props.promptOnly ? { prompt: draft.prompt, image: null } : draft
+      )
       setDraft(saved)
       props.onSaved?.()
     } catch (error) {
@@ -103,22 +105,24 @@ export function StudioAgentSettings(props: StudioAgentSettingsProps) {
             models={modelOptions}
             onChange={setSlot}
           />
-          <AgentSlotFields
-            label={t('Image generation')}
-            slot='image'
-            draft={draft}
-            keys={state.keys}
-            models={modelOptions}
-            onChange={setSlot}
-          />
+          {!props.promptOnly && (
+            <AgentSlotFields
+              label={t('Image generation')}
+              slot='image'
+              draft={draft}
+              keys={state.keys}
+              models={modelOptions}
+              onChange={setSlot}
+            />
+          )}
           <Button
             type='button'
             className='studio-agent-settings-save'
             disabled={
               !draft.prompt?.token_id ||
               !draft.prompt.model ||
-              !draft.image?.token_id ||
-              !draft.image.model ||
+              (!props.promptOnly &&
+                (!draft.image?.token_id || !draft.image.model)) ||
               state.isSaving
             }
             onClick={() => void save()}

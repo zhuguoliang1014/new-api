@@ -41,7 +41,6 @@ export function StudioStyleSelector() {
   const selectedStyleId = useImagePlaygroundStore(
     (state) => state.selectedStyleId
   )
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
 
   return (
     <div className='studio-dock-styles' role='group' aria-label={t('Style')}>
@@ -51,7 +50,7 @@ export function StudioStyleSelector() {
         className='studio-dock-style-chip'
         aria-pressed={selectedStyleId === null}
         aria-label={t('No style')}
-        disabled={busy}
+
         onClick={() =>
           useImagePlaygroundStore.setState({ selectedStyleId: null })
         }
@@ -79,7 +78,7 @@ export function StudioStyleSelector() {
               className='studio-dock-style-chip'
               aria-label={labels[preset.id] ?? preset.label}
               aria-pressed={selectedStyleId === preset.id}
-              disabled={busy}
+
               onClick={() =>
                 useImagePlaygroundStore.setState({
                   selectedStyleId:

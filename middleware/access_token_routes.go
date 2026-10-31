@@ -326,6 +326,7 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"POST /pg/prompt/refine":                   accessTokenSessionRule,
 	"POST /pg/images/generations":              accessTokenSessionRule,
 	"POST /pg/images/edits":                    accessTokenSessionRule,
+	"POST /api/image-playground/bootstrap":     accessTokenSessionRule,
 	"GET /api/image-playground/settings":       accessTokenSessionRule,
 	"PUT /api/image-playground/settings":       accessTokenSessionRule,
 	"POST /api/image-playground/refine-prompt": accessTokenSessionRule,

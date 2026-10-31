@@ -12,6 +12,7 @@ import { getApiKeys } from '@/features/keys/api'
 import type { ApiKey } from '@/features/keys/types'
 import { getUserModels } from '@/lib/api'
 import { requireServerSuccess } from '@/lib/server-error-message'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { getPlaygroundAgentConfig, savePlaygroundAgentConfig } from '../api'
 
@@ -24,15 +25,18 @@ function isUsableKey(key: ApiKey): boolean {
   )
 }
 
-export function useStudioAgentConfig() {
+export function useStudioAgentConfig(loadChoices = true) {
   const queryClient = useQueryClient()
+  const scope = useAuthStore((state) => state.auth.session?.sid)
   const configQuery = useQuery({
-    queryKey: ['image-playground', 'agent-config'],
+    queryKey: ['image-playground', 'agent-config', scope],
     queryFn: getPlaygroundAgentConfig,
+    enabled: Boolean(scope),
     staleTime: 60 * 1000,
   })
   const keysQuery = useQuery({
-    queryKey: ['image-playground', 'api-keys'],
+    queryKey: ['image-playground', 'api-keys', scope],
+    enabled: loadChoices && Boolean(scope),
     queryFn: async () => {
       const response = requireServerSuccess(
         await getApiKeys({ p: 1, size: 100 })
@@ -42,7 +46,8 @@ export function useStudioAgentConfig() {
     staleTime: 60 * 1000,
   })
   const modelsQuery = useQuery({
-    queryKey: ['image-playground', 'models'],
+    queryKey: ['image-playground', 'models', scope],
+    enabled: loadChoices && Boolean(scope),
     queryFn: async () => {
       const response = requireServerSuccess(await getUserModels())
       return response.data ?? []
@@ -52,7 +57,10 @@ export function useStudioAgentConfig() {
   const saveMutation = useMutation({
     mutationFn: savePlaygroundAgentConfig,
     onSuccess: (config) => {
-      queryClient.setQueryData(['image-playground', 'agent-config'], config)
+      queryClient.setQueryData(
+        ['image-playground', 'agent-config', scope],
+        config
+      )
     },
   })
   return {

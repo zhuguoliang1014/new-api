@@ -28,11 +28,13 @@ import {
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
+import { getPricing } from '@/features/pricing/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
   generateImages,
   getPlaygroundAgentConfig,
+  getStudioGroups,
   refinePrompt,
   savePlaygroundAgentConfig,
 } from '../api'
@@ -44,11 +46,17 @@ import { useImagePlaygroundStore } from '../store'
 
 vi.mock('@/lib/api', async (original) => ({
   ...(await original<typeof import('@/lib/api')>()),
+  getStatus: vi.fn().mockResolvedValue({
+    price: 1,
+    usd_exchange_rate: 6.9,
+    quota_per_unit: 500000,
+  }),
   getUserModels: vi.fn().mockResolvedValue({
     success: true,
     data: ['gpt-6.1-sol', 'gpt-image-2'],
   }),
 }))
+vi.mock('@/features/pricing/api', () => ({ getPricing: vi.fn() }))
 vi.mock('@/features/keys/api', async (original) => ({
   ...(await original<typeof import('@/features/keys/api')>()),
   getApiKeys: vi.fn().mockResolvedValue({
@@ -102,6 +110,7 @@ vi.mock('@/features/keys/api', async (original) => ({
 vi.mock('../api', async (original) => ({
   ...(await original<typeof import('../api')>()),
   generateImages: vi.fn(),
+  getStudioGroups: vi.fn(),
   refinePrompt: vi.fn(),
   getPlaygroundAgentConfig: vi.fn().mockResolvedValue({
     prompt: { token_id: 11, model: 'gpt-6.1-sol' },
@@ -137,6 +146,58 @@ beforeEach(() => {
       },
     },
   }))
+  vi.mocked(getStudioGroups).mockResolvedValue([
+    {
+      id: 'native',
+      name: 'Native',
+      description: 'Native generation',
+      ratio: 2.25,
+      models: ['gpt-image-2', 'gpt-image-2.5-flare'],
+      max_resolution: 4,
+      size_mode: 'native',
+      available: true,
+    },
+    {
+      id: 'basic',
+      name: 'Basic',
+      description: 'Daily generation',
+      ratio: 0.3,
+      models: ['gpt-image-2', 'gpt-image-2.5'],
+      max_resolution: 4,
+      size_mode: 'upscale',
+      available: true,
+    },
+    {
+      id: 'high',
+      name: 'High resolution',
+      description: 'High resolution',
+      ratio: 1.2,
+      models: ['gpt-image-2', 'gpt-image-2.5'],
+      max_resolution: 10,
+      size_mode: 'upscale',
+      available: true,
+    },
+  ])
+  vi.mocked(getPricing).mockResolvedValue({
+    success: true,
+    data: ['gpt-image-2', 'gpt-image-2.5', 'gpt-image-2.5-flare'].map(
+      (model_name) => ({
+        id: 0,
+        model_name,
+        quota_type: 0,
+        model_ratio: 37.5,
+        completion_ratio: 2,
+        enable_groups: ['basic', 'high', 'native'],
+        billing_mode: 'tiered_expr',
+        billing_expr: 'tier("image", fixed(0.1)) * image_count',
+      })
+    ),
+    vendors: [],
+    group_ratio: {},
+    usable_group: {},
+    supported_endpoint: {},
+    auto_groups: [],
+  })
   vi.mocked(readImageHistory).mockResolvedValue([])
   vi.mocked(saveImageRecord).mockResolvedValue()
   vi.mocked(generateImages).mockResolvedValue([image])
@@ -165,122 +226,85 @@ function showStudio() {
 }
 async function ready() {
   await screen.findByRole('textbox', { name: 'Image prompt' })
-}
-
-it('keeps saved Agent settings closed and allows editing both selections in a dialog', async () => {
-  showStudio()
-  await ready()
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  const dialog = await screen.findByRole('dialog', { name: 'Agent settings' })
-  expect(
-    within(dialog).queryByRole('button', { name: 'Advanced settings' })
-  ).not.toBeInTheDocument()
-  expect(await screen.findByText('Prompt refinement')).toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Prompt refinement API Key'), {
-    target: { value: '12' },
-  })
-  fireEvent.change(screen.getByLabelText('Image generation Model'), {
-    target: { value: 'gpt-image-2' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }))
-  await waitFor(() => expect(savePlaygroundAgentConfig).toHaveBeenCalled())
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Agent settings' })
-    ).toHaveAttribute('aria-expanded', 'false')
+      screen.getByRole('combobox', { name: 'Generation group' })
+    ).toHaveValue('native')
   )
-  expect(
-    screen.queryByLabelText('Prompt refinement API Key')
-  ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  expect(await screen.findByLabelText('Prompt refinement API Key')).toHaveValue(
-    '12'
-  )
-})
+}
 
-it('opens setup for missing configuration and remembers the saved choices on return', async () => {
+it('starts without a key setup dialog and exposes the selected group models', async () => {
   vi.mocked(getPlaygroundAgentConfig).mockResolvedValueOnce({
     prompt: null,
     image: null,
   })
-  const view = showStudio()
-  const dialog = await screen.findByRole('dialog', { name: 'Agent settings' })
-  expect(
-    within(dialog).getByRole('button', { name: 'Save configuration' })
-  ).toBeDisabled()
-  fireEvent.change(within(dialog).getByLabelText('Prompt refinement API Key'), {
-    target: { value: '11' },
-  })
-  fireEvent.change(within(dialog).getByLabelText('Prompt refinement Model'), {
-    target: { value: 'gpt-6.1-sol' },
-  })
-  fireEvent.change(within(dialog).getByLabelText('Image generation API Key'), {
-    target: { value: '12' },
-  })
-  fireEvent.change(within(dialog).getByLabelText('Image generation Model'), {
-    target: { value: 'gpt-image-2' },
-  })
-  fireEvent.click(
-    within(dialog).getByRole('button', { name: 'Save configuration' })
-  )
-  await waitFor(() =>
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  )
-  expect(savePlaygroundAgentConfig).toHaveBeenCalledWith(
-    {
-      prompt: { token_id: 11, model: 'gpt-6.1-sol' },
-      image: { token_id: 12, model: 'gpt-image-2' },
-    },
-    expect.anything()
-  )
-  view.unmount()
-  client.clear()
-  showStudio()
-  await waitFor(() => expect(getPlaygroundAgentConfig).toHaveBeenCalledTimes(2))
-  await waitFor(() =>
-    expect(
-      client.getQueryState(['image-playground', 'agent-config'])?.status
-    ).toBe('success')
-  )
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  expect(await screen.findByLabelText('Image generation API Key')).toHaveValue(
-    '12'
-  )
-})
-
-it('keeps the settings dialog and selected values when saving fails', async () => {
-  vi.mocked(savePlaygroundAgentConfig).mockRejectedValueOnce(
-    new Error('Offline')
-  )
   showStudio()
   await ready()
-  fireEvent.click(screen.getByRole('button', { name: 'Agent settings' }))
-  const input = await screen.findByLabelText('Prompt refinement API Key')
-  fireEvent.change(input, { target: { value: '12' } })
-  const save = screen.getByRole('button', { name: 'Save configuration' })
-  fireEvent.click(save)
-  await waitFor(() => expect(savePlaygroundAgentConfig).toHaveBeenCalled())
-  await waitFor(() => expect(save).toBeEnabled())
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
+    target: { value: 'gpt-image-2.5-flare' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'high' },
+  })
+  expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue(
+    'gpt-image-2'
+  )
   expect(
-    screen.getByRole('dialog', { name: 'Agent settings' })
-  ).toBeInTheDocument()
-  expect(input).toHaveValue('12')
+    screen.queryByRole('option', { name: 'gpt-image-2.5-flare' })
+  ).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '10K' }))
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('10240x10240')
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'basic' },
+  })
+  expect(screen.queryByRole('button', { name: '10K' })).not.toBeInTheDocument()
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('auto')
 })
 
-it('does not confuse a failed configuration request with a first visit', async () => {
-  vi.mocked(getPlaygroundAgentConfig).mockRejectedValueOnce(
-    new Error('Offline')
-  )
+it('keeps submission disabled and offers retry when groups fail to load', async () => {
+  vi.mocked(getStudioGroups).mockRejectedValueOnce(new Error('Offline'))
   showStudio()
-  await waitFor(() =>
-    expect(
-      client.getQueryState(['image-playground', 'agent-config'])?.status
-    ).toBe('error')
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'Could not load generation groups.'
   )
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+  await ready()
+})
+
+it('explains when the account has no available image groups', async () => {
+  vi.mocked(getStudioGroups).mockResolvedValueOnce([])
+  showStudio()
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'No image groups are available for this account.'
+  )
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+})
+
+it('allows optional prompt-only setup without an image key selection', async () => {
+  showStudio()
+  await ready()
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Prompt refinement settings' })
+  )
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Prompt refinement',
+  })
+  expect(
+    within(dialog).queryByLabelText('Image generation API Key')
+  ).not.toBeInTheDocument()
+  fireEvent.change(await screen.findByLabelText('Prompt refinement API Key'), {
+    target: { value: '12' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Save configuration' }))
+  await waitFor(() =>
+    expect(savePlaygroundAgentConfig).toHaveBeenCalledWith(
+      { prompt: { token_id: 12, model: 'gpt-6.1-sol' }, image: null },
+      expect.anything()
+    )
+  )
 })
 
 it('offers a keyboard-accessible image tile for adding references', async () => {
@@ -290,7 +314,7 @@ it('offers a keyboard-accessible image tile for adding references', async () => 
   const tile = screen.getByRole('button', {
     name: 'Add images to guide your creation',
   })
-  expect(tile.textContent).toBe('')
+  expect(tile).toHaveTextContent('Drop or paste a reference image')
   const input = screen.getByLabelText(/Reference images/)
   const click = vi.spyOn(input, 'click')
   tile.focus()
@@ -326,7 +350,9 @@ it('keeps the draft intact while applying a selected style to generation', async
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: '画一只猫' },
   })
-  fireEvent.click(screen.getByRole('button', { name: /Product photography/ }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Style' }), {
+    target: { value: 'product' },
+  })
   expect(
     (
       screen.getByRole('textbox', {
@@ -344,9 +370,7 @@ it('keeps the draft intact while applying a selected style to generation', async
     [],
     expect.any(AbortSignal)
   )
-  expect(
-    screen.getByRole('button', { name: /Product photography/ })
-  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue('product')
   expect(saveImageRecord).toHaveBeenCalledWith(
     expect.objectContaining({
       ownerId: 1,
@@ -371,7 +395,7 @@ it('starts a new canvas by clearing the draft while keeping the Agent defaults',
       files: [new File(['one'], 'reference.png', { type: 'image/png' })],
     },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+  fireEvent.click(screen.getByRole('button', { name: 'New draft' }))
   expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue('')
   expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
   expect(useImagePlaygroundStore.getState().parameters.model).toBe(
@@ -405,17 +429,17 @@ it('filters saved creations by prompt and model', async () => {
   ])
   showStudio()
   await ready()
-  expect(screen.getAllByRole('button', { name: /View creation/ })).toHaveLength(
+  expect(screen.getAllByRole('button', { name: 'Image Preview' })).toHaveLength(
     2
   )
-  fireEvent.change(screen.getByRole('textbox', { name: 'Search' }), {
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search creations' }), {
     target: { value: 'ocean-model' },
   })
-  expect(screen.getAllByRole('button', { name: /View creation/ })).toHaveLength(
+  expect(screen.getAllByRole('button', { name: 'Image Preview' })).toHaveLength(
     1
   )
   expect(
-    screen.queryByRole('button', { name: 'View creation 2' })
+    screen.queryByText('A quiet sunrise over the sea')
   ).not.toBeInTheDocument()
 })
 
@@ -522,9 +546,7 @@ it('keeps committed Chinese text and multiline edits when output settings change
   fireEvent.change(prompt, { target: { value: '画一只猫' } })
   fireEvent.compositionEnd(prompt, { data: '画一只猫' })
   fireEvent.click(screen.getByRole('button', { name: '1K' }))
-  fireEvent.change(screen.getByRole('combobox', { name: 'Aspect ratio' }), {
-    target: { value: '3:2' },
-  })
+  fireEvent.click(screen.getByRole('button', { name: '3:2' }))
   expect(prompt).toHaveValue('画一只猫')
   fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗边' } })
   fireEvent.keyDown(prompt, { key: 'Enter' })
@@ -546,7 +568,7 @@ it('keeps committed Chinese text and multiline edits when output settings change
   )
 })
 
-it('disables submission during a pending request and keeps its result after leaving and returning', async () => {
+it('keeps submission available during a request and preserves its result after returning', async () => {
   let finish!: (value: (typeof image)[]) => void
   vi.mocked(generateImages).mockImplementation(
     () =>
@@ -560,12 +582,8 @@ it('disables submission during a pending request and keeps its result after leav
     target: { value: 'A mountain lake' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await screen.findByText('Turning your idea into an image.')
-  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
-  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Image prompt' }), {
-    key: 'Enter',
-    ctrlKey: true,
-  })
+  await screen.findByText('Creating...')
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
   view.unmount()
   await act(async () => finish([image]))
   showStudio()
@@ -638,7 +656,7 @@ it('cancels the pending job and drops drafts, references and late results on log
     target: { value: 'A private idea' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await screen.findByText('Turning your idea into an image.')
+  await screen.findByText('Creating...')
   const signal = vi.mocked(generateImages).mock
     .calls[0][2] as unknown as AbortSignal
   act(() => useAuthStore.getState().auth.reset())
@@ -648,7 +666,7 @@ it('cancels the pending job and drops drafts, references and late results on log
     records: [],
     references: [],
     parameters: { prompt: '' },
-    job: null,
+    jobs: [],
   })
   expect(saveImageRecord).not.toHaveBeenCalled()
 })
@@ -760,17 +778,12 @@ it('stops a request without retrying and restores submission with a charge-statu
   expect(generateImages).toHaveBeenCalledTimes(1)
 })
 
-it('expands advanced settings and prevents a transparent JPEG request', async () => {
+it('shows output settings together and prevents a transparent JPEG request', async () => {
   showStudio()
   await ready()
   expect(
-    screen.queryByRole('combobox', { name: 'Image background' })
+    screen.queryByRole('button', { name: 'Advanced settings' })
   ).not.toBeInTheDocument()
-  const trigger = screen.getByRole('button', { name: 'Advanced settings' })
-  expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  fireEvent.click(trigger)
-  expect(trigger).toHaveAttribute('aria-expanded', 'true')
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   const background = await screen.findByRole('combobox', {
     name: 'Image background',
   })
@@ -811,12 +824,9 @@ it('allows viewing an older creation while a new request is in progress', async 
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByRole('button', { name: 'Stop waiting' })
-  fireEvent.click(screen.getByRole('button', { name: 'View creation 1' }))
   expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
-  expect(
-    screen.getByRole('button', { name: 'Continue editing' })
-  ).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Reuse settings' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Continue editing' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Reuse settings' })).toBeEnabled()
   await act(async () => finish([image]))
 })
 
@@ -852,7 +862,6 @@ it('keeps the original creation settings when another image finishes during an o
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByRole('button', { name: 'Stop waiting' })
-  fireEvent.click(screen.getByRole('button', { name: 'View creation 1' }))
   fireEvent.click(screen.getByRole('button', { name: 'Image Preview' }))
   const dialog = await screen.findByRole('dialog')
   await act(async () => finish([{ ...image, id: 'new-image' }]))
@@ -879,13 +888,14 @@ it.each([
   async ({ resolution, ratio, size }) => {
     showStudio()
     await ready()
-    expect(screen.getByRole('combobox', { name: 'Aspect ratio' })).toHaveValue(
-      'auto'
-    )
+    expect(
+      within(screen.getByRole('group', { name: 'Aspect ratio' })).getByRole(
+        'button',
+        { name: 'Auto' }
+      )
+    ).toHaveAttribute('aria-pressed', 'true')
     fireEvent.click(screen.getByRole('button', { name: resolution }))
-    fireEvent.change(screen.getByRole('combobox', { name: 'Aspect ratio' }), {
-      target: { value: ratio },
-    })
+    fireEvent.click(screen.getByRole('button', { name: ratio }))
     expect(screen.getByRole('button', { name: resolution })).toHaveAttribute(
       'aria-pressed',
       'true'
@@ -946,36 +956,6 @@ it('previews a reference on hover and closes it on leave without opening a dialo
   )
 })
 
-it('previews a style without changing selection and keeps the selected badge when hover ends', async () => {
-  const user = userEvent.setup()
-  showStudio()
-  await ready()
-  const selected = screen.getByRole('button', { name: 'Neon night' })
-  await user.click(selected)
-  expect(selected).toHaveAttribute('aria-pressed', 'true')
-  expect(
-    within(selected).getByRole('img', { name: 'Selected' })
-  ).toBeInTheDocument()
-  const other = screen.getByRole('button', { name: 'Portrait' })
-  await user.hover(other)
-  expect(await screen.findByRole('img', { name: 'Portrait' })).toHaveAttribute(
-    'src',
-    '/style-previews/portrait.jpg'
-  )
-  expect(other).toHaveAttribute('aria-pressed', 'false')
-  expect(selected).toHaveAttribute('aria-pressed', 'true')
-  await user.unhover(other)
-  await waitFor(() =>
-    expect(
-      screen.queryByRole('img', { name: 'Portrait' })
-    ).not.toBeInTheDocument()
-  )
-  await user.hover(selected)
-  expect(
-    await screen.findByRole('img', { name: 'Neon night' })
-  ).toBeInTheDocument()
-})
-
 it('opens reference previews with keyboard focus and dismisses them with Escape', async () => {
   const user = userEvent.setup()
   showStudio()
@@ -1004,23 +984,24 @@ it('opens reference previews with keyboard focus and dismisses them with Escape'
 it('returns to automatic sizing from the dock after choosing a ratio and resolution', async () => {
   showStudio()
   await ready()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Aspect ratio' }), {
-    target: { value: '16:9' },
-  })
+  fireEvent.click(screen.getByRole('button', { name: '16:9' }))
   expect(screen.getByRole('button', { name: '1K' })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
   fireEvent.click(screen.getByRole('button', { name: '4K' }))
   fireEvent.click(
-    within(screen.getByRole('group', { name: 'Resolution' })).getByRole(
+    within(screen.getByRole('group', { name: 'Aspect ratio' })).getByRole(
       'button',
       { name: 'Auto' }
     )
   )
-  expect(screen.getByRole('combobox', { name: 'Aspect ratio' })).toHaveValue(
-    'auto'
-  )
+  expect(
+    within(screen.getByRole('group', { name: 'Aspect ratio' })).getByRole(
+      'button',
+      { name: 'Auto' }
+    )
+  ).toHaveAttribute('aria-pressed', 'true')
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'A coastal house' },
   })
@@ -1040,12 +1021,12 @@ it('reuses the user prompt and selected style without applying the template twic
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'A perfume bottle' },
   })
-  fireEvent.click(screen.getByRole('button', { name: 'Product photography' }))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Style' }), {
+    target: { value: 'product' },
+  })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Reuse settings' }))
-  expect(
-    screen.getByRole('button', { name: 'Product photography' })
-  ).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue('product')
   expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
     'A perfume bottle'
   )
@@ -1079,9 +1060,7 @@ it.each(stylePresets)(
       },
     ])
     showStudio()
-    expect(
-      await screen.findByRole('button', { name: 'View creation 1' })
-    ).toHaveTextContent(original)
+    expect(await screen.findByText(original)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Image prompt' }))
     const popup = await screen.findByRole('dialog', { name: 'Image prompt' })
     expect(
@@ -1094,9 +1073,8 @@ it.each(stylePresets)(
     expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
       original
     )
-    expect(screen.getByRole('button', { name: preset.label })).toHaveAttribute(
-      'aria-pressed',
-      'true'
+    expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue(
+      preset.id
     )
   }
 )
@@ -1135,50 +1113,29 @@ it.each([
     expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
       original
     )
-    expect(screen.getByRole('button', { name: 'No style' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue('')
   }
 )
 
-it('renders large image data URLs as the ambient image and follows history selection', async () => {
-  // Generated PNGs can exceed the browser's ~2 MiB CSS custom-property limit.
+it('renders large image data without adding an ambient background', async () => {
   const largeImageSource = `data:image/png;base64,${'A'.repeat(2 ** 21)}`
-  vi.mocked(readImageHistory).mockResolvedValue(
-    ['latest', 'older'].map((id, index) => ({
-      id,
+  vi.mocked(readImageHistory).mockResolvedValue([
+    {
+      id: 'large',
       ownerId: 1,
-      createdAt: 2 - index,
-      parameters: {
-        ...useImagePlaygroundStore.getState().parameters,
-        prompt: id,
-      },
-      images: [
-        {
-          id,
-          src: index === 0 ? largeImageSource : 'https://example.com/older.png',
-        },
-      ],
+      createdAt: 1,
+      parameters: useImagePlaygroundStore.getState().parameters,
+      images: [{ id: 'large', src: largeImageSource }],
       referenceCount: 0,
-    }))
-  )
+    },
+  ])
   const view = showStudio()
   await ready()
-  const background = view.container.querySelector('.studio-ambient-bg img')
-  expect(background).toHaveAttribute('src', largeImageSource)
-  expect(background).toHaveAttribute('alt', '')
-  expect(background).toHaveAttribute('referrerpolicy', 'no-referrer')
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'View creation 2' })
-  )
   expect(screen.getByRole('img', { name: 'Generated image' })).toHaveAttribute(
     'src',
-    'https://example.com/older.png'
+    largeImageSource
   )
-  expect(
-    view.container.querySelector('.studio-ambient-bg img')
-  ).toHaveAttribute('src', 'https://example.com/older.png')
+  expect(view.container.querySelector('.studio-ambient-bg')).toBeNull()
 })
 
 it('keeps an empty canvas in the selected interface theme without an artwork layer', async () => {
@@ -1375,4 +1332,208 @@ it('discards local image downloads when the account changes', async () => {
   )
   expect(saveImageRecord).not.toHaveBeenCalled()
   expect(useImagePlaygroundStore.getState().records).toEqual([])
+})
+
+it('accepts a second generation while the first is pending and keeps each result', async () => {
+  const completions: ((images: (typeof image)[]) => void)[] = []
+  vi.mocked(generateImages).mockImplementation(
+    () => new Promise((resolve) => completions.push(resolve))
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'First creation' },
+  })
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  )
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(completions).toHaveLength(1))
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toBeEnabled()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'Second creation' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(completions).toHaveLength(2))
+  await act(async () => completions[1]([{ ...image, id: 'second' }]))
+  await act(async () => completions[0]([{ ...image, id: 'first' }]))
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().records).toHaveLength(2)
+  )
+  expect(
+    useImagePlaygroundStore
+      .getState()
+      .records.map((record) => record.parameters.prompt)
+      .sort()
+  ).toEqual(['First creation', 'Second creation'])
+})
+
+it('keeps the remaining job running when one of two parallel requests fails', async () => {
+  const pending: {
+    resolve: (images: (typeof image)[]) => void
+    reject: (error: Error) => void
+  }[] = []
+  vi.mocked(generateImages).mockImplementation(
+    () => new Promise((resolve, reject) => pending.push({ resolve, reject }))
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'First' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(pending).toHaveLength(1))
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'high' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: '10K' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'Second' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(pending).toHaveLength(2))
+  await act(async () => pending[0].reject(new Error('First request failed')))
+  expect(screen.getByRole('alert')).toHaveTextContent('First request failed')
+  expect(screen.getAllByRole('button', { name: 'Stop waiting' })).toHaveLength(
+    1
+  )
+  await act(async () => pending[1].resolve([image]))
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().records).toHaveLength(1)
+  )
+  expect(
+    useImagePlaygroundStore.getState().records[0].parameters
+  ).toMatchObject({ group: 'high', size: '10240x10240', prompt: 'Second' })
+  expect(generateImages).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ group: 'native', size: 'auto', prompt: 'First' }),
+    [],
+    expect.any(AbortSignal)
+  )
+})
+
+it('limits active requests to four and permits another after one completes', async () => {
+  const pending: ((images: (typeof image)[]) => void)[] = []
+  vi.mocked(generateImages).mockImplementation(
+    () => new Promise((resolve) => pending.push(resolve))
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'Four parallel images' },
+  })
+  for (let index = 1; index <= 4; index++) {
+    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+    await waitFor(() => expect(pending).toHaveLength(index))
+  }
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toBeEnabled()
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    key: 'Enter',
+    ctrlKey: true,
+  })
+  expect(generateImages).toHaveBeenCalledTimes(4)
+  await act(async () => pending[0]([image]))
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  )
+  for (const resolve of pending.slice(1)) {
+    await act(async () => resolve([image]))
+  }
+})
+
+it('preserves a newly edited draft when prompt refinement finishes', async () => {
+  let resolve!: (prompt: string) => void
+  vi.mocked(refinePrompt).mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      })
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'Original' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Refine prompt' }))
+  await screen.findByRole('button', { name: 'Refining...' })
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'New idea' },
+  })
+  await act(async () => resolve('Refined original'))
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+    'New idea'
+  )
+})
+
+it('shows the gray recharge estimate below generate and updates it for group, model and count', async () => {
+  showStudio()
+  await ready()
+  expect(await screen.findByText('Estimated cost ¥0.225')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'high' },
+  })
+  expect(await screen.findByText('Estimated cost ¥0.12')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Image count' }), {
+    target: { value: '4' },
+  })
+  expect(await screen.findByText('Estimated cost ¥0.48')).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
+    target: { value: 'gpt-image-2.5' },
+  })
+  expect(screen.getByText('Estimated cost ¥0.48')).toBeInTheDocument()
+})
+
+it('shows unavailable instead of a made-up zero when pricing cannot be loaded', async () => {
+  vi.mocked(getPricing).mockRejectedValueOnce(new Error('Offline'))
+  showStudio()
+  await ready()
+  expect(
+    await screen.findByText('Cost estimate unavailable')
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Estimated cost ¥0.00')).not.toBeInTheDocument()
+})
+
+it('selecting an inspiration preserves the draft and keeps focus outside the composer', async () => {
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A bottle' },
+  })
+  const inspiration = screen.getByRole('button', {
+    name: 'Try Product photography',
+  })
+  inspiration.focus()
+  fireEvent.click(inspiration)
+  expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue('product')
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+    'A bottle'
+  )
+  expect(inspiration).toHaveFocus()
+})
+
+it('offers every style in the same order as the composer and keeps both selectors synchronized', async () => {
+  showStudio()
+  await ready()
+  const selector = screen.getByRole('combobox', { name: 'Style' })
+  const options = [...selector.querySelectorAll('option')].filter(
+    (option) => option.value
+  )
+  const cards = screen.getAllByRole('button', { name: /^Try / })
+  expect(cards).toHaveLength(options.length)
+  for (const [index, option] of options.entries()) {
+    const card = cards[index]
+    expect(card).toHaveAccessibleName(`Try ${option.textContent}`)
+    fireEvent.click(card)
+    expect(selector).toHaveValue(option.value)
+    expect(card).toHaveAttribute('aria-pressed', 'true')
+  }
+  fireEvent.change(selector, { target: { value: 'portrait' } })
+  expect(screen.getByRole('button', { name: 'Try Portrait' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(
+    screen.getByRole('button', { name: 'Try Concept art' })
+  ).toHaveAttribute('aria-pressed', 'false')
 })

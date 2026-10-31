@@ -32,7 +32,7 @@ beforeEach(() => {
   useImagePlaygroundStore.setState({
     records: [],
     selectedRecordId: null,
-    job: null,
+    jobs: [],
   })
   style = document.createElement('style')
   style.textContent = studioStyles
@@ -79,138 +79,111 @@ it.each([1, 2])(
   }
 )
 
-it.each([1, 12])(
-  'uses content height with a centered, capped scrolling history for %i creations',
-  (count) => {
-    const parameters = useImagePlaygroundStore.getState().parameters
-    useImagePlaygroundStore.setState({
-      records: Array.from({ length: count }, (_, index) => ({
-        id: `record-${index}`,
-        ownerId: 1,
-        createdAt: 1,
-        parameters: { ...parameters, prompt: `Creation ${index}` },
-        images: [
-          { id: `image-${index}`, src: 'data:image/png;base64,aW1hZ2U=' },
-        ],
-        referenceCount: 0,
-      })),
-    })
-    render(
-      <div className='image-studio'>
+it('keeps the editor and artwork in separate desktop columns with independent scrolling', () => {
+  render(
+    <div className='image-studio'>
+      <div className='studio-workspace' data-testid='workspace'>
+        <aside className='studio-dock'>
+          <form className='studio-dock-form'>
+            <div className='studio-panel-scroll' data-testid='controls'>
+              Controls
+            </div>
+            <div className='studio-submit-area' data-testid='submit'>
+              Generate
+            </div>
+          </form>
+        </aside>
         <StudioGallery />
       </div>
-    )
-    const history = screen.getByRole('heading', {
-      name: /Recent creations/,
-    }).parentElement
-    expect(history).toHaveStyle({
-      height: 'auto',
-      top: '50%',
-      transform: 'translateY(-50%)',
-      maxHeight: 'min(540px, 100%)',
-    })
-    const items = screen.getAllByRole('button', { name: /View creation/ })
-    expect(items).toHaveLength(count)
-    expect(items[0].parentElement).toHaveStyle({
-      overflowY: 'auto',
-      minHeight: '0',
-    })
+    </div>
+  )
+  expect(screen.getByTestId('workspace')).toHaveStyle({
+    display: 'grid',
+    gridTemplateColumns: '360px minmax(0, 1fr)',
+    minHeight: '0',
+  })
+  expect(screen.getByTestId('controls')).toHaveStyle({
+    overflowY: 'auto',
+    minHeight: '0',
+  })
+  expect(screen.getByTestId('submit').parentElement).toHaveStyle({
+    display: 'flex',
+    flexDirection: 'column',
+  })
+  const gallery = screen.getByRole('region', { name: 'My creations' })
+  expect(gallery.querySelector('.studio-canvas')).toHaveStyle({
+    overflowY: 'auto',
+    minHeight: '0',
+  })
+})
 
-    const canvas = screen.getByRole('region', {
-      name: 'My creations',
-    }).firstElementChild
-    expect(canvas).toHaveStyle({
-      flex: '1 1 0%',
-      minHeight: '0',
-      overflowY: 'auto',
-    })
-    expect(canvas).toContainElement(
-      screen.getByRole('button', { name: 'Image Preview' })
-    )
-    expect(screen.getByAltText('Generated image')).toHaveStyle({
-      maxHeight: '100%',
-      objectFit: 'contain',
-    })
-  }
-)
-
-it('keeps the empty canvas area without an empty history rail', () => {
+it('keeps completed creations visible together without a separate history rail', () => {
+  const parameters = useImagePlaygroundStore.getState().parameters
+  useImagePlaygroundStore.setState({
+    records: Array.from({ length: 3 }, (_, index) => ({
+      id: `r-${index}`,
+      ownerId: 1,
+      createdAt: 1,
+      parameters: { ...parameters, prompt: `Artwork ${index}` },
+      images: [{ id: `i-${index}`, src: 'data:image/png;base64,aW1hZ2U=' }],
+      referenceCount: 0,
+    })),
+  })
   render(
     <div className='image-studio'>
       <StudioGallery />
     </div>
   )
+  expect(screen.getAllByRole('button', { name: 'Image Preview' })).toHaveLength(
+    3
+  )
   expect(
     screen.queryByRole('heading', { name: /Recent creations/ })
   ).not.toBeInTheDocument()
-  const canvas = screen.getByRole('region', {
-    name: 'My creations',
-  }).firstElementChild
-  expect(canvas).toHaveStyle({ flex: '1 1 0%', overflowY: 'auto' })
-  expect(canvas).not.toHaveTextContent('Recent creations')
+  for (const image of screen.getAllByAltText('Generated image')) {
+    expect(image).toHaveStyle({ objectFit: 'contain', maxHeight: '100%' })
+  }
 })
 
-it('gives the canvas the available width and keeps the composer compact', () => {
+it('keeps a useful empty state and the search and filters available before generation', () => {
   render(
     <div className='image-studio'>
-      <div className='studio-workspace'>
-        <StudioGallery />
-        <div className='studio-dock'>
-          <div className='studio-dock-input'>
-            <textarea aria-label='Draft' className='studio-dock-prompt' />
-            <div className='studio-upload-button' data-testid='upload' />
-          </div>
-        </div>
-      </div>
+      <StudioGallery />
     </div>
   )
-  expect(screen.getByRole('region', { name: 'My creations' })).toHaveStyle({
-    paddingRight: '0px',
-  })
-  expect(screen.getByRole('textbox', { name: 'Draft' })).toHaveStyle({
-    minHeight: '52px',
-  })
-  expect(screen.getByTestId('upload')).toHaveStyle({
-    width: '52px',
-    height: '52px',
-  })
+  expect(screen.getByText('What will you create today?')).toBeInTheDocument()
+  expect(
+    screen.getByRole('textbox', { name: 'Search creations' })
+  ).toBeEnabled()
+  expect(
+    screen.getByRole('group', { name: 'Filter creations' })
+  ).toBeInTheDocument()
 })
 
 it.each([
-  {
-    theme: '',
-    background: 'rgba(242, 245, 247, 0.94)',
-    surface: 'rgba(255, 255, 255, 0.38)',
-  },
-  {
-    theme: 'dark',
-    background: 'rgba(35, 40, 45, 0.94)',
-    surface: 'rgba(255, 255, 255, 0.1)',
-  },
+  { theme: '', surface: '#f6f7f8', raised: '#fff' },
+  { theme: 'dark', surface: '#181b20', raised: '#20242a' },
 ])(
-  'uses the $theme workspace theme for portalled previews',
-  ({ theme, background, surface }) => {
+  'uses opaque $theme theme surfaces for the workspace and portalled preview',
+  ({ theme, surface, raised }) => {
     document.documentElement.className = theme
     render(
-      <div className='studio-preview-dialog' data-testid='preview'>
-        <div className='studio-viewer'>
-          <div className='studio-viewer-viewport' data-testid='viewport' />
+      <>
+        <div className='image-studio' data-testid='workspace' />
+        <div className='studio-preview-dialog' data-testid='preview'>
+          <div className='studio-viewer'>
+            <div className='studio-viewer-viewport' data-testid='viewport' />
+          </div>
         </div>
-      </div>
+      </>
     )
-    expect(screen.getByTestId('preview')).toHaveStyle({
-      backgroundColor: background,
-    })
-    // jsdom does not resolve inherited CSS custom properties. Verify the
-    // surface token and its use separately; browser QA checks the rendered colour.
-    expect(
-      getComputedStyle(screen.getByTestId('preview'))
-        .getPropertyValue('--g-surface')
-        .replaceAll(' ', '')
-    ).toBe(surface.replaceAll(' ', ''))
+    for (const name of ['workspace', 'preview']) {
+      const computed = getComputedStyle(screen.getByTestId(name))
+      expect(computed.getPropertyValue('--g-surface').trim()).toBe(surface)
+      expect(computed.getPropertyValue('--g-raised').trim()).toBe(raised)
+    }
     expect(screen.getByTestId('viewport')).toHaveStyle({
       background: 'var(--g-surface)',
     })
-    document.documentElement.className = ''
   }
 )

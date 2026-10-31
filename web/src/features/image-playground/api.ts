@@ -31,6 +31,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { validateReferenceFiles } from './lib/images'
 import {
   getImageModelOptions,
+  getImageRequestFields,
   imageParametersSchema,
   normalizeImageParameters,
   type ImageOutput,
@@ -257,16 +258,7 @@ export async function generateImages(
   const scope = getImageAuthScope()
   if (!scope || signal.aborted) throw new DOMException('Aborted', 'AbortError')
 
-  const fields: Record<string, string | number> = {
-    prompt: parameters.prompt,
-    n: parameters.count,
-    quality: parameters.quality,
-    output_format: parameters.format,
-  }
-  if (parameters.size !== 'auto') fields.size = parameters.size
-  if (parameters.background !== 'auto') {
-    fields.background = parameters.background
-  }
+  const fields = getImageRequestFields(parameters)
 
   let body: FormData | typeof fields = fields
   if (references.length) {
@@ -280,7 +272,15 @@ export async function generateImages(
     const response = await imageRelayClient.post(
       references.length ? '/pg/images/edits' : '/pg/images/generations',
       body,
-      requestConfig(signal)
+      {
+        ...requestConfig(signal),
+        headers: parameters.group
+          ? {
+              'X-Studio-Group': encodeURIComponent(parameters.group),
+              'X-Studio-Model': parameters.model,
+            }
+          : undefined,
+      }
     )
     if (scope !== getImageAuthScope() || signal.aborted) {
       throw new DOMException('Aborted', 'AbortError')
@@ -306,4 +306,24 @@ export async function generateImages(
       }
     )
   }
+}
+
+export type StudioGroup = {
+  id: string
+  name: string
+  description: string
+  ratio: number
+  models: string[]
+  max_resolution: number
+  size_mode: 'native' | 'upscale'
+  available: boolean
+}
+export async function getStudioGroups(): Promise<StudioGroup[]> {
+  const response = await api.post(
+    '/api/image-playground/bootstrap',
+    {},
+    { skipAuthRefresh: true }
+  )
+  const payload = requireServerSuccess(response.data) as { data: StudioGroup[] }
+  return payload.data
 }

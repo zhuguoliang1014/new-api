@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -18,6 +19,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -103,16 +105,22 @@ func UpdatePlaygroundAgentConfig(c *gin.Context) {
 		writePlaygroundError(c, http.StatusBadRequest, err.Error())
 		return
 	}
-	image, err := validatePlaygroundAgent(c, input.Image, "image")
-	if err != nil {
-		writePlaygroundError(c, http.StatusBadRequest, err.Error())
-		return
+	var image *dto.ImagePlaygroundAgent
+	if input.Image != nil {
+		image, err = validatePlaygroundAgent(c, input.Image, "image")
+		if err != nil {
+			writePlaygroundError(c, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	setting, err := model.GetUserSetting(c.GetInt("id"), true)
 	if err != nil {
 		writePlaygroundError(c, http.StatusInternalServerError, "failed to load image studio settings")
 		return
+	}
+	if input.Image == nil && setting.ImagePlayground != nil {
+		image = setting.ImagePlayground.Image
 	}
 	setting.ImagePlayground = &dto.ImagePlaygroundSetting{Prompt: prompt, Image: image}
 	if err := model.UpdateUserSetting(c.GetInt("id"), setting); err != nil {
@@ -430,4 +438,57 @@ func playgroundContentString(content any) string {
 	default:
 		return ""
 	}
+}
+
+// BootstrapImageStudio is an idempotent, session-authenticated write. It never
+// returns credential material and does not overwrite the user's Agent settings.
+func BootstrapImageStudio(c *gin.Context) {
+	if c.GetBool("use_access_token") {
+		common.ApiErrorStatus(c, http.StatusForbidden, common.NewMessage("image studio requires a dashboard login session"))
+		return
+	}
+	userID := c.GetInt("id")
+	userGroup, err := model.GetUserGroup(userID, true)
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("failed to load image studio groups"))
+		return
+	}
+	usable := service.GetUserUsableGroups(userGroup)
+	groups := map[string][]string{}
+	for _, profile := range service.ImageStudioProfiles {
+		if !service.IsUserSelectableGroup(userGroup, profile.Group) {
+			continue
+		}
+		models, err := model.GetImageStudioModels(profile.Group)
+		if err != nil {
+			common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("failed to load image studio models"))
+			return
+		}
+		if len(models) > 0 {
+			groups[profile.Group] = models
+		}
+	}
+	tokens, created, err := model.EnsureImageStudioTokens(userID, userGroup, groups)
+	if err != nil {
+		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("failed to prepare image studio keys"))
+		return
+	}
+	if len(created) > 0 {
+		// Only non-secret identifiers are included in the audit event.
+		model.RecordAuditLog(c, model.AuditLog{UserId: userID, ActorRole: c.GetInt("role"), Category: model.AuditCategorySecurity, Action: "image_studio.keys_created", Success: true, Content: fmt.Sprintf("Image studio key IDs created: %v", created)})
+	}
+	result := []gin.H{}
+	for _, profile := range service.ImageStudioProfiles {
+		token := tokens[profile.Group]
+		if token == nil {
+			continue
+		}
+		models := groups[profile.Group]
+		if token.ModelLimitsEnabled {
+			models = slices.DeleteFunc(slices.Clone(models), func(name string) bool { return !token.GetModelLimitsMap()[name] })
+		}
+		available := !token.DeletedAt.Valid && token.Group == profile.Group && token.Status == common.TokenStatusEnabled && (token.ExpiredTime == -1 || token.ExpiredTime > common.GetTimestamp()) && (token.UnlimitedQuota || token.RemainQuota > 0) && len(models) > 0
+		result = append(result, gin.H{"id": profile.Group, "name": profile.Name, "description": usable[profile.Group], "ratio": service.GetUserGroupRatio(userGroup, profile.Group), "models": models, "max_resolution": profile.MaxResolution, "size_mode": profile.SizeMode, "available": available})
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }

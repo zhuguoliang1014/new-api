@@ -22,7 +22,13 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
-import { getImageSizePreset, imageAspectPresets } from '../lib/sizes'
+import type { StudioGroup } from '../api'
+import {
+  getStudioSize,
+  getStudioSizeSelection,
+  imageAspectPresets,
+  studioResolutions,
+} from '../lib/sizes'
 import { useImagePlaygroundStore } from '../store'
 import { getImageModelOptions, type ImageParameters } from '../types'
 
@@ -53,104 +59,13 @@ function ParameterSelect(props: {
     </div>
   )
 }
-
-export function StudioParameters() {
+export function StudioParameters(props: { group?: StudioGroup }) {
   const { t } = useTranslation()
   const parameters = useImagePlaygroundStore((state) => state.parameters)
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
-  const setParameters = useImagePlaygroundStore((state) => state.setParameters)
-  const modelOptions = getImageModelOptions(parameters.model)
-  const labels: Record<string, string> = {
-    auto: t('Auto'),
-    opaque: t('Opaque'),
-    transparent: t('Transparent'),
-    png: 'PNG',
-    jpeg: 'JPEG',
-    webp: 'WebP',
-  }
-  return (
-    <>
-      <div className='studio-parameter-grid'>
-        <ParameterSelect
-          id='studio-count'
-          label={t('Image count')}
-          value={String(parameters.count)}
-          options={Array.from(
-            { length: modelOptions.maxCount },
-            (_, index) => ({
-              value: String(index + 1),
-              label: t('{{count}} image(s)', { count: index + 1 }),
-            })
-          )}
-          disabled={busy}
-          onChange={(count) => setParameters({ count: Number(count) })}
-        />
-
-        {modelOptions.isGptImage && (
-          <ParameterSelect
-            id='studio-format'
-            label={t('File format')}
-            value={parameters.format}
-            options={['png', 'jpeg', 'webp'].map((value) => ({
-              value,
-              label: labels[value],
-            }))}
-            disabled={busy}
-            onChange={(format) =>
-              setParameters({
-                format: format as ImageParameters['format'],
-              })
-            }
-          />
-        )}
-        {modelOptions.isGptImage && (
-          <ParameterSelect
-            id='studio-background'
-            label={t('Image background')}
-            value={parameters.background}
-            options={['auto', 'opaque', 'transparent'].map((value) => ({
-              value,
-              label: labels[value],
-            }))}
-            disabled={busy || parameters.format === 'jpeg'}
-            onChange={(background) =>
-              setParameters({
-                background: background as ImageParameters['background'],
-              })
-            }
-          />
-        )}
-      </div>
-      {modelOptions.supportsFlexibleSizes && (
-        <div className='studio-size-summary'>
-          <strong>
-            {t('Requested: {{size}}', {
-              size:
-                parameters.size === 'auto'
-                  ? t('Auto')
-                  : parameters.size.replace('x', ' × '),
-            })}
-          </strong>
-          <p>
-            {t(
-              '4K presets use up to 8.3 MP. Exact dimensions depend on the aspect ratio; quality is a separate setting.'
-            )}
-          </p>
-        </div>
-      )}
-    </>
-  )
-}
-
-export function StudioQuickParameters() {
-  const { t } = useTranslation()
-  const parameters = useImagePlaygroundStore((state) => state.parameters)
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
   const options = getImageModelOptions(parameters.model)
-  const sizePreset = getImageSizePreset(parameters.size)
-  const aspect = sizePreset?.preset ?? imageAspectPresets[0]
-  const resolution = sizePreset?.resolution ?? 'auto'
+  const mode = props.group?.size_mode ?? 'native'
+  const selected = getStudioSizeSelection(parameters.size, mode)
   const labels: Record<string, string> = {
     auto: t('Auto'),
     low: t('Low'),
@@ -158,92 +73,148 @@ export function StudioQuickParameters() {
     high: t('High'),
     standard: t('Standard'),
     hd: t('HD'),
+    opaque: t('Opaque'),
+    transparent: t('Transparent'),
   }
   return (
-    <div className='studio-dock-params'>
-      {options.supportsFlexibleSizes ? (
-        <>
-          <ParameterSelect
-            id='studio-quick-aspect'
-            label={t('Aspect ratio')}
-            value={parameters.size === 'auto' ? 'auto' : aspect.ratio}
-            options={[
-              { value: 'auto', label: t('Auto') },
-              ...imageAspectPresets.map((preset) => ({
-                value: preset.ratio,
-                label: preset.ratio,
-              })),
-            ]}
-            disabled={busy}
-            onChange={(ratio) => {
-              if (ratio === 'auto') {
-                setParameters({ size: 'auto' })
-                return
+    <section
+      className='studio-settings-section'
+      aria-label={t('Image settings')}
+    >
+      <h3>{t('Image settings')}</h3>
+      <div className='studio-field'>
+        <Label>{t('Aspect ratio')}</Label>
+        <div
+          className='studio-aspects'
+          role='group'
+          aria-label={t('Aspect ratio')}
+        >
+          <Button
+            type='button'
+            variant='ghost'
+            aria-pressed={parameters.size === 'auto'}
+            onClick={() => setParameters({ size: 'auto' })}
+          >
+            {t('Auto')}
+          </Button>
+          {imageAspectPresets.map((preset) => (
+            <Button
+              key={preset.ratio}
+              type='button'
+              variant='ghost'
+              aria-pressed={
+                parameters.size !== 'auto' && selected.ratio === preset.ratio
               }
-              const preset = imageAspectPresets.find(
-                (item) => item.ratio === ratio
-              )
-              if (preset) {
+              onClick={() =>
                 setParameters({
-                  size: preset.sizes[sizePreset?.resolution ?? '1K'],
+                  size: getStudioSize(preset.ratio, selected.resolution, mode),
                 })
               }
-            }}
-          />
-          <div
-            className='studio-dock-seg'
-            role='group'
-            aria-label={t('Resolution')}
-          >
-            {(['auto', '1K', '2K', '4K'] as const).map((value) => (
+            >
+              <span
+                className='studio-ratio-icon'
+                style={{ aspectRatio: preset.ratio.replace(':', '/') }}
+                aria-hidden='true'
+              />
+              {preset.ratio}
+            </Button>
+          ))}
+        </div>
+      </div>
+      <div className='studio-field'>
+        <div className='studio-field-label'>
+          <Label>{t('Resolution')}</Label>
+          <span>
+            {parameters.size === 'auto'
+              ? t('Auto')
+              : parameters.size.replace('x', ' × ')}
+          </span>
+        </div>
+        <div
+          className='studio-resolutions'
+          role='group'
+          aria-label={t('Resolution')}
+        >
+          {studioResolutions
+            .filter(
+              (value) =>
+                Number.parseInt(value) <= (props.group?.max_resolution ?? 4)
+            )
+            .map((value) => (
               <Button
-                key={value}
                 type='button'
                 variant='ghost'
-                className='studio-dock-seg-btn'
-                aria-pressed={resolution === value}
-                disabled={busy}
+                key={value}
+                aria-pressed={
+                  parameters.size !== 'auto' && selected.resolution === value
+                }
                 onClick={() =>
                   setParameters({
-                    size: value === 'auto' ? 'auto' : aspect.sizes[value],
+                    size: getStudioSize(selected.ratio, value, mode),
                   })
                 }
               >
-                {value === 'auto' ? t('Auto') : value}
+                {value}
               </Button>
             ))}
-          </div>
-        </>
-      ) : (
+        </div>
+      </div>
+      <div className='studio-parameter-grid'>
         <ParameterSelect
-          id='studio-quick-size'
-          label={t('Image size')}
-          value={parameters.size}
-          options={options.sizes.map((size) => ({
-            value: size,
-            label: size === 'auto' ? t('Auto') : size.replace('x', ' × '),
-          }))}
-          disabled={busy}
-          onChange={(size) =>
-            setParameters({ size: size as ImageParameters['size'] })
-          }
-        />
-      )}
-      {options.qualities.length > 1 && (
-        <ParameterSelect
-          id='studio-quick-quality'
+          id='studio-quality'
           label={t('Quality')}
           value={parameters.quality}
           options={options.qualities.map((value) => ({
             value,
             label: labels[value],
           }))}
-          disabled={busy}
           onChange={(quality) =>
             setParameters({ quality: quality as ImageParameters['quality'] })
           }
         />
+        <ParameterSelect
+          id='studio-count'
+          label={t('Image count')}
+          value={String(parameters.count)}
+          options={Array.from({ length: options.maxCount }, (_, index) => ({
+            value: String(index + 1),
+            label: t('{{count}} image(s)', { count: index + 1 }),
+          }))}
+          onChange={(count) => setParameters({ count: Number(count) })}
+        />
+        <ParameterSelect
+          id='studio-format'
+          label={t('File format')}
+          value={parameters.format}
+          options={['png', 'jpeg', 'webp'].map((value) => ({
+            value,
+            label: value.toUpperCase(),
+          }))}
+          onChange={(format) =>
+            setParameters({ format: format as ImageParameters['format'] })
+          }
+        />
+        <ParameterSelect
+          id='studio-background'
+          label={t('Image background')}
+          value={parameters.background}
+          disabled={parameters.format === 'jpeg'}
+          options={['auto', 'opaque', 'transparent'].map((value) => ({
+            value,
+            label: labels[value],
+          }))}
+          onChange={(background) =>
+            setParameters({
+              background: background as ImageParameters['background'],
+            })
+          }
+        />
+      </div>
+      {parameters.format === 'jpeg' && (
+        <p className='studio-field-hint'>
+          {t('JPEG does not support transparency. Use PNG or WebP.')}
+        </p>
       )}
-    </div>
+    </section>
   )
 }

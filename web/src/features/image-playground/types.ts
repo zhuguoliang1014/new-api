@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-import { imageAspectPresets, imageSizeValues } from './lib/sizes'
+import { imageAspectPresets, imageSizeValues, upscaleSizes } from './lib/sizes'
 
 export const imageParametersSchema = z.object({
   prompt: z
@@ -27,7 +27,14 @@ export const imageParametersSchema = z.object({
     .min(1, 'Describe the image you want to create.')
     .max(32000),
   model: z.string().trim().min(1, 'Select an image model.').max(200),
-  size: z.enum(imageSizeValues),
+  size: z
+    .string()
+    .refine(
+      (size) =>
+        imageSizeValues.includes(size as never) ||
+        /^\d{3,5}x\d{3,5}$/.test(size)
+    ),
+  group: z.string().optional(),
   quality: z.enum(['auto', 'low', 'medium', 'high', 'standard', 'hd']),
   count: z.number().int().min(1).max(4),
   format: z.enum(['png', 'jpeg', 'webp']),
@@ -55,6 +62,7 @@ export type ImageJob = {
   controller: AbortController
   parameters: ImageParameters
   referenceCount: number
+  error?: string
 }
 
 /** The image provider is an Agent implementation detail, not a user choice. */
@@ -82,6 +90,7 @@ export function getImageModelOptions(model: string) {
     sizes = [
       'auto',
       ...imageAspectPresets.flatMap((preset) => Object.values(preset.sizes)),
+      ...upscaleSizes,
     ]
   }
   let qualities = ['auto']
@@ -118,4 +127,21 @@ export function normalizeImageParameters(
         ? parameters.background
         : 'auto',
   }
+}
+
+/** The same scalar fields feed both the relay request and its display estimate. */
+export function getImageRequestFields(
+  parameters: ImageParameters
+): Record<string, string | number> {
+  const fields: Record<string, string | number> = {
+    prompt: parameters.prompt,
+    n: parameters.count,
+    quality: parameters.quality,
+    output_format: parameters.format,
+  }
+  if (parameters.size !== 'auto') fields.size = parameters.size
+  if (parameters.background !== 'auto') {
+    fields.background = parameters.background
+  }
+  return fields
 }

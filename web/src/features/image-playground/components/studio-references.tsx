@@ -34,7 +34,6 @@ type StudioReferencesProps = {
 export function StudioReferences(props: StudioReferencesProps) {
   const { t } = useTranslation()
   const references = useImagePlaygroundStore((state) => state.references)
-  const busy = useImagePlaygroundStore((state) => Boolean(state.job))
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
   return (
@@ -53,7 +52,7 @@ export function StudioReferences(props: StudioReferencesProps) {
         accept='image/png,image/jpeg,image/webp'
         multiple
         hidden
-        disabled={busy || !props.supportsReferences}
+        disabled={!props.supportsReferences}
         onChange={(event) => {
           props.onAddFiles([...(event.target.files ?? [])])
           event.target.value = ''
@@ -63,13 +62,13 @@ export function StudioReferences(props: StudioReferencesProps) {
         className={`studio-references${dragging ? ' studio-upload-dragging' : ''}`}
         onDragOver={(event) => {
           event.preventDefault()
-          if (!busy && props.supportsReferences) setDragging(true)
+          if (props.supportsReferences) setDragging(true)
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(event) => {
           event.preventDefault()
           setDragging(false)
-          if (!busy && props.supportsReferences) {
+          if (props.supportsReferences) {
             props.onAddFiles([...event.dataTransfer.files])
           }
         }}
@@ -99,7 +98,7 @@ export function StudioReferences(props: StudioReferencesProps) {
               type='button'
               variant='secondary'
               size='icon'
-              disabled={busy}
+
               className='studio-reference-remove'
               aria-label={t('Remove reference {{name}}', {
                 name: reference.file.name,
@@ -116,15 +115,16 @@ export function StudioReferences(props: StudioReferencesProps) {
           <Button
             type='button'
             variant='ghost'
-            className='studio-upload-button'
+            className={`studio-upload-button${references.length === 0 ? ' studio-upload-empty' : ''}`}
             aria-label={t('Add images to guide your creation')}
             title={t('Drop, paste or choose · PNG, JPEG, WebP · 10 MB each')}
-            disabled={
-              busy || !props.supportsReferences || references.length >= 4
-            }
+            disabled={!props.supportsReferences || references.length >= 4}
             onClick={() => fileInput.current?.click()}
           >
-            <ImagePlus size={30} strokeWidth={1.4} aria-hidden='true' />
+            <ImagePlus size={21} strokeWidth={1.4} aria-hidden='true' />
+            {references.length === 0 && (
+              <span>{t('Drop or paste a reference image')}</span>
+            )}
           </Button>
         )}
       </div>

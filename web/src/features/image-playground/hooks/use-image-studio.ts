@@ -189,7 +189,12 @@ export function useImageStudio() {
     meta: { errorToast: false },
     mutationFn: async (parameters: ImageParameters) => {
       const store = useImagePlaygroundStore.getState()
-      if (store.job || !ownerId || !scope || scope !== getImageAuthScope()) {
+      if (
+        store.jobs.filter((job) => !job.error).length >= 4 ||
+        !ownerId ||
+        !scope ||
+        scope !== getImageAuthScope()
+      ) {
         return
       }
       // Keep the user's draft and style separate; expand the template only for
@@ -213,21 +218,24 @@ export function useImageStudio() {
         referenceCount: store.references.length,
       }
       const references = store.references.map((reference) => reference.file)
-      useImagePlaygroundStore.setState({
-        job,
+      useImagePlaygroundStore.setState((state) => ({
+        jobs: [job, ...state.jobs],
         error: null,
-        selectedRecordId: null,
-      })
+      }))
       try {
         const images = await generateImages(
           agentParameters,
           references,
           controller.signal
         )
+        if (controller.signal.aborted) {
+          throw new DOMException('Aborted', 'AbortError')
+        }
         if (
-          controller.signal.aborted ||
           scope !== getImageAuthScope() ||
-          useImagePlaygroundStore.getState().job?.id !== job.id
+          !useImagePlaygroundStore
+            .getState()
+            .jobs.some((item) => item.id === job.id)
         ) {
           return
         }
@@ -243,19 +251,25 @@ export function useImageStudio() {
         }
         useImagePlaygroundStore.setState((state) => ({
           records: [record, ...state.records].slice(0, 30),
-          selectedRecordId: record.id,
+          selectedRecordId: state.selectedRecordId ?? record.id,
         }))
         await persistStudioRecord(record, scope, controller.signal)
         if (
           scope === getImageAuthScope() &&
-          useImagePlaygroundStore.getState().job?.id === job.id
+          useImagePlaygroundStore
+            .getState()
+            .jobs.some((item) => item.id === job.id)
         ) {
-          useImagePlaygroundStore.setState({ job: null })
+          useImagePlaygroundStore.setState((state) => ({
+            jobs: state.jobs.filter((item) => item.id !== job.id),
+          }))
         }
       } catch (error) {
         if (
           scope !== getImageAuthScope() ||
-          useImagePlaygroundStore.getState().job?.id !== job.id
+          !useImagePlaygroundStore
+            .getState()
+            .jobs.some((item) => item.id === job.id)
         ) {
           return
         }
@@ -268,7 +282,11 @@ export function useImageStudio() {
             'Stopped waiting. The provider may still finish and charge for this request.'
           )
         }
-        useImagePlaygroundStore.setState({ job: null, error: message })
+        useImagePlaygroundStore.setState((state) => ({
+          jobs: state.jobs.map((item) =>
+            item.id === job.id ? { ...item, error: message } : item
+          ),
+        }))
       }
     },
   })

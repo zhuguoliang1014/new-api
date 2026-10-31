@@ -16,15 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check, ImageIcon } from 'lucide-react'
-import { useTranslation } from 'react-i18next'
 
 import { useAuthStore } from '@/stores/auth-store'
 
 import { StudioComposer } from './components/studio-composer'
 import { StudioGallery } from './components/studio-gallery'
 import { useImageStudio } from './hooks/use-image-studio'
-import { useImagePlaygroundStore } from './store'
 
 import '@/styles/image-studio.css'
 
@@ -32,62 +29,17 @@ export function ImagePlayground() {
   const scope = useAuthStore((state) => state.auth.session?.sid)
   return <ImageStudio key={scope} />
 }
-
 function ImageStudio() {
-  const { t } = useTranslation()
   const studio = useImageStudio()
-
-  // Keep the atmosphere in sync with the artwork currently on the canvas.
-  const ambientSrc = useImagePlaygroundStore((state) => {
-    const record =
-      state.records.find((item) => item.id === state.selectedRecordId) ??
-      state.records[0]
-    return record?.images[0]?.src ?? null
-  })
-
   return (
-    <div
-      className={`image-studio${ambientSrc ? ' image-studio--has-art' : ''}`}
-    >
-      {/* Large generated data URLs exceed CSS custom-property limits. Keep the
-          artwork in an image element, below the translucent frosted sheet. */}
-      <div className='studio-ambient-bg' aria-hidden='true'>
-        {ambientSrc && (
-          <img
-            className='studio-ambient-image'
-            src={ambientSrc}
-            alt=''
-            decoding='async'
-            referrerPolicy='no-referrer'
-          />
-        )}
-        <div className='studio-ambient-frost' />
-      </div>
-      <header className='studio-header'>
-        <div className='studio-header-title'>
-          <div className='studio-logo'>
-            <ImageIcon size={20} aria-hidden='true' />
-          </div>
-          <div>
-            <h1>{t('Image Playground')}</h1>
-            <p>{t('An idea. A few words. An entirely new image.')}</p>
-          </div>
-        </div>
-        <div className='studio-header-actions'>
-          <span className='studio-save-state'>
-            <Check size={13} aria-hidden='true' />
-            {t('Local')}
-          </span>
-        </div>
-      </header>
-      {/* The dock reserves its height below the scrollable canvas. */}
+    <div className='image-studio'>
       <div className='studio-workspace'>
-        <StudioGallery />
         <StudioComposer
           refining={studio.refining}
           onRefine={studio.refine}
           onGenerate={studio.generate}
         />
+        <StudioGallery />
       </div>
     </div>
   )
