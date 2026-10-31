@@ -9,11 +9,9 @@ type ImageStudioProfile struct {
 	SizeMode      string
 }
 
-// Preserve existing group identifiers, including the legacy 1-10k label.
-// Larger resolutions must not be enabled without upstream verification.
 var ImageStudioProfiles = []ImageStudioProfile{
-	{Group: "【生图】超分基础版1-4k", Name: "超分基础版", MaxResolution: 4, SizeMode: "native"},
-	{Group: "【生图】超分高质量1-10k", Name: "超分高质量", MaxResolution: 4, SizeMode: "native"},
+	{Group: "【生图】超分基础版1-4k", Name: "超分基础版", MaxResolution: 4, SizeMode: "upscale"},
+	{Group: "【生图】超分高质量1-10k", Name: "超分高质量", MaxResolution: 10, SizeMode: "upscale"},
 	{Group: "【生图】官逆原生1-4k", Name: "官逆原生", MaxResolution: 4, SizeMode: "native"},
 }
 
