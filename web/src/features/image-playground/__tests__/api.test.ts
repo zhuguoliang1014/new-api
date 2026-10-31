@@ -151,7 +151,7 @@ it.each([false, true])(
         ...parameters,
         group,
         model: 'gpt-image-2.5',
-        size: '10240x5760',
+        size: '3840x2160',
         quality: 'high',
       },
       withReferences
@@ -172,7 +172,22 @@ it.each([false, true])(
       body instanceof FormData
         ? body.get('size')
         : (body as { size: string }).size
-    ).toBe('10240x5760')
+    ).toBe('3840x2160')
     expect(config).not.toHaveProperty('headers.Authorization')
+  }
+)
+
+it.each(['4096x4096', '4096x2304', '6144x3456', '8192x4608', '10240x5760'])(
+  'rejects unsupported %s before a billable request',
+  async (size) => {
+    const post = vi.spyOn(imageRelayClient, 'post')
+    await expect(
+      generateImages(
+        { ...parameters, model: 'gpt-image-2.5', size },
+        [],
+        new AbortController().signal
+      )
+    ).rejects.toThrow('This model does not support the selected image size.')
+    expect(post).not.toHaveBeenCalled()
   }
 )

@@ -64,8 +64,7 @@ export function StudioParameters(props: { group?: StudioGroup }) {
   const parameters = useImagePlaygroundStore((state) => state.parameters)
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
   const options = getImageModelOptions(parameters.model)
-  const mode = props.group?.size_mode ?? 'native'
-  const selected = getStudioSizeSelection(parameters.size, mode)
+  const selected = getStudioSizeSelection(parameters.size)
   const labels: Record<string, string> = {
     auto: t('Auto'),
     low: t('Low'),
@@ -107,7 +106,7 @@ export function StudioParameters(props: { group?: StudioGroup }) {
               }
               onClick={() =>
                 setParameters({
-                  size: getStudioSize(preset.ratio, selected.resolution, mode),
+                  size: getStudioSize(preset.ratio, selected.resolution),
                 })
               }
             >
@@ -150,7 +149,7 @@ export function StudioParameters(props: { group?: StudioGroup }) {
                 }
                 onClick={() =>
                   setParameters({
-                    size: getStudioSize(selected.ratio, value, mode),
+                    size: getStudioSize(selected.ratio, value),
                   })
                 }
               >

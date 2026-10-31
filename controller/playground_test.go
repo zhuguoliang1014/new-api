@@ -314,6 +314,18 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.NoError(t, db.Where("user_id = ?", user.Id).Find(&tokens).Error)
 		require.Len(t, tokens, 3)
 		response := request("/bootstrap", "", "", "{}", false)
+		var payload struct {
+			Data []struct {
+				MaxResolution int    `json:"max_resolution"`
+				SizeMode      string `json:"size_mode"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+		require.Len(t, payload.Data, 3)
+		for _, group := range payload.Data {
+			assert.Equal(t, 4, group.MaxResolution)
+			assert.Equal(t, "native", group.SizeMode)
+		}
 		for _, token := range tokens {
 			assert.NotContains(t, response.Body.String(), token.Key)
 			assert.True(t, token.ModelLimitsEnabled)
@@ -338,13 +350,23 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		assert.Equal(t, 403, request("/image", basic, "gpt-image-2", `{}`, true).Code)
 		assert.Equal(t, 403, request("/bootstrap", "", "", `{}`, true).Code)
 	})
-	t.Run("enforces native and upscale resolution plus request bounds", func(t *testing.T) {
+	t.Run("enforces verified image resolution and request bounds for every group", func(t *testing.T) {
 		for _, tc := range []struct {
 			group, body string
 			status      int
 		}{
-			{high, `{"size":"10240x10240","n":4,"quality":"high"}`, 200},
+			{high, `{"size":"3840x2160","n":4,"quality":"high"}`, 200},
 			{basic, `{"size":"10240x10240"}`, 400},
+			{high, `{"size":"10240x5760"}`, 400},
+			{high, `{"size":"6144x3456"}`, 400},
+			{high, `{"size":"8192x4608"}`, 400},
+			{high, `{"size":"4096x2304"}`, 400},
+			{high, `{"size":"3840x3840"}`, 400},
+			{basic, `{"size":"4096x4096"}`, 400},
+			{basic, `{"size":"3840x3840"}`, 400},
+			{basic, `{"size":"3840x2160"}`, 200},
+			{high, `{"size":"2880x2880"}`, 200},
+			{high, `{"size":"2160x3840"}`, 200},
 			{native, `{"size":"4096x4096"}`, 400},
 			{native, `{"size":"3840x3840"}`, 400},
 			{native, `{"size":"3840x2160"}`, 200},
@@ -364,7 +386,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		for _, tc := range []struct {
 			size, n string
 			status  int
-		}{{"10240x5760", "2", 200}, {"10256x5760", "2", 400}, {"1024x1024", "-1", 400}} {
+		}{{"3840x2160", "2", 200}, {"2160x3840", "2", 200}, {"10240x5760", "2", 400}, {"4096x2304", "2", 400}, {"3840x3840", "2", 400}, {"1024x1024", "-1", 400}} {
 			var body bytes.Buffer
 			writer := multipart.NewWriter(&body)
 			require.NoError(t, writer.WriteField("size", tc.size))

@@ -220,14 +220,11 @@ func validateStudioImageParameters(c *gin.Context, profile service.ImageStudioPr
 	widthText, heightText, ok := strings.Cut(input.Size, "x")
 	width, widthErr := strconv.Atoi(widthText)
 	height, heightErr := strconv.Atoi(heightText)
-	maxEdge := profile.MaxResolution * 1024
-	if profile.SizeMode == "native" {
-		maxEdge = 3840
-	}
+	maxEdge := min(profile.MaxResolution*1024, 3840)
 	if !ok || widthErr != nil || heightErr != nil || width < 256 || height < 256 || width > maxEdge || height > maxEdge || width%16 != 0 || height%16 != 0 {
 		return common.NewMessage("the selected image size is not supported by this group")
 	}
-	if profile.SizeMode == "native" && width*height > 8294400 {
+	if width*height > 8294400 {
 		return common.NewMessage("the selected image size is not supported by this group")
 	}
 	return nil

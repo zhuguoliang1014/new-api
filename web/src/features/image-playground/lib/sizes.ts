@@ -113,39 +113,25 @@ export function getImageAspectRatio(width: number, height: number): string {
   return `${width / divisor}:${height / divisor}`
 }
 
-// Upscale routes accept an explicit long edge, independently of native image limits.
-export const studioResolutions = ['1K', '2K', '4K', '6K', '8K', '10K'] as const
+// Group names and billing multipliers do not imply larger image capabilities.
+export const studioResolutions = ['1K', '2K', '4K'] as const
 export type StudioResolution = (typeof studioResolutions)[number]
 export function getStudioSize(
   ratio: string,
-  resolution: StudioResolution,
-  mode: 'native' | 'upscale'
+  resolution: StudioResolution
 ): string {
   const preset =
     imageAspectPresets.find((item) => item.ratio === ratio) ??
     imageAspectPresets[0]
-  if (mode === 'native') {
-    return preset.sizes[resolution as ImageResolution] ?? preset.sizes['4K']
-  }
-  const [width, height] = ratio.split(':').map(Number)
-  const edge = Number.parseInt(resolution) * 1024
-  return `${Math.round((edge * width) / Math.max(width, height) / 16) * 16}x${Math.round((edge * height) / Math.max(width, height) / 16) * 16}`
+  return preset.sizes[resolution]
 }
-export const upscaleSizes = imageAspectPresets.flatMap((preset) =>
-  studioResolutions.map((resolution) =>
-    getStudioSize(preset.ratio, resolution, 'upscale')
-  )
-)
-export function getStudioSizeSelection(
-  size: string,
-  mode: 'native' | 'upscale'
-): { ratio: string; resolution: StudioResolution } {
-  for (const preset of imageAspectPresets) {
-    for (const resolution of studioResolutions) {
-      if (getStudioSize(preset.ratio, resolution, mode) === size) {
-        return { ratio: preset.ratio, resolution }
-      }
-    }
+export function getStudioSizeSelection(size: string): {
+  ratio: string
+  resolution: StudioResolution
+} {
+  const selected = getImageSizePreset(size)
+  if (selected) {
+    return { ratio: selected.preset.ratio, resolution: selected.resolution }
   }
   return { ratio: '1:1', resolution: '1K' }
 }

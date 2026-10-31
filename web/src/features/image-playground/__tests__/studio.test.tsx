@@ -164,7 +164,7 @@ beforeEach(() => {
       ratio: 0.3,
       models: ['gpt-image-2', 'gpt-image-2.5'],
       max_resolution: 4,
-      size_mode: 'upscale',
+      size_mode: 'native',
       available: true,
     },
     {
@@ -173,8 +173,8 @@ beforeEach(() => {
       description: 'High resolution',
       ratio: 1.2,
       models: ['gpt-image-2', 'gpt-image-2.5'],
-      max_resolution: 10,
-      size_mode: 'upscale',
+      max_resolution: 4,
+      size_mode: 'native',
       available: true,
     },
   ])
@@ -254,8 +254,13 @@ it('starts without a key setup dialog and exposes the selected group models', as
   expect(
     screen.queryByRole('option', { name: 'gpt-image-2.5-flare' })
   ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '10K' }))
-  expect(useImagePlaygroundStore.getState().parameters.size).toBe('10240x10240')
+  for (const resolution of ['6K', '8K', '10K']) {
+    expect(
+      screen.queryByRole('button', { name: resolution })
+    ).not.toBeInTheDocument()
+  }
+  fireEvent.click(screen.getByRole('button', { name: '4K' }))
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('2880x2880')
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'basic' },
   })
@@ -888,6 +893,12 @@ it.each([
   async ({ resolution, ratio, size }) => {
     showStudio()
     await ready()
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Generation group' }),
+      {
+        target: { value: 'high' },
+      }
+    )
     expect(
       within(screen.getByRole('group', { name: 'Aspect ratio' })).getByRole(
         'button',
@@ -1386,7 +1397,7 @@ it('keeps the remaining job running when one of two parallel requests fails', as
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'high' },
   })
-  fireEvent.click(screen.getByRole('button', { name: '10K' }))
+  fireEvent.click(screen.getByRole('button', { name: '4K' }))
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'Second' },
   })
@@ -1403,7 +1414,7 @@ it('keeps the remaining job running when one of two parallel requests fails', as
   )
   expect(
     useImagePlaygroundStore.getState().records[0].parameters
-  ).toMatchObject({ group: 'high', size: '10240x10240', prompt: 'Second' })
+  ).toMatchObject({ group: 'high', size: '2880x2880', prompt: 'Second' })
   expect(generateImages).toHaveBeenNthCalledWith(
     1,
     expect.objectContaining({ group: 'native', size: 'auto', prompt: 'First' }),
@@ -1536,4 +1547,35 @@ it('offers every style in the same order as the composer and keeps both selector
   expect(
     screen.getByRole('button', { name: 'Try Concept art' })
   ).toHaveAttribute('aria-pressed', 'false')
+})
+
+it('resets unsupported dimensions when reusing older 10K history', async () => {
+  vi.mocked(readImageHistory).mockResolvedValue([
+    {
+      id: 'legacy-10k',
+      ownerId: 1,
+      createdAt: Date.now(),
+      parameters: {
+        ...useImagePlaygroundStore.getState().parameters,
+        model: 'gpt-image-2.5',
+        group: 'high',
+        prompt: 'A mountain',
+        size: '10240x5760',
+      },
+      images: [image],
+      referenceCount: 0,
+    },
+  ])
+  showStudio()
+  await ready()
+  fireEvent.click(await screen.findByRole('button', { name: 'Reuse settings' }))
+  expect(useImagePlaygroundStore.getState().parameters).toMatchObject({
+    group: 'high',
+    model: 'gpt-image-2.5',
+    prompt: 'A mountain',
+    size: 'auto',
+  })
+  fireEvent.click(screen.getByRole('button', { name: '4K' }))
+  fireEvent.click(screen.getByRole('button', { name: '16:9' }))
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('3840x2160')
 })

@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-import { imageAspectPresets, imageSizeValues, upscaleSizes } from './lib/sizes'
+import { imageAspectPresets, imageSizeValues } from './lib/sizes'
 
 export const imageParametersSchema = z.object({
   prompt: z
@@ -30,9 +30,8 @@ export const imageParametersSchema = z.object({
   size: z
     .string()
     .refine(
-      (size) =>
-        imageSizeValues.includes(size as never) ||
-        /^\d{3,5}x\d{3,5}$/.test(size)
+      (size) => imageSizeValues.includes(size as never),
+      'This model does not support the selected image size.'
     ),
   group: z.string().optional(),
   quality: z.enum(['auto', 'low', 'medium', 'high', 'standard', 'hd']),
@@ -90,7 +89,6 @@ export function getImageModelOptions(model: string) {
     sizes = [
       'auto',
       ...imageAspectPresets.flatMap((preset) => Object.values(preset.sizes)),
-      ...upscaleSizes,
     ]
   }
   let qualities = ['auto']
