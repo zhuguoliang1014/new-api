@@ -50,6 +50,8 @@ export function StudioGallery() {
     index: number
     record: ImageRecord
   } | null>(null)
+  const previewRecord =
+    records.find((item) => item.id === preview?.record.id) ?? preview?.record
   const [historyQuery, setHistoryQuery] = useState('')
   const record = records.find((item) => item.id === selectedId) ?? records[0]
   const visibleRecords = historyQuery.trim()
@@ -72,7 +74,9 @@ export function StudioGallery() {
             )}
           </p>
         )}
-        {job && <GenerationProgress compact={Boolean(selectedId)} />}
+        {job && (!selectedId || record?.localSaveStatus !== 'saving') && (
+          <GenerationProgress compact={Boolean(selectedId)} />
+        )}
         {!job && !record && <StudioInspiration />}
         {(!job || selectedId) && record && (
           <div className='studio-result'>
@@ -105,13 +109,26 @@ export function StudioGallery() {
                 </div>
               ))}
             </div>
-            {record.images.some((image) => /^https?:/.test(image.src)) && (
-              <p className='studio-help'>
+            {record.localSaveStatus === 'saving' && (
+              <p className='studio-help' role='status'>
+                {t('Saving images locally...')}
+              </p>
+            )}
+            {record.localSaveStatus === 'failed' && !storageUnavailable && (
+              <p className='studio-help' role='status'>
                 {t(
-                  'Some providers return temporary links. Download images you want to keep.'
+                  'Some images could not be saved locally. Download them before their links expire.'
                 )}
               </p>
             )}
+            {!record.localSaveStatus &&
+              record.images.some((image) => /^https?:/.test(image.src)) && (
+                <p className='studio-help'>
+                  {t(
+                    'Some providers return temporary links. Download images you want to keep.'
+                  )}
+                </p>
+              )}
           </div>
         )}
       </div>
@@ -161,13 +178,13 @@ export function StudioGallery() {
           </div>
         </div>
       )}
-      {preview && (
+      {preview && previewRecord && (
         <Suspense fallback={<LoadingState />}>
           <StudioPreview
-            images={preview.record.images}
+            images={previewRecord.images}
             index={preview.index}
-            requestedSize={preview.record.parameters.size}
-            prompt={preview.record.parameters.prompt}
+            requestedSize={previewRecord.parameters.size}
+            prompt={previewRecord.parameters.prompt}
             onClose={() => setPreview(null)}
             onIndexChange={(index) =>
               setPreview((current) => (current ? { ...current, index } : null))
@@ -175,7 +192,7 @@ export function StudioGallery() {
             footer={(image) => (
               <ImageActions
                 image={image}
-                record={preview.record}
+                record={previewRecord}
                 onReferenceUsed={() => setPreview(null)}
               />
             )}

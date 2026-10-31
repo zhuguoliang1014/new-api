@@ -26,7 +26,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -1219,4 +1219,160 @@ it('opens the reference hover card on touch and removes it together with the ref
   expect(
     screen.queryByRole('button', { name: 'Preview reference reference.png' })
   ).not.toBeInTheDocument()
+})
+
+afterEach(() => vi.unstubAllGlobals())
+
+it('stores URL image bytes locally and displays the saved copy after history is reloaded', async () => {
+  const remote = { id: 'remote', src: 'https://images.example/temporary.png' }
+  vi.mocked(generateImages).mockResolvedValue([remote])
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['image bytes'], { type: 'image/png' }),
+    })
+  )
+  const view = showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A lake' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() =>
+    expect(saveImageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [{ ...remote, src: 'data:image/png;base64,aW1hZ2UgYnl0ZXM=' }],
+      })
+    )
+  )
+  const saved = vi.mocked(saveImageRecord).mock.calls.at(-1)?.[0]
+  if (!saved) throw new Error('Expected saved image history')
+  expect(fetch).toHaveBeenCalledWith(
+    remote.src,
+    expect.objectContaining({
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    })
+  )
+  view.unmount()
+  act(() =>
+    useImagePlaygroundStore.setState({ records: [], historyLoaded: false })
+  )
+  vi.mocked(readImageHistory).mockResolvedValue([saved])
+  vi.mocked(fetch).mockRejectedValue(new Error('link expired'))
+  showStudio()
+  expect(await screen.findByAltText('Generated image')).toHaveAttribute(
+    'src',
+    saved.images[0].src
+  )
+})
+
+it('saves accessible legacy links on history load without changing their settings', async () => {
+  const record = {
+    id: 'legacy-url',
+    ownerId: 1,
+    createdAt: 1,
+    parameters: {
+      ...useImagePlaygroundStore.getState().parameters,
+      prompt: 'A lake',
+    },
+    images: [{ id: 'legacy-image', src: 'https://images.example/legacy.webp' }],
+    referenceCount: 0,
+  }
+  vi.mocked(readImageHistory).mockResolvedValue([record])
+  vi.stubGlobal(
+    'fetch',
+    vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['legacy'], { type: 'image/webp' }),
+    })
+  )
+  showStudio()
+  await waitFor(() =>
+    expect(saveImageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: record.id,
+        parameters: record.parameters,
+        images: [
+          { id: 'legacy-image', src: 'data:image/webp;base64,bGVnYWN5' },
+        ],
+      }),
+      true
+    )
+  )
+  expect(screen.getByAltText('Generated image')).toHaveAttribute(
+    'src',
+    'data:image/webp;base64,bGVnYWN5'
+  )
+})
+
+it('retains successful local copies and warns when another temporary link cannot be saved', async () => {
+  vi.mocked(generateImages).mockResolvedValue([
+    { id: 'available', src: 'https://images.example/available.png' },
+    { id: 'blocked', src: 'https://images.example/blocked.png' },
+  ])
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url.includes('blocked')) throw new TypeError('CORS blocked')
+      return {
+        ok: true,
+        blob: async () => new Blob(['image'], { type: 'image/png' }),
+      }
+    })
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A lake' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  expect(
+    await screen.findByText(
+      'Some images could not be saved locally. Download them before their links expire.'
+    )
+  ).toBeInTheDocument()
+  expect(
+    vi
+      .mocked(saveImageRecord)
+      .mock.calls.at(-1)?.[0]
+      .images.map((item) => item.src)
+  ).toEqual([
+    'data:image/png;base64,aW1hZ2U=',
+    'https://images.example/blocked.png',
+  ])
+  expect(screen.queryByText('Creation interrupted')).not.toBeInTheDocument()
+})
+
+it('discards local image downloads when the account changes', async () => {
+  let finish!: (value: unknown) => void
+  vi.mocked(generateImages).mockResolvedValue([
+    { id: 'remote', src: 'https://images.example/temporary.png' },
+  ])
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+  )
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A lake' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(fetch).toHaveBeenCalled())
+  act(() => useAuthStore.getState().auth.reset())
+  await act(async () =>
+    finish({
+      ok: true,
+      blob: async () => new Blob(['image'], { type: 'image/png' }),
+    })
+  )
+  expect(saveImageRecord).not.toHaveBeenCalled()
+  expect(useImagePlaygroundStore.getState().records).toEqual([])
 })

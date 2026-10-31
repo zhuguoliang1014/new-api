@@ -47,6 +47,7 @@ export type ImageRecord = {
   styleId?: string | null
   images: ImageOutput[]
   referenceCount: number
+  localSaveStatus?: 'saving' | 'saved' | 'failed'
 }
 export type ImageJob = {
   id: string

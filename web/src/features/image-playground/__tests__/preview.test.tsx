@@ -272,3 +272,29 @@ it('shows and copies the user prompt instead of provider-expanded instructions',
   await user.click(screen.getByRole('button', { name: 'Copy prompt' }))
   expect(write).toHaveBeenCalledWith('西游记四人同行')
 })
+
+it('recovers the canvas when a cached copy replaces a failed remote URL', () => {
+  const view = render(<ImageArtwork image={images[0]} />)
+  fireEvent.error(screen.getByRole('img'))
+  expect(screen.getByText('Failed to load image')).toBeInTheDocument()
+  const cached = { ...images[0], src: 'data:image/png;base64,aW1hZ2U=' }
+  view.rerender(<ImageArtwork image={cached} />)
+  expect(screen.getByRole('img')).toHaveAttribute('src', cached.src)
+  expect(screen.queryByText('Failed to load image')).not.toBeInTheDocument()
+})
+
+it('recovers the open preview when a cached copy replaces a failed remote URL', () => {
+  const props = {
+    images: [images[0]],
+    index: 0,
+    onClose: () => undefined,
+    onIndexChange: () => undefined,
+  }
+  const view = render(<StudioPreview {...props} />)
+  fireEvent.error(screen.getByRole('img'))
+  expect(screen.getByText('Failed to load image')).toBeInTheDocument()
+  const cached = { ...images[0], src: 'data:image/png;base64,aW1hZ2U=' }
+  view.rerender(<StudioPreview {...props} images={[cached]} />)
+  expect(screen.getByRole('img')).toHaveAttribute('src', cached.src)
+  expect(screen.queryByText('Failed to load image')).not.toBeInTheDocument()
+})

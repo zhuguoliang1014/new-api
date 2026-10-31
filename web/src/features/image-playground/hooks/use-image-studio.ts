@@ -26,6 +26,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import { generateImages, getImageAuthScope, refinePrompt } from '../api'
 import { readImageHistory, saveImageRecord } from '../lib/history'
+import { cacheImageRecord } from '../lib/images'
 import {
   applyStyleTemplate,
   restoreLegacyStyleRecord,
@@ -37,6 +38,45 @@ import {
   type ImageParameters,
   type ImageRecord,
 } from '../types'
+
+// Both new creations and legacy URL records use the same local-save path.
+async function persistStudioRecord(
+  record: ImageRecord,
+  scope: string,
+  signal: AbortSignal,
+  existingOnly = false
+): Promise<void> {
+  try {
+    const cached = await cacheImageRecord(record, signal)
+    if (
+      signal.aborted ||
+      scope !== getImageAuthScope() ||
+      !useImagePlaygroundStore
+        .getState()
+        .records.some((item) => item.id === record.id)
+    ) {
+      return
+    }
+    if (existingOnly) await saveImageRecord(cached, true)
+    else await saveImageRecord(cached)
+    if (signal.aborted || scope !== getImageAuthScope()) return
+    useImagePlaygroundStore.setState((state) => ({
+      records: state.records.map((item) =>
+        item.id === record.id ? cached : item
+      ),
+    }))
+  } catch {
+    if (signal.aborted || scope !== getImageAuthScope()) return
+    useImagePlaygroundStore.setState((state) => ({
+      storageUnavailable: true,
+      records: state.records.map((item) =>
+        item.id === record.id
+          ? { ...item, localSaveStatus: 'failed' as const }
+          : item
+      ),
+    }))
+  }
+}
 
 export function useImageStudio() {
   const refineControllerRef = useRef<AbortController | null>(null)
@@ -93,6 +133,49 @@ export function useImageStudio() {
       active = false
     }
   }, [scope, ownerId, historyLoaded])
+
+  useEffect(() => {
+    if (!scope || !historyLoaded) return
+    const controller = new AbortController()
+    // Process records in order and only fetch the images within one creation
+    // concurrently, rather than downloading the entire history at once.
+    const records = useImagePlaygroundStore
+      .getState()
+      .records.filter((record) =>
+        record.images.some((image) => /^https?:/i.test(image.src))
+      )
+    void (async () => {
+      for (const record of records) {
+        if (controller.signal.aborted || scope !== getImageAuthScope()) return
+        if (
+          !useImagePlaygroundStore
+            .getState()
+            .records.some((item) => item.id === record.id)
+        ) {
+          continue
+        }
+        useImagePlaygroundStore.setState((state) => ({
+          records: state.records.map((item) =>
+            item.id === record.id
+              ? { ...item, localSaveStatus: 'saving' as const }
+              : item
+          ),
+        }))
+        await persistStudioRecord(record, scope, controller.signal, true)
+      }
+    })()
+    return () => {
+      controller.abort()
+      useImagePlaygroundStore.setState((state) => ({
+        records: state.records.map((record) =>
+          record.localSaveStatus === 'saving' &&
+          records.some((item) => item.id === record.id)
+            ? { ...record, localSaveStatus: 'failed' as const }
+            : record
+        ),
+      }))
+    }
+  }, [scope, historyLoaded])
 
   const refineMutation = useMutation({
     retry: false,
@@ -156,18 +239,18 @@ export function useImageStudio() {
           styleId: preset?.id ?? null,
           images,
           referenceCount: references.length,
+          localSaveStatus: 'saving',
         }
         useImagePlaygroundStore.setState((state) => ({
           records: [record, ...state.records].slice(0, 30),
           selectedRecordId: record.id,
-          job: null,
         }))
-        try {
-          await saveImageRecord(record)
-        } catch {
-          if (scope === getImageAuthScope()) {
-            useImagePlaygroundStore.setState({ storageUnavailable: true })
-          }
+        await persistStudioRecord(record, scope, controller.signal)
+        if (
+          scope === getImageAuthScope() &&
+          useImagePlaygroundStore.getState().job?.id === job.id
+        ) {
+          useImagePlaygroundStore.setState({ job: null })
         }
       } catch (error) {
         if (

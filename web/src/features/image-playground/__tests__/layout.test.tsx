@@ -39,7 +39,10 @@ beforeEach(() => {
   document.head.append(style)
 })
 
-afterEach(() => style.remove())
+afterEach(() => {
+  style.remove()
+  document.documentElement.className = ''
+})
 
 it.each([1, 2])(
   'keeps the artwork background transparent on hover with %i images',
@@ -146,3 +149,68 @@ it('keeps the empty canvas area without an empty history rail', () => {
   expect(canvas).toHaveStyle({ flex: '1 1 0%', overflowY: 'auto' })
   expect(canvas).not.toHaveTextContent('Recent creations')
 })
+
+it('gives the canvas the available width and keeps the composer compact', () => {
+  render(
+    <div className='image-studio'>
+      <div className='studio-workspace'>
+        <StudioGallery />
+        <div className='studio-dock'>
+          <div className='studio-dock-input'>
+            <textarea aria-label='Draft' className='studio-dock-prompt' />
+            <div className='studio-upload-button' data-testid='upload' />
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+  expect(screen.getByRole('region', { name: 'My creations' })).toHaveStyle({
+    paddingRight: '0px',
+  })
+  expect(screen.getByRole('textbox', { name: 'Draft' })).toHaveStyle({
+    minHeight: '52px',
+  })
+  expect(screen.getByTestId('upload')).toHaveStyle({
+    width: '52px',
+    height: '52px',
+  })
+})
+
+it.each([
+  {
+    theme: '',
+    background: 'rgba(242, 245, 247, 0.94)',
+    surface: 'rgba(255, 255, 255, 0.38)',
+  },
+  {
+    theme: 'dark',
+    background: 'rgba(35, 40, 45, 0.94)',
+    surface: 'rgba(255, 255, 255, 0.1)',
+  },
+])(
+  'uses the $theme workspace theme for portalled previews',
+  ({ theme, background, surface }) => {
+    document.documentElement.className = theme
+    render(
+      <div className='studio-preview-dialog' data-testid='preview'>
+        <div className='studio-viewer'>
+          <div className='studio-viewer-viewport' data-testid='viewport' />
+        </div>
+      </div>
+    )
+    expect(screen.getByTestId('preview')).toHaveStyle({
+      backgroundColor: background,
+    })
+    // jsdom does not resolve inherited CSS custom properties. Verify the
+    // surface token and its use separately; browser QA checks the rendered colour.
+    expect(
+      getComputedStyle(screen.getByTestId('preview'))
+        .getPropertyValue('--g-surface')
+        .replaceAll(' ', '')
+    ).toBe(surface.replaceAll(' ', ''))
+    expect(screen.getByTestId('viewport')).toHaveStyle({
+      background: 'var(--g-surface)',
+    })
+    document.documentElement.className = ''
+  }
+)

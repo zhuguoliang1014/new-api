@@ -46,9 +46,9 @@ export function ImageArtwork(props: {
   requestedSize?: string
 }) {
   const { t } = useTranslation()
-  const [failed, setFailed] = useState(false)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState<ImageDimensions | null>(null)
-  if (failed) {
+  if (failedSrc === props.image.src) {
     return (
       <ErrorState
         className='studio-image-error'
@@ -83,7 +83,7 @@ export function ImageArtwork(props: {
           alt={t('Generated image')}
           loading='lazy'
           referrerPolicy='no-referrer'
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(props.image.src)}
           onLoad={(event) => {
             const image = event.currentTarget
             if (image.naturalWidth && image.naturalHeight) {

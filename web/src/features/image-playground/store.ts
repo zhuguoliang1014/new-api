@@ -170,7 +170,13 @@ function warnBeforeReload(event: BeforeUnloadEvent): void {
 }
 
 useImagePlaygroundStore.subscribe((state, previous) => {
-  if (Boolean(state.job) === Boolean(previous.job)) return
-  if (state.job) window.addEventListener('beforeunload', warnBeforeReload)
+  const pending =
+    Boolean(state.job) ||
+    state.records.some((record) => record.localSaveStatus === 'saving')
+  const wasPending =
+    Boolean(previous.job) ||
+    previous.records.some((record) => record.localSaveStatus === 'saving')
+  if (pending === wasPending) return
+  if (pending) window.addEventListener('beforeunload', warnBeforeReload)
   else window.removeEventListener('beforeunload', warnBeforeReload)
 })

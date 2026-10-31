@@ -67,20 +67,29 @@ export async function readImageHistory(
   }
 }
 
-export async function saveImageRecord(record: ImageRecord): Promise<void> {
+export async function saveImageRecord(
+  record: ImageRecord,
+  existingOnly = false
+): Promise<void> {
   const db = await openHistory(record.ownerId)
   try {
     await new Promise<void>((resolve, reject) => {
       const transaction = db.transaction('works', 'readwrite')
       const store = transaction.objectStore('works')
-      store.put(record)
-      // Bound disk use atomically, including records from other open tabs.
-      const request = store.getAll()
-      request.addEventListener('success', () => {
-        const records = (request.result as ImageRecord[]).sort(
-          (a, b) => b.createdAt - a.createdAt
-        )
-        for (const old of records.slice(HISTORY_LIMIT)) store.delete(old.id)
+      const current = store.get(record.id)
+      current.addEventListener('success', () => {
+        // A legacy download may finish after this work was deleted in another
+        // tab. Do not recreate it when updating its cached image bytes.
+        if (existingOnly && !current.result) return
+        store.put(record)
+        // Bound disk use atomically, including records from other open tabs.
+        const request = store.getAll()
+        request.addEventListener('success', () => {
+          const records = (request.result as ImageRecord[]).sort(
+            (a, b) => b.createdAt - a.createdAt
+          )
+          for (const old of records.slice(HISTORY_LIMIT)) store.delete(old.id)
+        })
       })
       transaction.addEventListener('complete', () => resolve())
       transaction.addEventListener('error', () => reject(transaction.error))

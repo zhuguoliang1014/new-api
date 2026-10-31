@@ -49,11 +49,11 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
     imageId: string
     dimensions: ImageDimensions
   } | null>(null)
-  const [failedId, setFailedId] = useState<string | null>(null)
+  const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const scale = zoom.imageId === props.image.id ? zoom.scale : 1
   const dimensions =
     loaded?.imageId === props.image.id ? loaded.dimensions : null
-  const failed = failedId === props.image.id
+  const failed = failedSrc === props.image.src
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   useEffect(() => {
     if (!dimensions) return
@@ -261,7 +261,7 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
               height={dimensions?.height}
               referrerPolicy='no-referrer'
               draggable={false}
-              onError={() => setFailedId(props.image.id)}
+              onError={() => setFailedSrc(props.image.src)}
               onLoad={(event) => {
                 const image = event.currentTarget
                 if (image.naturalWidth && image.naturalHeight) {

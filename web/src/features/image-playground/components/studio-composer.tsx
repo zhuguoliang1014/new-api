@@ -70,6 +70,12 @@ export function StudioComposer(props: StudioComposerProps) {
   const { t } = useTranslation()
   const parameters = useImagePlaygroundStore((state) => state.parameters)
   const job = useImagePlaygroundStore((state) => state.job)
+  const saving = useImagePlaygroundStore((state) =>
+    state.records.some(
+      (record) =>
+        record.id === state.job?.id && record.localSaveStatus === 'saving'
+    )
+  )
   const setParameters = useImagePlaygroundStore((state) => state.setParameters)
   const agentConfig = useStudioAgentConfig()
   const [settingsOpen, setSettingsOpen] = useState<boolean | null>(null)
@@ -294,7 +300,7 @@ export function StudioComposer(props: StudioComposerProps) {
                 >
                   <Plus size={16} aria-hidden='true' />
                 </Button>
-                {job && (
+                {job && !saving && (
                   <Button
                     type='button'
                     variant='ghost'
@@ -319,7 +325,8 @@ export function StudioComposer(props: StudioComposerProps) {
                   ) : (
                     <Sparkles size={16} aria-hidden='true' />
                   )}
-                  {busy ? t('Creating...') : t('Generate')}
+                  {saving && t('Saving...')}
+                  {!saving && (busy ? t('Creating...') : t('Generate'))}
                 </Button>
               </div>
             </div>

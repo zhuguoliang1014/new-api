@@ -151,7 +151,7 @@ export function StudioCreationActions() {
             size='icon'
             className='studio-delete'
             aria-label={t('Delete creation')}
-            disabled={busy}
+            disabled={busy || record.localSaveStatus === 'saving'}
             onClick={() => setDeleting(record)}
           >
             <Trash2 size={14} aria-hidden='true' />

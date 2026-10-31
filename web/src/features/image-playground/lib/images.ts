@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { t } from 'i18next'
 
-import type { ImageOutput } from '../types'
+import type { ImageOutput, ImageRecord } from '../types'
 
 export function validateReferenceFiles(files: File[]): void {
   if (files.length > 4) throw new Error(t('Use up to 4 reference images.'))
@@ -104,4 +104,59 @@ export async function downloadImagesArchive(
     new Blob([new Uint8Array(archive)], { type: 'application/zip' }),
     `new-api-images-${id}.zip`
   )
+}
+
+/** Preserve original image bytes in the existing IndexedDB history format. */
+export async function cacheImageRecord(
+  record: ImageRecord,
+  signal: AbortSignal
+): Promise<ImageRecord> {
+  const images = await Promise.all(
+    record.images.map(async (image) => {
+      if (!/^https?:\/\//i.test(image.src)) return image
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      signal.addEventListener('abort', abort, { once: true })
+      if (signal.aborted) controller.abort()
+      // A stalled image host must not keep the studio busy indefinitely.
+      const timeout = window.setTimeout(abort, 30000)
+      try {
+        const blob = await getImageBlob(image.src, controller.signal)
+        if (controller.signal.aborted) return image
+        const src = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.addEventListener(
+            'load',
+            () => resolve(reader.result as string),
+            { once: true }
+          )
+          reader.addEventListener('error', () => reject(reader.error), {
+            once: true,
+          })
+          reader.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true }
+          )
+          reader.readAsDataURL(blob)
+        })
+        return { ...image, src }
+      } catch {
+        // Keep usable links and the other images if this host rejects CORS,
+        // the link expired, or the browser cannot read the original bytes.
+        return image
+      } finally {
+        window.clearTimeout(timeout)
+        signal.removeEventListener('abort', abort)
+      }
+    })
+  )
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
+  return {
+    ...record,
+    images,
+    localSaveStatus: images.some((image) => /^https?:/i.test(image.src))
+      ? 'failed'
+      : 'saved',
+  }
 }
