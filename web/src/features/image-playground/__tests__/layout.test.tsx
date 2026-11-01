@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { readFileSync } from 'node:fs'
 
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 
 import { StudioGallery } from '../components/studio-gallery'
@@ -199,6 +199,14 @@ it('keeps single, multiple, downloading and pending creation cards at the same h
     expect(media).toHaveStyle({ height: '296px', flexShrink: '0' })
   }
   expect(screen.queryByText(/Server copy expires/)).not.toBeInTheDocument()
+  fireEvent.error(screen.getAllByAltText('Generated image').at(-1)!)
+  expect(
+    screen.getByText('Failed to load image').closest('.studio-image-error')
+  ).toHaveStyle({
+    minHeight: '0',
+    flex: '1',
+    overflowY: 'auto',
+  })
 })
 
 it('keeps a useful empty state and the search and filters available before generation', () => {

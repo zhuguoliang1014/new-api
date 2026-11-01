@@ -678,6 +678,11 @@
 .studio-image-error {
   min-height: 210px;
 }
+.studio-result-image .studio-image-error {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
 .studio-image-hover-preview {
   width: min(300px, calc(100vw - 32px));
   padding: 6px;
