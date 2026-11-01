@@ -42,6 +42,7 @@ import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { Textarea } from '@/components/ui/textarea'
 import { handleServerError } from '@/lib/handle-server-error'
 
+import { getStudioModelProfile } from '../api'
 import { useStudioAgentConfig } from '../hooks/use-studio-agent-config'
 import { useStudioGroups } from '../hooks/use-studio-groups'
 import { getStudioDefaultSize, getStudioSizeSelection } from '../lib/sizes'
@@ -73,10 +74,15 @@ export function StudioComposer(props: {
   const agentConfig = useStudioAgentConfig(promptSettingsOpen)
   const isComposingRef = useRef(false)
   const group = groups.data?.find((item) => item.id === parameters.group)
+  const modelProfile = getStudioModelProfile(group, parameters.model)
   let groupDescription = ''
-  if (group?.size_mode === 'native') {
+  if (modelProfile?.size_mode === 'ratio') {
+    groupDescription = t(
+      'Charged per request. Usually returns four images; a grid cover is optional.'
+    )
+  } else if (modelProfile?.size_mode === 'native') {
     groupDescription = t('For detailed creative work')
-  } else if (group && group.max_resolution > 4) {
+  } else if (modelProfile && modelProfile.max_resolution > 4) {
     groupDescription = t('For high-resolution posters and covers')
   } else if (group) {
     groupDescription = t('For everyday images and batch creation')
@@ -90,36 +96,63 @@ export function StudioComposer(props: {
     const selected = groups.data.find((item) => item.id === parameters.group)
     if (!selected) {
       const first = groups.data.find((item) => item.available) ?? groups.data[0]
+      const legacySuffix: Record<string, string> = {
+        '【生图】超分基础版1-4k': 'basic',
+        '【生图】超分高质量1-10k': 'hq',
+        '【生图】官逆原生1-4k': 'native',
+      }
+      const suffix = legacySuffix[parameters.group ?? '']
+      const legacyModel = suffix ? `${parameters.model}-${suffix}` : ''
+      const model = first.models.includes(legacyModel)
+        ? legacyModel
+        : (first.models[0] ?? '')
       setParameters({
         group: first.id,
-        model: first.models[0] ?? '',
-        size: getStudioDefaultSize(first),
+        model,
+        size:
+          model === legacyModel
+            ? parameters.size
+            : getStudioDefaultSize(
+                getStudioModelProfile(first, model) ?? first
+              ),
       })
     } else if (!selected.models.includes(parameters.model)) {
       setParameters({
         model: selected.models[0] ?? '',
-        size: getStudioDefaultSize(selected),
+        size: getStudioDefaultSize(
+          getStudioModelProfile(selected, selected.models[0] ?? '') ?? selected
+        ),
       })
     }
-  }, [groups.data, parameters.group, parameters.model, setParameters])
+  }, [
+    groups.data,
+    parameters.group,
+    parameters.model,
+    parameters.size,
+    setParameters,
+  ])
   const modelOptions = getImageModelOptions(parameters.model)
   const [width, height] = parameters.size.split('x').map(Number)
   const maxEdge =
-    group?.max_edge ??
-    (group?.size_mode === 'native' ? 3840 : (group?.max_resolution ?? 4) * 1024)
+    modelProfile?.max_edge ??
+    (modelProfile?.size_mode === 'native'
+      ? 3840
+      : (modelProfile?.max_resolution ?? 4) * 1024)
   const maxPixels =
-    group?.max_pixels ??
-    (group?.size_mode === 'native' ? 8294400 : maxEdge * maxEdge)
+    modelProfile?.max_pixels ??
+    (modelProfile?.size_mode === 'native' ? 8294400 : maxEdge * maxEdge)
   const sizeSupported =
     parameters.size === 'auto' ||
-    (width >= 256 &&
-      height >= 256 &&
-      width <= maxEdge &&
-      height <= maxEdge &&
-      width * height <= maxPixels &&
-      width % 16 === 0 &&
-      height % 16 === 0 &&
-      Math.max(width, height) <= Math.min(width, height) * 3)
+    (modelProfile?.size_mode === 'ratio'
+      ? modelOptions.sizes.includes(parameters.size)
+      : width >= 256 &&
+        height >= 256 &&
+        width <= maxEdge &&
+        height <= maxEdge &&
+        width * height <= maxPixels &&
+        width % 16 === 0 &&
+        height % 16 === 0 &&
+        Math.max(width, height) <= Math.min(width, height) * 3)
   const canGenerate = Boolean(
     sizeSupported &&
     parameters.prompt.trim() &&
@@ -162,44 +195,54 @@ export function StudioComposer(props: {
               </Button>
             </div>
             <div className='studio-field studio-group-field'>
-              <Label htmlFor='studio-group'>{t('Generation group')}</Label>
-              <NativeSelect
-                id='studio-group'
-                className='studio-native-select'
-                value={parameters.group ?? ''}
-                disabled={groups.isLoading}
-                onChange={(event) => {
-                  const next = groups.data?.find(
-                    (item) => item.id === event.target.value
-                  )
-                  if (next) {
-                    setParameters({
-                      group: next.id,
-                      model: next.models.includes(parameters.model)
-                        ? parameters.model
-                        : (next.models[0] ?? ''),
-                      size: getStudioDefaultSize(
-                        next,
-                        getStudioSizeSelection(
-                          parameters.size,
-                          group?.size_mode ?? 'native'
-                        ).ratio
-                      ),
-                    })
-                  }
-                }}
-              >
-                {!group && (
-                  <NativeSelectOption value=''>
-                    {groups.isLoading ? t('Loading...') : t('Select a group')}
-                  </NativeSelectOption>
-                )}
-                {groups.data?.map((item) => (
-                  <NativeSelectOption key={item.id} value={item.id}>
-                    {item.name} · {item.ratio}×
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
+              {groups.data?.length === 1 ? (
+                <p className='studio-field-hint'>
+                  {t(group?.name ?? 'Image generation')}
+                </p>
+              ) : (
+                <>
+                  <Label htmlFor='studio-group'>{t('Generation group')}</Label>
+                  <NativeSelect
+                    id='studio-group'
+                    className='studio-native-select'
+                    value={parameters.group ?? ''}
+                    disabled={groups.isLoading}
+                    onChange={(event) => {
+                      const next = groups.data?.find(
+                        (item) => item.id === event.target.value
+                      )
+                      if (next) {
+                        setParameters({
+                          group: next.id,
+                          model: next.models.includes(parameters.model)
+                            ? parameters.model
+                            : (next.models[0] ?? ''),
+                          size: getStudioDefaultSize(
+                            next,
+                            getStudioSizeSelection(
+                              parameters.size,
+                              group?.size_mode ?? 'native'
+                            ).ratio
+                          ),
+                        })
+                      }
+                    }}
+                  >
+                    {!group && (
+                      <NativeSelectOption value=''>
+                        {groups.isLoading
+                          ? t('Loading...')
+                          : t('Select a group')}
+                      </NativeSelectOption>
+                    )}
+                    {groups.data?.map((item) => (
+                      <NativeSelectOption key={item.id} value={item.id}>
+                        {t(item.name)} · {item.ratio}×
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </>
+              )}
               {group && <p className='studio-field-hint'>{groupDescription}</p>}
               {!sizeSupported && (
                 <p className='studio-field-error' role='alert'>
@@ -238,15 +281,46 @@ export function StudioComposer(props: {
                 className='studio-native-select'
                 value={parameters.model}
                 disabled={!group?.models.length}
-                onChange={(event) =>
-                  setParameters({ model: event.target.value })
-                }
+                onChange={(event) => {
+                  const model = event.target.value
+                  setParameters({
+                    model,
+                    size: getStudioDefaultSize(
+                      getStudioModelProfile(group, model) ?? {
+                        max_resolution: 4,
+                        size_mode: 'native',
+                      },
+                      getStudioSizeSelection(
+                        parameters.size,
+                        modelProfile?.size_mode ?? 'native'
+                      ).ratio
+                    ),
+                  })
+                }}
               >
-                {group?.models.map((model) => (
-                  <NativeSelectOption key={model} value={model}>
-                    {model}
-                  </NativeSelectOption>
-                ))}
+                {group?.models.map((model) => {
+                  let label = model
+                  if (model.endsWith('-basic')) {
+                    label = `${model.slice(0, -6)} · ${t('Basic · up to 4K')}`
+                  }
+                  if (model.endsWith('-hq')) {
+                    label = `${model.slice(0, -3)} · ${t('High quality · up to 8K')}`
+                  }
+                  if (model.endsWith('-native')) {
+                    label = `${model.slice(0, -7)} · ${t('Native · up to 4K')}`
+                  }
+                  if (model === 'gemini-3-pro-image-preview') {
+                    label = `${t('Banana Pro')} · ${model}`
+                  }
+                  if (model === 'mj-v8.2') {
+                    label = `Midjourney v8.2 · ${t('Per request')}`
+                  }
+                  return (
+                    <NativeSelectOption key={model} value={model}>
+                      {label}
+                    </NativeSelectOption>
+                  )
+                })}
               </NativeSelect>
             </div>
             <div className='studio-prompt-heading'>
@@ -321,7 +395,7 @@ export function StudioComposer(props: {
                       {...field}
                       id='studio-prompt'
                       aria-label={t('Image prompt')}
-                      maxLength={32000}
+                      maxLength={modelOptions.isMidjourney ? 1023 : 32000}
                       rows={5}
                       className='studio-dock-prompt'
                       placeholder={t(
@@ -405,7 +479,13 @@ export function StudioComposer(props: {
               <ArrowUpRight size={18} />
               {t('Generate')}
               <span>
-                {parameters.count} {t('image(s)')}
+                {modelOptions.isMidjourney ? (
+                  t('One request')
+                ) : (
+                  <>
+                    {parameters.count} {t('image(s)')}
+                  </>
+                )}
               </span>
             </Button>
             <StudioCostEstimate group={group} />

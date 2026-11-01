@@ -631,3 +631,11 @@ func TestOpenaiImageStreamHandlerRecordsUpstreamErrorEvent(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `event: upstream_error`)
 	require.Contains(t, recorder.Body.String(), `stream ID 77`)
 }
+
+func TestMJImageResponseRejectsEmptyResultsWithoutForwardingSuccess(t *testing.T) {
+	c, recorder, resp, info := newImageTestContext(t, `{"data":[]}`, "application/json", false)
+	info.UpstreamModelName = "mj-v8.2"
+	_, err := OpenaiImageHandler(c, info, resp)
+	require.NotNil(t, err)
+	require.Empty(t, recorder.Body.String())
+}

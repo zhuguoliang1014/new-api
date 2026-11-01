@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/middleware"
@@ -90,6 +92,12 @@ func ImageStudioTasksAvailable(c *gin.Context) {
 }
 
 func CreateImageStudioTask(c *gin.Context) {
+	group, groupErr := url.QueryUnescape(c.GetHeader("X-Studio-Group"))
+	profile, known := service.GetImageStudioModelProfile(group, c.GetHeader("X-Studio-Model"))
+	if groupErr != nil || !known {
+		writePlaygroundError(c, 400, "invalid image task request")
+		return
+	}
 	storage, err := common.GetBodyStorage(c)
 	if err != nil {
 		writePlaygroundError(c, 400, "invalid image task request")
@@ -116,6 +124,10 @@ func CreateImageStudioTask(c *gin.Context) {
 	contentType := c.GetHeader("Content-Type")
 	size, quality, format, background, prompt := "auto", "auto", "png", "auto", ""
 	if strings.Contains(c.ContentType(), "multipart/form-data") {
+		if profile.SizeMode == "ratio" {
+			writePlaygroundError(c, 400, "invalid image task request")
+			return
+		}
 		form, err := common.ParseMultipartFormReusable(c)
 		if err != nil || len(form.Value["studio_metadata"]) != 1 {
 			writePlaygroundError(c, 400, "invalid image task metadata")
@@ -162,6 +174,7 @@ func CreateImageStudioTask(c *gin.Context) {
 			Quality    string          `json:"quality"`
 			Format     string          `json:"output_format"`
 			Background string          `json:"background"`
+			Images     []string        `json:"images"`
 		}
 		if common.Unmarshal(body, &payload) != nil || payload.Stream {
 			writePlaygroundError(c, 400, "invalid image task request")
@@ -195,6 +208,36 @@ func CreateImageStudioTask(c *gin.Context) {
 		if payload.Count != nil {
 			count = *payload.Count
 		}
+		if profile.SizeMode == "ratio" {
+			references = len(payload.Images)
+			if references > 4 || utf8.RuneCountInString(prompt) > 1023 {
+				writePlaygroundError(c, 400, "invalid image task request")
+				return
+			}
+			for _, source := range payload.Images {
+				header, data, ok := strings.Cut(source, ",")
+				if !ok || !slices.Contains([]string{"data:image/png;base64", "data:image/jpeg;base64", "data:image/webp;base64"}, header) || len(data) > base64.StdEncoding.EncodedLen(10<<20) {
+					writePlaygroundError(c, 400, "invalid reference image")
+					return
+				}
+				decoded, err := base64.StdEncoding.DecodeString(data)
+				if err != nil || len(decoded) == 0 || len(decoded) > 10<<20 {
+					writePlaygroundError(c, 400, "invalid reference image")
+					return
+				}
+			}
+			// MJ accepts references on the JSON generations endpoint. Keep the
+			// fixed-price standard tier pinned independently of browser fields.
+			request := map[string]any{"prompt": prompt, "n": 1, "size": size, "quality": "1", "hd": false, "response_format": "url"}
+			if references > 0 {
+				request["images"] = payload.Images
+			}
+			body, err = common.Marshal(request)
+			if err != nil {
+				writePlaygroundError(c, 400, "invalid image task request")
+				return
+			}
+		}
 	}
 	var meta struct {
 		Parameters struct {
@@ -218,6 +261,14 @@ func CreateImageStudioTask(c *gin.Context) {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
+	if profile.MaxCount > 0 && count > profile.MaxCount {
+		writePlaygroundError(c, 400, "invalid image count")
+		return
+	}
+	if profile.SizeMode == "ratio" && (quality != "auto" || format != "png" || background != "auto") {
+		writePlaygroundError(c, 400, "invalid image task metadata")
+		return
+	}
 	if meta.Parameters.Model != c.GetHeader("X-Studio-Model") || meta.Parameters.Size != size || meta.Parameters.Format != format || meta.Parameters.Quality != quality || meta.Parameters.Background != background {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
@@ -230,8 +281,7 @@ func CreateImageStudioTask(c *gin.Context) {
 		writePlaygroundError(c, 400, "invalid image task request")
 		return
 	}
-	group, _ := url.QueryUnescape(c.GetHeader("X-Studio-Group"))
-	if _, ok := service.GetImageStudioProfile(group); !ok || group != meta.Parameters.Group {
+	if group != meta.Parameters.Group {
 		writePlaygroundError(c, 400, "invalid image task request")
 		return
 	}
@@ -240,7 +290,7 @@ func CreateImageStudioTask(c *gin.Context) {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
-	task, err := imageStudioTasks.Submit(c.GetHeader("X-Studio-Task-ID"), service.StudioTaskRequest{OwnerID: c.GetInt("id"), ClientIP: c.ClientIP(), Group: group, Model: c.GetHeader("X-Studio-Model"), ContentType: contentType, Edit: c.Param("kind") == "edits"}, metadata, body)
+	task, err := imageStudioTasks.Submit(c.GetHeader("X-Studio-Task-ID"), service.StudioTaskRequest{OwnerID: c.GetInt("id"), ClientIP: c.ClientIP(), Group: group, Model: c.GetHeader("X-Studio-Model"), ContentType: contentType, Edit: c.Param("kind") == "edits" && profile.SizeMode != "ratio"}, metadata, body)
 	if err != nil {
 		message := "image task storage is unavailable"
 		if err.Error() == "image task queue is full" || err.Error() == "image task storage is full" || err.Error() == "image task ID already exists" || err.Error() == "invalid image task request" {

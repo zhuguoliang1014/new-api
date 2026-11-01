@@ -32,6 +32,7 @@ export const imageParametersSchema = z.object({
     .refine(
       (size) =>
         imageSizeValues.includes(size as never) ||
+        /^(?:1:1|3:2|2:3|4:3|3:4|5:4|4:5|16:9|9:16|21:9|9:21)$/.test(size) ||
         /^\d{3,5}x\d{3,5}$/.test(size)
     ),
   group: z.string().optional(),
@@ -103,6 +104,8 @@ export const defaultImageParameters: ImageParameters = {
 
 export function getImageModelOptions(model: string) {
   const isGptImage = /^gpt-image-/i.test(model)
+  const isBanana = /^gemini-.*(?:image|banana)/i.test(model)
+  const isMidjourney = model === 'mj-v8.2'
   const supportsFlexibleSizes = /^gpt-image-2(?:[.-]|$)/i.test(model)
   const isDalle3 = /^dall-e-3$/i.test(model)
   const isDalle2 = /^dall-e-2$/i.test(model)
@@ -114,6 +117,23 @@ export function getImageModelOptions(model: string) {
       ...upscaleSizes,
     ]
   }
+  if (isBanana) {
+    sizes = [
+      'auto',
+      ...upscaleSizes.filter((size) =>
+        size.split('x').every((edge) => Number(edge) <= 4096)
+      ),
+    ]
+  }
+  if (isMidjourney) {
+    sizes = [
+      'auto',
+      ...imageAspectPresets.map((preset) => preset.ratio),
+      '5:4',
+      '4:5',
+      '9:21',
+    ]
+  }
   let qualities = ['auto']
   if (isGptImage) qualities = ['auto', 'low', 'medium', 'high']
   if (isDalle3) {
@@ -123,10 +143,12 @@ export function getImageModelOptions(model: string) {
   if (isDalle2) sizes = ['auto', '256x256', '512x512', '1024x1024']
   return {
     isGptImage,
+    isBanana,
+    isMidjourney,
     supportsFlexibleSizes,
     sizes,
     qualities,
-    maxCount: isDalle3 ? 1 : 4,
+    maxCount: isDalle3 || isBanana || isMidjourney ? 1 : 4,
     supportsReferences: !isDalle2 && !isDalle3,
   }
 }
@@ -157,11 +179,14 @@ export function getImageRequestFields(
   const fields: Record<string, string | number> = {
     prompt: parameters.prompt,
     n: parameters.count,
-    quality: parameters.quality,
-    output_format: parameters.format,
+  }
+  const options = getImageModelOptions(parameters.model)
+  if (!options.isBanana && !options.isMidjourney) {
+    fields.quality = parameters.quality
+    fields.output_format = parameters.format
   }
   if (parameters.size !== 'auto') fields.size = parameters.size
-  if (parameters.background !== 'auto') {
+  if (options.isGptImage && parameters.background !== 'auto') {
     fields.background = parameters.background
   }
   return fields

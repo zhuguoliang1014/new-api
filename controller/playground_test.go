@@ -436,6 +436,69 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.NoError(t, db.Unscoped().Model(&model.Token{}).Where("user_id = ?", user.Id).Count(&count).Error)
 		assert.EqualValues(t, 3, count)
 	})
+	t.Run("unified group exposes model capabilities and preserves legacy routing and revocation", func(t *testing.T) {
+		ratios[service.ImageStudioGroup] = 1
+		usable[service.ImageStudioGroup] = "Image generation"
+		encoded, err := common.Marshal(ratios)
+		require.NoError(t, err)
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(string(encoded)))
+		encoded, err = common.Marshal(usable)
+		require.NoError(t, err)
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(string(encoded)))
+		for _, name := range []string{"gpt-image-2-basic", "gpt-image-2-hq", "gpt-image-2-native", "gemini-3-pro-image-preview", "mj-v8.2", "unapproved-text-model"} {
+			require.NoError(t, db.Create(&model.Ability{Group: service.ImageStudioGroup, Model: name, ChannelId: 2, Enabled: true}).Error)
+		}
+		response := request("/bootstrap", "", "", "{}", false)
+		require.Equal(t, 200, response.Code, response.Body.String())
+		var payload struct {
+			Data []struct {
+				ID       string   `json:"id"`
+				Models   []string `json:"models"`
+				Profiles map[string]struct {
+					Mode string `json:"size_mode"`
+					Edge int    `json:"max_edge"`
+				} `json:"model_profiles"`
+			} `json:"data"`
+		}
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+		require.Len(t, payload.Data, 1)
+		assert.Equal(t, service.ImageStudioGroup, payload.Data[0].ID)
+		require.Len(t, payload.Data[0].Models, 5)
+		assert.Equal(t, 8192, payload.Data[0].Profiles["gpt-image-2-hq"].Edge)
+		assert.Equal(t, 4096, payload.Data[0].Profiles["gpt-image-2-basic"].Edge)
+		assert.Equal(t, "ratio", payload.Data[0].Profiles["mj-v8.2"].Mode)
+		for _, tc := range []struct {
+			name, body string
+			status     int
+		}{
+			{"gpt-image-2-hq", `{"size":"8192x8192"}`, 200},
+			{"gpt-image-2-basic", `{"size":"8192x8192"}`, 400},
+			{"gpt-image-2-native", `{"size":"4096x4096"}`, 400},
+			{"gemini-3-pro-image-preview", `{"size":"4096x4096","n":1}`, 200},
+			{"gemini-3-pro-image-preview", `{"n":2}`, 400},
+			{"mj-v8.2", `{"size":"16:9","quality":"1","n":1}`, 200},
+			{"mj-v8.2", `{"size":"1024x1024"}`, 400},
+			{"mj-v8.2", `{"n":4}`, 400},
+		} {
+			response := request("/image", service.ImageStudioGroup, tc.name, tc.body, false)
+			assert.Equal(t, tc.status, response.Code, response.Body.String())
+		}
+		assert.Equal(t, 200, request("/image", high, "gpt-image-2", `{}`, false).Code)
+		assert.Contains(t, service.GetUserUsableGroups("default"), high)
+		assert.NotContains(t, service.GetUserVisibleGroups("default"), high)
+		token, err := model.GetImageStudioToken(user.Id, service.ImageStudioGroup)
+		require.NoError(t, err)
+		assert.NotContains(t, response.Body.String(), token.Key)
+		require.NoError(t, db.Model(token).Update("status", common.TokenStatusDisabled).Error)
+		assert.Equal(t, 200, request("/bootstrap", "", "", "{}", false).Code)
+		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, "mj-v8.2", `{}`, false).Code)
+		require.NoError(t, db.Delete(token).Error)
+		assert.Equal(t, 200, request("/bootstrap", "", "", "{}", false).Code)
+		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, "mj-v8.2", `{}`, false).Code)
+		var count int64
+		require.NoError(t, db.Unscoped().Model(&model.Token{}).Where("user_id = ?", user.Id).Count(&count).Error)
+		assert.EqualValues(t, 4, count)
+	})
 	t.Run("removed group permission blocks routing and hides the group", func(t *testing.T) {
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{}`))
 		response := request("/bootstrap", "", "", "{}", false)

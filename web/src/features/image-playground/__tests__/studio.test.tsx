@@ -1686,3 +1686,96 @@ it('opens the selected style example from the composer without submitting a gene
   expect(preview).toHaveFocus()
   expect(createStudioTask).not.toHaveBeenCalled()
 })
+
+it('uses one image group and changes size limits and pricing controls with the model', async () => {
+  vi.mocked(getStudioGroups).mockResolvedValueOnce([
+    {
+      id: '画图',
+      name: 'Image generation',
+      description: '',
+      ratio: 1,
+      available: true,
+      models: [
+        'gpt-image-2-basic',
+        'gpt-image-2-hq',
+        'gemini-3-pro-image-preview',
+        'mj-v8.2',
+      ],
+      size_mode: 'upscale',
+      max_resolution: 8,
+      model_profiles: {
+        'gpt-image-2-basic': { size_mode: 'upscale', max_resolution: 4 },
+        'gpt-image-2-hq': { size_mode: 'upscale', max_resolution: 8 },
+        'gemini-3-pro-image-preview': {
+          size_mode: 'upscale',
+          max_resolution: 4,
+        },
+        'mj-v8.2': { size_mode: 'ratio', max_resolution: 0 },
+      },
+    },
+  ])
+  showStudio()
+  const model = await screen.findByRole('combobox', { name: 'Model' })
+  await waitFor(() => expect(model).toHaveValue('gpt-image-2-basic'))
+  expect(
+    screen.queryByRole('combobox', { name: 'Generation group' })
+  ).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '16:9' }))
+  fireEvent.change(model, { target: { value: 'gpt-image-2-hq' } })
+  expect(screen.getByRole('button', { name: '8K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('8192x4608')
+  fireEvent.change(model, { target: { value: 'gemini-3-pro-image-preview' } })
+  expect(
+    screen.queryByRole('combobox', { name: 'Quality' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('combobox', { name: 'Image background' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('combobox', { name: 'File format' })
+  ).not.toBeInTheDocument()
+  fireEvent.change(model, { target: { value: 'mj-v8.2' } })
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('16:9')
+  expect(
+    screen.queryByRole('group', { name: 'Resolution' })
+  ).not.toBeInTheDocument()
+  expect(screen.getByRole('combobox', { name: 'Per request' })).toHaveValue('1')
+  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveAttribute(
+    'maxlength',
+    '1023'
+  )
+})
+
+it('maps a reused legacy group to its matching model alias without changing the draft or resolution', async () => {
+  vi.mocked(getStudioGroups).mockResolvedValueOnce([
+    {
+      id: '画图',
+      name: 'Image generation',
+      description: '',
+      ratio: 1,
+      available: true,
+      models: ['gpt-image-2-basic', 'gpt-image-2-hq'],
+      size_mode: 'upscale',
+      max_resolution: 8,
+    },
+  ])
+  useImagePlaygroundStore.getState().setParameters({
+    group: '【生图】超分高质量1-10k',
+    model: 'gpt-image-2',
+    prompt: 'An existing draft',
+    size: '2048x2048',
+  })
+  showStudio()
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().parameters.group).toBe('画图')
+  )
+  expect(useImagePlaygroundStore.getState().parameters).toMatchObject({
+    model: 'gpt-image-2-hq',
+    prompt: 'An existing draft',
+    size: '2048x2048',
+  })
+})

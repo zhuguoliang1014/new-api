@@ -133,3 +133,25 @@ describe('studio recharge cost estimate', () => {
     ).toBeNull()
   })
 })
+
+it('estimates unified model prices independently and MJ once per request', () => {
+  for (const [name, price, count, expected] of [
+    ['gpt-image-2-basic', 0.03, 4, 0.12],
+    ['gpt-image-2-hq', 0.12, 1, 0.12],
+    ['gemini-3-pro-image-preview', 0.1248, 1, 0.1248],
+    ['mj-v8.2', 1.3, 1, 1.3],
+  ] as const) {
+    const expression =
+      name === 'mj-v8.2'
+        ? `tier("request", fixed(${price}))`
+        : `tier("image", fixed(${price})) * image_count`
+    expect(
+      estimateStudioCost(
+        { ...model, model_name: name, billing_expr: expression },
+        { ...defaultImageParameters, group: '画图', model: name, count },
+        1,
+        1
+      )
+    ).toBeCloseTo(expected)
+  }
+})

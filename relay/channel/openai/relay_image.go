@@ -41,7 +41,11 @@ func OpenaiImageHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
-	info.UpdateImageCount(openaiImageResponseCount(responseBody))
+	count := openaiImageResponseCount(responseBody)
+	if info.GetUpstreamModelName() == "mj-v8.2" && (count < 1 || count > 4) {
+		return nil, types.NewErrorWithStatusCode(fmt.Errorf("invalid image response"), types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
+	info.UpdateImageCount(count)
 
 	// 写入新的 response body
 	service.IOCopyBytesGracefully(c, resp, responseBody)

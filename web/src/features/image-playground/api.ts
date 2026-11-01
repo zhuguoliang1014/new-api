@@ -187,8 +187,20 @@ export type StudioGroup = {
   max_resolution: number
   max_edge?: number
   max_pixels?: number
-  size_mode: 'native' | 'upscale'
+  size_mode: 'native' | 'upscale' | 'ratio'
+  model_profiles?: Record<string, StudioModelProfile>
   available: boolean
+}
+export type StudioModelProfile = Pick<
+  StudioGroup,
+  'max_resolution' | 'max_edge' | 'max_pixels' | 'size_mode'
+>
+
+export function getStudioModelProfile(
+  group: StudioGroup | undefined,
+  model: string
+): StudioModelProfile | undefined {
+  return group?.model_profiles?.[model] ?? group
 }
 export async function getStudioGroups(): Promise<StudioGroup[]> {
   const response = await api.post(
@@ -247,6 +259,10 @@ export async function createStudioTask(
   if (!options.sizes.includes(parsed.size)) {
     throw new Error(t('This model does not support the selected image size.'))
   }
+  if (parsed.count > options.maxCount) throw new Error(t('invalid image count'))
+  if (options.isMidjourney && [...parsed.prompt].length > 1023) {
+    throw new Error(t('Prompt is too long.'))
+  }
   validateReferenceFiles(references)
   if (references.length && !options.supportsReferences) {
     throw new Error(t('Choose a model that supports reference images.'))
@@ -262,7 +278,26 @@ export async function createStudioTask(
     ...fields,
     studio_metadata: metadata,
   }
-  if (references.length) {
+  if (references.length && options.isMidjourney) {
+    const images = await Promise.all(
+      references.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader()
+            reader.addEventListener(
+              'load',
+              () => resolve(String(reader.result)),
+              { once: true }
+            )
+            reader.addEventListener('error', () => reject(reader.error), {
+              once: true,
+            })
+            reader.readAsDataURL(file)
+          })
+      )
+    )
+    body = { ...fields, images, studio_metadata: metadata }
+  } else if (references.length) {
     const form = new FormData()
     for (const [key, value] of Object.entries(fields)) {
       form.append(key, String(value))
@@ -270,6 +305,9 @@ export async function createStudioTask(
     form.append('studio_metadata', JSON.stringify(metadata))
     for (const file of references) form.append('image[]', file, file.name)
     body = form
+  }
+  if (signal.aborted || scope !== getImageAuthScope()) {
+    throw new DOMException('Aborted', 'AbortError')
   }
   const response = await api.post(
     `/api/image-playground/tasks/create/${references.length ? 'edits' : 'generations'}`,

@@ -36,3 +36,9 @@ func TestDeepSeekToolRoutingNamesReportTheirEndpoint(t *testing.T) {
 	}
 	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, common.GetEndpointTypesByChannelType(constant.ChannelTypeDeepSeek, "deepseek-flash"))
 }
+
+func TestMidjourneySynchronousWrapperReportsOnlyImageEndpoint(t *testing.T) {
+	assert.Equal(t, []constant.EndpointType{constant.EndpointTypeImageGeneration}, common.GetEndpointTypesByChannelType(constant.ChannelTypeOpenAI, "mj-v8.2"))
+	assert.True(t, common.IsImageGenerationModel("gemini-3-pro-image-preview"))
+	assert.True(t, common.IsImageGenerationModel("mj-v8.2"))
+}

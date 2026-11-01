@@ -56,7 +56,8 @@ func PlaygroundAgent(profile PlaygroundAgentProfile) gin.HandlerFunc {
 		requestedGroup := ""
 		if profile == PlaygroundAgentImage && c.GetHeader("X-Studio-Group") != "" {
 			requestedGroup, err = url.QueryUnescape(c.GetHeader("X-Studio-Group"))
-			groupProfile, known := service.GetImageStudioProfile(requestedGroup)
+			modelName := strings.TrimSpace(c.GetHeader("X-Studio-Model"))
+			_, known := service.GetImageStudioProfile(requestedGroup)
 			userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
 			if err != nil || !known || !service.IsUserSelectableGroup(userGroup, requestedGroup) {
 				common.ApiErrorStatus(c, http.StatusForbidden, common.NewMessage("the selected image studio group is unavailable"))
@@ -64,8 +65,13 @@ func PlaygroundAgent(profile PlaygroundAgentProfile) gin.HandlerFunc {
 				return
 			}
 			models, modelErr := model.GetImageStudioModels(requestedGroup)
-			modelName := strings.TrimSpace(c.GetHeader("X-Studio-Model"))
 			if modelErr != nil || !slices.Contains(models, modelName) {
+				common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("the selected model is not available in this image group"))
+				c.Abort()
+				return
+			}
+			groupProfile, supported := service.GetImageStudioModelProfile(requestedGroup, modelName)
+			if !supported {
 				common.ApiErrorStatus(c, http.StatusBadRequest, common.NewMessage("the selected model is not available in this image group"))
 				c.Abort()
 				return
@@ -208,6 +214,18 @@ func validateStudioImageParameters(c *gin.Context, profile service.ImageStudioPr
 	}
 	if input.N != nil && (*input.N < 1 || *input.N > dto.MaxImageN) {
 		return common.NewMessage("invalid image count")
+	}
+	if profile.MaxCount > 0 && input.N != nil && *input.N > uint(profile.MaxCount) {
+		return common.NewMessage("invalid image count")
+	}
+	if profile.SizeMode == "ratio" {
+		if !slices.Contains([]string{"", "auto", "1"}, input.Quality) || input.Format != "" || !slices.Contains([]string{"", "auto"}, input.Background) {
+			return common.NewMessage("invalid image studio parameters")
+		}
+		if !slices.Contains([]string{"", "auto", "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"}, input.Size) {
+			return common.NewMessage("the selected image size is not supported by this group")
+		}
+		return nil
 	}
 	if !slices.Contains([]string{"", "auto", "low", "medium", "high"}, input.Quality) || !slices.Contains([]string{"", "png", "jpeg", "webp"}, input.Format) || !slices.Contains([]string{"", "auto", "opaque", "transparent"}, input.Background) {
 		return common.NewMessage("invalid image studio parameters")

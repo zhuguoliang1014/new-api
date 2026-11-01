@@ -188,3 +188,52 @@ it('loads persisted task IDs through the authenticated query endpoint', async ()
   await expect(listStudioTasks(signal)).resolves.toEqual([accepted])
   expect(get).toHaveBeenCalledWith('/api/image-playground/tasks', { signal })
 })
+
+it('submits MJ reference images as JSON without GPT-only fields', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+    data: { success: true, data: accepted },
+  })
+  const input = { ...parameters, group: '画图', model: 'mj-v8.2', size: '16:9' }
+  await createStudioTask(
+    taskID,
+    input,
+    [new File(['reference'], 'reference.png', { type: 'image/png' })],
+    { ...metadata, parameters: input, referenceCount: 1 },
+    new AbortController().signal
+  )
+  const [path, body] = post.mock.calls[0]
+  expect(path).toBe('/api/image-playground/tasks/create/edits')
+  expect(body).not.toBeInstanceOf(FormData)
+  expect(body).toMatchObject({
+    n: 1,
+    size: '16:9',
+    response_format: 'url',
+    images: ['data:image/png;base64,cmVmZXJlbmNl'],
+  })
+  expect(body).not.toHaveProperty('quality')
+  expect(body).not.toHaveProperty('output_format')
+  expect(body).not.toHaveProperty('background')
+})
+
+it('accepts Banana 4K dimensions and sends no GPT-only output settings', async () => {
+  const post = vi
+    .spyOn(imageRelayClient, 'post')
+    .mockResolvedValue({ data: { success: true, data: accepted } })
+  const input = {
+    ...parameters,
+    group: '画图',
+    model: 'gemini-3-pro-image-preview',
+    size: '4096x2304',
+  }
+  await createStudioTask(
+    taskID,
+    input,
+    [],
+    { ...metadata, parameters: input },
+    new AbortController().signal
+  )
+  const body = post.mock.calls[0][1]
+  expect(body).toMatchObject({ size: '4096x2304', n: 1 })
+  expect(body).not.toHaveProperty('quality')
+  expect(body).not.toHaveProperty('output_format')
+})

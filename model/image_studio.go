@@ -74,5 +74,7 @@ func GetImageStudioModels(group string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return slices.DeleteFunc(models, func(name string) bool { return !strings.HasPrefix(name, "gpt-image-") }), nil
+	return slices.DeleteFunc(models, func(name string) bool {
+		return !common.IsImageGenerationModel(name)
+	}), nil
 }

@@ -2,12 +2,22 @@ package controller
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"mime"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"net/textproto"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -51,4 +61,63 @@ func TestStudioRelayFormPreservesReferenceBytesWithoutHistoryMetadata(t *testing
 	form.File["mask"] = form.File["image[]"]
 	_, _, _, err = encodeStudioRelayForm(form, writer.FormDataContentType())
 	require.Error(t, err)
+}
+
+func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
+	previous := imageStudioTasks
+	defer func() { imageStudioTasks = previous }()
+	captured := make(chan []byte, 1)
+	requests := make(chan service.StudioTaskRequest, 1)
+	store, err := service.NewStudioTaskStore(t.TempDir(), func(_ context.Context, req service.StudioTaskRequest, body io.Reader, writer http.ResponseWriter) error {
+		raw, err := io.ReadAll(body)
+		if err != nil {
+			return err
+		}
+		captured <- raw
+		requests <- req
+		writer.WriteHeader(502)
+		return nil
+	})
+	require.NoError(t, err)
+	imageStudioTasks = store
+	router := gin.New()
+	router.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) { c.Set("id", 1) })
+	router.POST("/:kind", CreateImageStudioTask)
+	metadata := map[string]any{"parameters": map[string]any{"prompt": "A cat", "model": "mj-v8.2", "group": service.ImageStudioGroup, "size": "16:9", "quality": "auto", "format": "png", "background": "auto", "count": 1}, "referenceCount": 1, "styleId": nil}
+	fields := map[string]any{"prompt": "A cat", "size": "16:9", "n": 1, "images": []string{"data:image/png;base64,aW1hZ2U="}, "hd": true, "studio_metadata": metadata}
+	post := func(id string) *httptest.ResponseRecorder {
+		body, err := common.Marshal(fields)
+		require.NoError(t, err)
+		request := httptest.NewRequest("POST", "/edits", strings.NewReader(string(body)))
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("X-Studio-Group", url.QueryEscape(service.ImageStudioGroup))
+		request.Header.Set("X-Studio-Model", "mj-v8.2")
+		request.Header.Set("X-Studio-Task-ID", id)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		return recorder
+	}
+	response := post("studio-mj-json-test-0001")
+	require.Equal(t, 202, response.Code, response.Body.String())
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	defer func() {
+		cancel()
+		<-done
+	}()
+	go func() {
+		defer close(done)
+		store.Run(ctx)
+	}()
+	select {
+	case raw := <-captured:
+		require.JSONEq(t, `{"prompt":"A cat","size":"16:9","quality":"1","hd":false,"n":1,"response_format":"url","images":["data:image/png;base64,aW1hZ2U="]}`, string(raw))
+		require.False(t, (<-requests).Edit)
+	case <-time.After(5 * time.Second):
+		t.Fatal("MJ task was not dispatched")
+	}
+	for _, images := range [][]string{{"file:///etc/passwd"}, {"data:image/png;base64,invalid"}} {
+		fields["images"] = images
+		require.Equal(t, 400, post("studio-mj-json-test-0002").Code)
+	}
 }

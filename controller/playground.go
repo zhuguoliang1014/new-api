@@ -453,9 +453,16 @@ func BootstrapImageStudio(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("failed to load image studio groups"))
 		return
 	}
-	usable := service.GetUserUsableGroups(userGroup)
+	usable := service.GetUserVisibleGroups(userGroup)
+	profiles := slices.Clone(service.ImageStudioProfiles)
+	if profile, ok := service.GetImageStudioProfile(service.ImageStudioGroup); ok && service.IsUserSelectableGroup(userGroup, profile.Group) {
+		profiles = append(profiles, profile)
+	}
 	groups := map[string][]string{}
-	for _, profile := range service.ImageStudioProfiles {
+	for _, profile := range profiles {
+		if _, visible := usable[profile.Group]; !visible {
+			continue
+		}
 		if !service.IsUserSelectableGroup(userGroup, profile.Group) {
 			continue
 		}
@@ -464,6 +471,10 @@ func BootstrapImageStudio(c *gin.Context) {
 			common.ApiErrorStatus(c, http.StatusInternalServerError, common.NewMessage("failed to load image studio models"))
 			return
 		}
+		models = slices.DeleteFunc(models, func(name string) bool {
+			_, ok := service.GetImageStudioModelProfile(profile.Group, name)
+			return !ok
+		})
 		if len(models) > 0 {
 			groups[profile.Group] = models
 		}
@@ -478,7 +489,7 @@ func BootstrapImageStudio(c *gin.Context) {
 		model.RecordAuditLog(c, model.AuditLog{UserId: userID, ActorRole: c.GetInt("role"), Category: model.AuditCategorySecurity, Action: "image_studio.keys_created", Success: true, Content: fmt.Sprintf("Image studio key IDs created: %v", created)})
 	}
 	result := []gin.H{}
-	for _, profile := range service.ImageStudioProfiles {
+	for _, profile := range profiles {
 		token := tokens[profile.Group]
 		if token == nil {
 			continue
@@ -488,7 +499,12 @@ func BootstrapImageStudio(c *gin.Context) {
 			models = slices.DeleteFunc(slices.Clone(models), func(name string) bool { return !token.GetModelLimitsMap()[name] })
 		}
 		available := !token.DeletedAt.Valid && token.Group == profile.Group && token.Status == common.TokenStatusEnabled && (token.ExpiredTime == -1 || token.ExpiredTime > common.GetTimestamp()) && (token.UnlimitedQuota || token.RemainQuota > 0) && len(models) > 0
-		result = append(result, gin.H{"id": profile.Group, "name": profile.Name, "description": usable[profile.Group], "ratio": service.GetUserGroupRatio(userGroup, profile.Group), "models": models, "max_resolution": profile.MaxResolution, "max_edge": profile.MaxEdge, "max_pixels": profile.MaxPixels, "size_mode": profile.SizeMode, "available": available})
+		modelProfiles := map[string]gin.H{}
+		for _, name := range models {
+			capability, _ := service.GetImageStudioModelProfile(profile.Group, name)
+			modelProfiles[name] = gin.H{"max_resolution": capability.MaxResolution, "max_edge": capability.MaxEdge, "max_pixels": capability.MaxPixels, "size_mode": capability.SizeMode}
+		}
+		result = append(result, gin.H{"id": profile.Group, "name": profile.Name, "description": usable[profile.Group], "ratio": service.GetUserGroupRatio(userGroup, profile.Group), "models": models, "model_profiles": modelProfiles, "max_resolution": profile.MaxResolution, "max_edge": profile.MaxEdge, "max_pixels": profile.MaxPixels, "size_mode": profile.SizeMode, "available": available})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }

@@ -10,6 +10,8 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		return []constant.EndpointType{constant.EndpointTypeDeepSeekToolsSearch}
 	case constant.DeepSeekFetchModel:
 		return []constant.EndpointType{constant.EndpointTypeDeepSeekToolsFetch}
+	case "mj-v8.2":
+		return []constant.EndpointType{constant.EndpointTypeImageGeneration}
 	}
 	var endpointTypes []constant.EndpointType
 	switch channelType {

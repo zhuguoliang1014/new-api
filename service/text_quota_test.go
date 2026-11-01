@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,6 +135,8 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 		{name: "realtime records actual expression inputs", expression: imageExpression, estimate: 10000, usage: imageUsage, realtime: true, want: 4000, unit: billingexpr.BillingUnitToken},
 		{name: "image cache insufficient wallet never reserves tokens", expression: imageExpression, estimate: 10000, insufficient: true},
 		{name: "image quantity refunds missing images", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 3, actualImages: 2, want: 40000, unit: billingexpr.BillingUnitRequest},
+		{name: "MJ batch charges once for four returned images", expression: `tier("request", fixed(1.3))`, requestedImages: 1, actualImages: 4, want: 650000, unit: billingexpr.BillingUnitRequest},
+		{name: "MJ batch failure refunds the request price", expression: `tier("request", fixed(1.3))`, requestedImages: 1, refund: true},
 		{name: "image quantity keeps request when actual missing", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 3, want: 60000, unit: billingexpr.BillingUnitRequest},
 		{name: "image quantity zero price stays free", expression: `tier("image", fixed(0)) * image_count`, requestedImages: 3, actualImages: 2, unit: billingexpr.BillingUnitRequest},
 		{name: "image quantity failure refunds reservation", expression: `tier("image", fixed(0.04)) * image_count`, requestedImages: 3, refund: true},
@@ -181,7 +184,7 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 			info.SetEstimatePromptTokens(tc.estimate)
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 			ctx.Request = httptest.NewRequest("POST", "/v1/chat/completions", nil)
-			if tc.expression == imageExpression {
+			if tc.expression == imageExpression || tc.requestedImages > 0 {
 				ctx.Request.URL.Path = "/v1/images/generations"
 				info.RelayMode = relayconstant.RelayModeImagesGenerations
 			}
@@ -266,7 +269,11 @@ func runFixedPriceAccountingCases(t *testing.T, db, logDB *gorm.DB) {
 								count = tc.outboundImages
 							}
 						}
-						assert.Equal(t, float64(count), other["image_count"])
+						if strings.Contains(tc.expression, "image_count") {
+							assert.Equal(t, float64(count), other["image_count"])
+						} else {
+							assert.NotContains(t, other, "image_count")
+						}
 						assert.Equal(t, tc.requestedImages, *request.ImageCount, "actual count must not mutate the frozen request")
 					}
 					if tc.expression == imageExpression {

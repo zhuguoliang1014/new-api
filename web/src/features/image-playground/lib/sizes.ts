@@ -119,8 +119,9 @@ export type StudioResolution = (typeof studioResolutions)[number]
 export function getStudioSize(
   ratio: string,
   resolution: StudioResolution,
-  mode: 'native' | 'upscale'
+  mode: 'native' | 'upscale' | 'ratio'
 ): string {
+  if (mode === 'ratio') return ratio
   const preset =
     imageAspectPresets.find((item) => item.ratio === ratio) ??
     imageAspectPresets[0]
@@ -138,8 +139,11 @@ export const upscaleSizes = imageAspectPresets.flatMap((preset) =>
 )
 export function getStudioSizeSelection(
   size: string,
-  mode: 'native' | 'upscale'
+  mode: 'native' | 'upscale' | 'ratio'
 ): { ratio: string; resolution: StudioResolution } {
+  if (mode === 'ratio') {
+    return { ratio: size === 'auto' ? '1:1' : size, resolution: '1K' }
+  }
   for (const preset of imageAspectPresets) {
     for (const resolution of studioResolutions) {
       if (getStudioSize(preset.ratio, resolution, mode) === size) {
@@ -151,7 +155,7 @@ export function getStudioSizeSelection(
 }
 
 export function getStudioDefaultSize(
-  group: { max_resolution: number; size_mode: 'native' | 'upscale' },
+  group: { max_resolution: number; size_mode: 'native' | 'upscale' | 'ratio' },
   ratio = '1:1'
 ): string {
   const resolution =

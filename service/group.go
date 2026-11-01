@@ -46,6 +46,19 @@ func GroupInUserUsableGroups(userGroup, groupName string) bool {
 	return ok
 }
 
+// Retired image groups remain authorized for existing API keys. New selections
+// and public prices show the unified group once it is configured for this user.
+func GetUserVisibleGroups(userGroup string) map[string]string {
+	groups := GetUserUsableGroups(userGroup)
+	if _, ok := groups[ImageStudioGroup]; !ok || !ratio_setting.ContainsGroupRatio(ImageStudioGroup) {
+		return groups
+	}
+	for _, profile := range ImageStudioProfiles {
+		delete(groups, profile.Group)
+	}
+	return groups
+}
+
 func IsUserSelectableGroup(userGroup, groupName string) bool {
 	if groupName == "" || groupName == "auto" {
 		return false

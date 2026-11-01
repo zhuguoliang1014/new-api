@@ -133,6 +133,15 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
+	// MJ's synchronous wrapper may have accepted a paid task before a timeout
+	// or malformed response. Never submit the same generation automatically.
+	if info.GetUpstreamModelName() == "mj-v8.2" {
+		defer func() {
+			if newAPIError != nil {
+				types.ErrOptionWithSkipRetry()(newAPIError)
+			}
+		}()
+	}
 
 	resp, err := adaptor.DoRequest(c, info, requestBody)
 	if err != nil {
