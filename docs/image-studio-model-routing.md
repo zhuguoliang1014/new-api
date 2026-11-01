@@ -10,7 +10,7 @@
 | `gpt-image-2-hq`、`gpt-image-2.5-hq` | 去掉 `-hq` | 0.12/张 |
 | `gpt-image-2-native`、`gpt-image-2.5-flare-native`、`gpt-image-2.5-sunburst-native` | 去掉 `-native` | 0.225/张 |
 | `gemini-nano-banana-2.1`、`gemini-3-pro-image`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image`、`gemini-3.1-flash-image-preview`、`gemini-2.5-flash-image` | 同名，香蕉系列 | 0.1248/张 |
-| `mj-v8.2` | 同名，MJ 标准档 | 1.30/次 |
+| `mj-v8.2` | 同名，MJ 高清档 | 1.30/次 |
 
 GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0.096`，乘 1.3；MJ 按用户确认的每次成本 1 元乘 1.3。用户已确认六款香蕉模型同价，均采用上述成本和售价。
 
@@ -18,7 +18,7 @@ GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0
 
 ## 模型能力与后续维护
 
-`-basic` 使用基础 4K 限制，`-hq` 使用高质量 8K 限制，`-native` 使用原生路线的边长和像素限制。香蕉 Pro 暂按最高 4K、每次一张开放。MJ 使用宽高比并隐藏 GPT 专属画质、格式和背景参数。
+`-basic` 使用基础 4K 限制，`-hq` 使用高质量 8K 限制，`-native` 使用原生路线的边长和像素限制。香蕉 Pro/3.1/2.1 路线按最高 4K、每次一张开放；gemini-2.5-flash-image 为原生 1K，工作台不再显示 2K/4K 档。MJ 使用宽高比并隐藏 GPT 专属画质、格式和背景参数。
 
 新增同类 GPT 路线时，在内部渠道声明带后缀的公开模型，并用模型映射去掉后缀；分别添加模型计费模式、表达式、价格和模型资料。相同公开名称应只绑定成本、能力一致的可替换渠道；不同价格必须用不同名称。新增全新模型系列时还需扩展服务端能力配置及前端参数选项，避免把分组能力当成所有模型共同的能力。
 
@@ -37,7 +37,7 @@ GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0
 
 MJ 使用同步 OpenAI Images JSON 接口，并非传统 MJ 异步任务协议。`n=1` 表示一次任务；通常返回四张独立图片，可能附带拼图封面，封面不是第五张独立生成图片。网关接受 1–4 张有效图片结果，按一次收费。工作台支持最多五张参考图，转成 data URL 放在 generations 的 JSON `images` 字段中，不发送 multipart edits。
 
-标准价格固定 `quality="1"`、`hd=false`、`n=1`、`response_format="url"`，渠道参数覆盖也固定这些值，不开放未知价格的高清档。提示词（包括风格模板）最多 1023 个 Unicode 字符。提交上游后遇到错误、超时或无效响应禁止自动重试；服务端任务仍沿用未知结果不自动重放的规则。
+初始标准价格固定 `quality="1"`、`hd=false`、`n=1`、`response_format="url"`，渠道参数覆盖也固定这些值，不开放未知价格的高清档。提示词（包括风格模板）最多 1023 个 Unicode 字符。提交上游后遇到错误、超时或无效响应禁止自动重试；服务端任务仍沿用未知结果不自动重放的规则。
 
 ## 验证与安全边界（2026-11-01）
 
@@ -56,7 +56,7 @@ MJ 使用同步 OpenAI Images JSON 接口，并非传统 MJ 异步任务协议�
 - 模型选择移至信息说明上方，复用 `ModelSelector`，按香蕉、GPT 基础、GPT 高质量、GPT 原生及 Midjourney 分类，支持搜索渠道名和模型标识。移动端使用同一组件的字段展示方式。弹窗与选择框等宽，模型名称下方以灰色小字并排展示描述和单价；描述可截断，单价完整保留，图片按张、MJ 按次（通常 4 张）；单价不随草稿图片数量放大，未知价格显示破折号，避免误报为免费。
 - 香蕉开放 `gemini-nano-banana-2.1`、`gemini-3-pro-image`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image`、`gemini-3.1-flash-image-preview`、`gemini-2.5-flash-image`。用户已确认六个模型成本均为 ¥0.096/张，按成本乘 1.3，售价统一 ¥0.1248/张。本地渠道已补齐六个模型。
 - MJ 面板增加 Raw、无缝平铺、风格化、变化程度、怪异程度、随机种子、负面提示词及参考图权重；角色、风格、深度参考分别设置 HTTP(S) 链接与权重。前后端校验参数范围，并保留显式的零和 false。参考链接由上游读取。
-- MJ 普通参考图片上限为五张，其余模型保持四张；从 MJ 切换到其他模型时保留前四张。任务请求上限为 72 MiB，以容纳五张 10 MiB 图片的 base64 数据。MJ 画质仍固定标准档，不开放未确认价格的质量和高清选项。
+- MJ 普通参考图片上限为五张，其余模型保持四张；从 MJ 切换到其他模型时保留前四张。任务请求上限为 72 MiB，以容纳五张 10 MiB 图片的 base64 数据。当时 MJ 固定标准档；后续经用户确认同价改为高清档，quality 仍固定 1。
 - 发布配置需补齐香蕉渠道的模型、模型资料及逐模型计费选项，并核对系统管理的工作台 Key 模型限制。保留用户手动限制与已撤销 Key，不扩大其授权。本次未修改认证实现。
 
 本地启动可使用 `DEV_ENV_FILE=/path/to/local.env sh dev-local.sh` 指定独立环境文件；不指定时仍读取既有 `.env`。此次验收使用独立本地数据库，未修改生产配置。14 个模型已通过本地模拟上游的 HTTP 任务、参数传递与计费检查；这不等于真实上游付费出图验证。
@@ -70,3 +70,15 @@ MJ 使用同步 OpenAI Images JSON 接口，并非传统 MJ 异步任务协议�
 此次恢复材料位于 `/root/upgrade-recovery/new-api-image-cleanup-20261101T135003Z/`。回滚脚本只恢复本次目标字段/行，若后续有定制修改会拒绝执行；回滚后等待选项、渠道及定价缓存同步，再核对三个入口。不要越过此次清理直接执行此前发布的配置回滚，因为先前脚本假设旧分组仍存在。
 
 默认模型排序回归：`go test ./controller -run '^TestImageStudioBootstrapAndRoutingDatabase$' -count=1` 在 SQLite 3.50.4、MySQL 8.4.11、PostgreSQL 15.17 通过（后两者使用隔离库，分别设置 `TEST_TASK_DB_DIALECT=mysql` / `postgres` 和相应 `TEST_MYSQL_DSN` / `TEST_POSTGRES_DSN`）；同用例 `-race` 通过。用例同时核对默认基础版优先、Key 仅允许高质量模型时仍只返回该模型、禁用 Key 不可执行。独立本地开发服务实际 bootstrap 返回 `画图` 的 14 款模型，首项为 `gpt-image-2.5-basic`；未进行付费生成。
+
+## 香蕉原生协议与 MJ 高清修复（2026-11-02）
+
+用户确认 MJ 高清和标准同价，工作台及画图渠道改为 hd=true、quality=1、n=1，售价仍为 ¥1.30/次，取代此前固定 hd=false 的配置。不承诺固定像素或额外放大接口。
+
+当前香蕉凭据所属平台对 OpenAI Images 返回 Images API is not supported for this platform。渠道 120 改用 Gemini（type=24），仍接受本站原有 Images generations / edits 端点；网关将提示词和参考图转换到 /v1beta/models/{model}:generateContent，使用 x-goog-api-key。尺寸转换为 imageConfig.aspectRatio/imageSize，candidateCount 固定 1、responseModalities 固定 IMAGE。图片结果转换为 OpenAI Images 的 data[].b64_json，工作台继续走既有下载、缩略图及原图保存流程。仅计算有效图片 parts，文本/思考部分不算图片，空结果或无效图片失败退款，提交后未知结果不自动重发。JSON data URL、HTTP(S) 引用和 multipart 图片支持；网关不主动抓取客户端参考 URL，拒绝本地文件协议、URL 中凭据、mask 和超过单张任务的 n。已有 Imagen predict 和其他渠道路线保留。
+
+实测六个模型 Gemini 原生生成全部 200；五款返回 4096×4096，gemini-2.5-flash-image 请求 4K 实际仅返回 1024×1024，因此仅该款工作台显示 1K 上限。实测一次原生参考图编辑（含 candidateCount=1）返回有效图片。MJ hd=true 实测四张 1648×2944 PNG；这次输出不代表所有比例、提示词都固定该尺寸。生产渠道旧参数 hd=false 必须在修复代码部署后改为 true，否则会覆盖工作台参数。价格表达式、分组倍率和 Key 不变。
+
+本地 dev-local.sh 使用隔离库，回放真实上游响应以验证六个香蕉任务和 MJ 四张图的服务端保存。JSON 参考图编辑 HTTP 200，实际扣费 62,400 quota（¥0.1248）；非法图片及数量返回 400 且无扣费。SQLite3.50.4、MySQL8.4.11、PostgreSQL15.17 工作台授权及按次/按张预扣、结算/退款回归通过，相关竞态和根模块构建通过。上游真实探测及回放分开记录，不能把回放误称成每次真实上游调用。
+
+发布恢复材料位于 /root/upgrade-recovery/new-api-banana-mj-fix-20261101T172412Z/；UTC 命名，对应北京时间 11 月 2 日 01:24。仅改渠道 120 的协议/参数覆盖、121 的中性名称/高清覆盖，以及两项模型说明，事务与保护性回滚演练通过，正式配置在代码部署后应用。备份保留旧渠道凭据，不能进入 Git。

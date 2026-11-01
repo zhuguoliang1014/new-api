@@ -26,5 +26,10 @@ func TestStudioSupportsAllBananaModels(t *testing.T) {
 		profile, ok := GetImageStudioModelProfile(ImageStudioGroup, name)
 		require.True(t, ok, name)
 		require.Equal(t, 1, profile.MaxCount)
+		if name == "gemini-2.5-flash-image" {
+			require.Equal(t, 1, profile.MaxResolution)
+		} else {
+			require.Equal(t, 4, profile.MaxResolution)
+		}
 	}
 }

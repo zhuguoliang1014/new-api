@@ -57,7 +57,8 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	// Agent-mode requests are normalized on the server and must never forward
 	// client-controlled model fields through a channel's pass-through path.
 	playgroundRequest := common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel) != ""
-	if !playgroundRequest && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
+	geminiImage := info.ChannelType == constant.ChannelTypeGemini && strings.HasPrefix(info.GetUpstreamModelName(), "gemini-") && common.IsImageGenerationModel(info.GetUpstreamModelName())
+	if !playgroundRequest && !geminiImage && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -113,6 +114,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			return types.NewErrorWithStatusCode(fmt.Errorf("invalid image billing parameters: %w", err), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		quantityRequest := dto.ImageRequest{N: outbound.N}
+		if geminiImage {
+			var native dto.GeminiChatRequest
+			if common.Unmarshal(jsonData, &native) != nil || native.GenerationConfig.CandidateCount == nil || *native.GenerationConfig.CandidateCount != 1 || outbound.N != nil && *outbound.N != 1 {
+				return types.NewErrorWithStatusCode(errors.New("Gemini image generation requires one candidate"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+		}
 		if quantityRequest.N == nil {
 			quantityRequest.N = common.GetPointer(uint(imageCount))
 		}
@@ -133,9 +140,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
-	// MJ's synchronous wrapper may have accepted a paid task before a timeout
+	// Synchronous image wrappers may have accepted a paid task before a timeout
 	// or malformed response. Never submit the same generation automatically.
-	if info.GetUpstreamModelName() == "mj-v8.2" {
+	if info.GetUpstreamModelName() == "mj-v8.2" || geminiImage {
 		defer func() {
 			if newAPIError != nil {
 				types.ErrOptionWithSkipRetry()(newAPIError)

@@ -52,6 +52,8 @@ func GetImageStudioModelProfile(group, model string) (ImageStudioProfile, bool) 
 		profile = ImageStudioProfiles[1]
 	case strings.HasPrefix(model, "gpt-image-") && strings.HasSuffix(model, "-native"):
 		profile = ImageStudioProfiles[2]
+	case model == "gemini-2.5-flash-image":
+		profile = ImageStudioProfile{MaxResolution: 1, SizeMode: "upscale", MaxEdge: 1536, MaxPixels: 2097152, MaxCount: 1}
 	case strings.HasPrefix(model, "gemini-") && (strings.Contains(model, "image") || strings.Contains(model, "banana")):
 		profile = ImageStudioProfile{MaxResolution: 4, SizeMode: "upscale", MaxEdge: 4096, MaxPixels: 16777216, MaxCount: 1}
 	case model == "mj-v8.2":

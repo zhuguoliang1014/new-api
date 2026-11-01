@@ -63,7 +63,7 @@ func TestStudioRelayFormPreservesReferenceBytesWithoutHistoryMetadata(t *testing
 	require.Error(t, err)
 }
 
-func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
+func TestStudioMJReferencesUseGenerationJSONAndPinHDTier(t *testing.T) {
 	previous := imageStudioTasks
 	defer func() { imageStudioTasks = previous }()
 	captured := make(chan []byte, 1)
@@ -85,7 +85,7 @@ func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
 	router.POST("/:kind", CreateImageStudioTask)
 	metadata := map[string]any{"parameters": map[string]any{"prompt": "A cat", "model": "mj-v8.2", "group": service.ImageStudioGroup, "size": "16:9", "quality": "auto", "format": "png", "background": "auto", "count": 1}, "referenceCount": 5, "styleId": nil}
 	references := []string{"data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U="}
-	fields := map[string]any{"prompt": "A cat", "size": "16:9", "n": 1, "images": references, "hd": true, "studio_metadata": metadata}
+	fields := map[string]any{"prompt": "A cat", "size": "16:9", "n": 1, "images": references, "hd": false, "studio_metadata": metadata}
 	options := map[string]any{"raw": false, "tile": true, "seed": 0, "stylize": 0, "chaos": 30, "weird": 100, "negative_prompt": "text", "iw": 0, "cref": "https://example.com/c.png", "cw": 0, "sref": "https://example.com/s.png", "sw": 0, "dref": "https://example.com/d.png", "dw": 0}
 	metadata["parameters"].(map[string]any)["mj"] = options
 	for key, value := range options {
@@ -120,7 +120,7 @@ func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
 	case raw := <-captured:
 		var actual map[string]any
 		require.NoError(t, common.Unmarshal(raw, &actual))
-		expected := map[string]any{"prompt": "A cat", "size": "16:9", "quality": "1", "hd": false, "n": 1, "response_format": "url", "images": references}
+		expected := map[string]any{"prompt": "A cat", "size": "16:9", "quality": "1", "hd": true, "n": 1, "response_format": "url", "images": references}
 		for key, value := range options {
 			expected[key] = value
 		}

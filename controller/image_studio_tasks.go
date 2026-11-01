@@ -239,7 +239,7 @@ func CreateImageStudioTask(c *gin.Context) {
 				}
 			}
 			// MJ accepts references on the JSON generations endpoint. Keep the
-			// fixed-price standard tier pinned independently of browser fields.
+			// fixed-price HD tier pinned independently of browser fields.
 			request := struct {
 				service.StudioMJOptions
 				Prompt         string   `json:"prompt"`
@@ -249,7 +249,7 @@ func CreateImageStudioTask(c *gin.Context) {
 				HD             bool     `json:"hd"`
 				ResponseFormat string   `json:"response_format"`
 				Images         []string `json:"images,omitempty"`
-			}{StudioMJOptions: mjOptions, Prompt: prompt, Count: 1, Size: size, Quality: "1", ResponseFormat: "url", Images: payload.Images}
+			}{StudioMJOptions: mjOptions, Prompt: prompt, Count: 1, Size: size, Quality: "1", HD: true, ResponseFormat: "url", Images: payload.Images}
 			body, err = common.Marshal(request)
 			if err != nil {
 				writePlaygroundError(c, 400, "invalid image task request")
