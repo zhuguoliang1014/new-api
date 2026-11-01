@@ -69,8 +69,6 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
     const controls = transform.current
     const viewport = controls?.instance.wrapperComponent
     if (!controls || !viewport) return
-    let targetScale = controls.state.scale
-    let appliedScale = controls.state.scale
     const zoomWithWheel = (event: WheelEvent) => {
       if (
         !Number.isFinite(event.deltaY) ||
@@ -89,16 +87,24 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
       // The built-in wheel step adds raw deltas to scale. Normalize units and
       // cap each event to ~10% of the current scale, preserving fine trackpad input.
       const factor = Math.exp(-Math.max(-100, Math.min(100, delta)) * 0.001)
-      if (controls.state.scale !== appliedScale) {
-        targetScale = controls.state.scale
-      }
-      // zoomToPoint rounds to 1%; retain smaller deltas across wheel events.
-      targetScale = Math.max(
+      const state = controls.state
+      const nextScale = Math.max(
         controls.instance.setup.minScale,
-        Math.min(controls.instance.setup.maxScale, targetScale * factor)
+        Math.min(controls.instance.setup.maxScale, state.scale * factor)
       )
-      void controls.zoomToPoint(targetScale, event.clientX, event.clientY, 0)
-      appliedScale = controls.state.scale
+      // zoomToPoint rounds scale to 1%, which visibly steps at fitted 4K/8K sizes.
+      // Use the public coordinate conversion and unrounded transform instead.
+      const point = controls.clientToContent(event.clientX, event.clientY)
+      const width = viewport.clientWidth - dimensions.width * nextScale
+      const height = viewport.clientHeight - dimensions.height * nextScale
+      const x = state.positionX + point.x * (state.scale - nextScale)
+      const y = state.positionY + point.y * (state.scale - nextScale)
+      void controls.setTransform(
+        Math.max(Math.min(0, width), Math.min(Math.max(0, width), x)),
+        Math.max(Math.min(0, height), Math.min(Math.max(0, height), y)),
+        nextScale,
+        0
+      )
     }
     viewport.addEventListener('wheel', zoomWithWheel, { passive: false })
     return () => viewport.removeEventListener('wheel', zoomWithWheel)
@@ -152,6 +158,106 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
         if (handled) event.preventDefault()
       }}
     >
+      {failed ? (
+        <ErrorState
+          title={t('Failed to load image')}
+          description={t(
+            'This image link may have expired. Try opening the original.'
+          )}
+          action={
+            <Button
+              variant='outline'
+              render={
+                <a href={props.image.src} target='_blank' rel='noreferrer' />
+              }
+            >
+              {t('Open original')}
+            </Button>
+          }
+        />
+      ) : (
+        <TransformWrapper
+          key={props.image.id}
+          ref={transform}
+          minScale={0.005}
+          maxScale={4}
+          centerOnInit
+          doubleClick={{ disabled: true }}
+          wheel={{ disabled: true }}
+          panning={{ velocityDisabled: true }}
+          onTransform={(_ref, state) => {
+            // Pan and sub-percent scale changes do not change the toolbar.
+            setZoom((previous) => {
+              if (
+                previous.imageId === props.image.id &&
+                Math.round(previous.scale * 100) ===
+                  Math.round(state.scale * 100) &&
+                previous.scale <= 0.005 === state.scale <= 0.005 &&
+                previous.scale >= 4 === state.scale >= 4
+              ) {
+                return previous
+              }
+              return { imageId: props.image.id, scale: state.scale }
+            })
+          }}
+        >
+          <TransformComponent
+            wrapperClass='studio-viewer-viewport'
+            contentClass='studio-viewer-content'
+            wrapperProps={{
+              onDoubleClick: (event) => {
+                if (!dimensions) return
+                const fittedScale = Math.min(
+                  1,
+                  event.currentTarget.clientWidth / dimensions.width,
+                  event.currentTarget.clientHeight / dimensions.height
+                )
+                if (
+                  (transform.current?.state.scale ?? 1) <=
+                  fittedScale + 0.001
+                ) {
+                  void transform.current?.centerView(
+                    Math.max(1, fittedScale * 2),
+                    0
+                  )
+                } else {
+                  void transform.current?.fitToView({
+                    maxScale: 1,
+                    animationTime: 0,
+                  })
+                }
+              },
+              tabIndex: -1,
+            }}
+          >
+            <img
+              src={
+                props.image.src.startsWith('/api/image-playground/tasks/')
+                  ? props.image.previewSrc
+                  : props.image.src
+              }
+              alt={t('Image Preview')}
+              width={dimensions?.width}
+              height={dimensions?.height}
+              referrerPolicy='no-referrer'
+              draggable={false}
+              onError={() => setFailedSrc(props.image.src)}
+              onLoad={(event) => {
+                const image = event.currentTarget
+                if (image.naturalWidth && image.naturalHeight) {
+                  setLoaded({
+                    imageId: props.image.id,
+                    dimensions: {
+                      width: image.naturalWidth,
+                      height: image.naturalHeight,
+                    },
+                  })
+                }
+              }}
+            />
+          </TransformComponent>
+        </TransformWrapper>
+      )}
       <div
         className='studio-viewer-toolbar'
         aria-label={t('Image zoom controls')}
@@ -197,91 +303,6 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
           {t('Original size')}
         </Button>
       </div>
-      {failed ? (
-        <ErrorState
-          title={t('Failed to load image')}
-          description={t(
-            'This image link may have expired. Try opening the original.'
-          )}
-          action={
-            <Button
-              variant='outline'
-              render={
-                <a href={props.image.src} target='_blank' rel='noreferrer' />
-              }
-            >
-              {t('Open original')}
-            </Button>
-          }
-        />
-      ) : (
-        <TransformWrapper
-          key={props.image.id}
-          ref={transform}
-          minScale={0.005}
-          maxScale={4}
-          centerOnInit
-          doubleClick={{ disabled: true }}
-          wheel={{ disabled: true }}
-          panning={{ velocityDisabled: true }}
-          onTransform={(_ref, state) =>
-            setZoom({ imageId: props.image.id, scale: state.scale })
-          }
-        >
-          <TransformComponent
-            wrapperClass='studio-viewer-viewport'
-            contentClass='studio-viewer-content'
-            wrapperProps={{
-              onDoubleClick: (event) => {
-                if (!dimensions) return
-                const fittedScale = Math.min(
-                  1,
-                  event.currentTarget.clientWidth / dimensions.width,
-                  event.currentTarget.clientHeight / dimensions.height
-                )
-                if (scale <= fittedScale + 0.001) {
-                  void transform.current?.centerView(
-                    Math.max(1, fittedScale * 2),
-                    0
-                  )
-                } else {
-                  void transform.current?.fitToView({
-                    maxScale: 1,
-                    animationTime: 0,
-                  })
-                }
-              },
-              tabIndex: -1,
-            }}
-          >
-            <img
-              src={
-                props.image.src.startsWith('/api/image-playground/tasks/')
-                  ? props.image.previewSrc
-                  : props.image.src
-              }
-              alt={t('Image Preview')}
-              width={dimensions?.width}
-              height={dimensions?.height}
-              referrerPolicy='no-referrer'
-              draggable={false}
-              onError={() => setFailedSrc(props.image.src)}
-              onLoad={(event) => {
-                const image = event.currentTarget
-                if (image.naturalWidth && image.naturalHeight) {
-                  setLoaded({
-                    imageId: props.image.id,
-                    dimensions: {
-                      width: image.naturalWidth,
-                      height: image.naturalHeight,
-                    },
-                  })
-                }
-              }}
-            />
-          </TransformComponent>
-        </TransformWrapper>
-      )}
       <ImageSizeDetails
         dimensions={
           props.image.width && props.image.height
@@ -335,8 +356,10 @@ export function StudioPreview(props: {
       }}
       title={props.title ?? t('Image Preview')}
       description={t('View image details')}
-      contentClassName='studio-preview-dialog sm:max-w-5xl'
-      footerClassName='studio-preview-footer'
+      contentClassName='studio-preview-dialog gap-3 p-3 sm:max-w-5xl sm:p-3'
+      headerClassName='sr-only'
+      bodyClassName='py-0'
+      footerClassName='studio-preview-footer mx-0 mb-0 p-0 sm:mx-0 sm:mb-0 sm:p-0'
       footer={props.footer?.(image)}
     >
       <div
@@ -360,6 +383,7 @@ export function StudioPreview(props: {
           }
         }}
       >
+        <ZoomableImage image={image} requestedSize={props.requestedSize} />
         {props.images.length > 1 && (
           <div className='studio-preview-navigation'>
             <Button
@@ -388,7 +412,6 @@ export function StudioPreview(props: {
             </Button>
           </div>
         )}
-        <ZoomableImage image={image} requestedSize={props.requestedSize} />
         {props.prompt && (
           <div className='studio-result-prompt'>
             <strong>{t('Image prompt')}</strong>

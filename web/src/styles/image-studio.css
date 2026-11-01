@@ -896,7 +896,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  margin-bottom: 12px;
+  margin: 12px 0 8px;
 }
 .studio-viewer-toolbar button,
 .studio-preview-navigation button {
@@ -912,7 +912,7 @@
 }
 .studio-viewer .studio-viewer-viewport {
   width: 100%;
-  height: 52vh;
+  height: 64vh;
   min-height: 180px;
   overflow: hidden;
   border: 1px solid var(--g-border);

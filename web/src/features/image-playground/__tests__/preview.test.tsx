@@ -298,3 +298,91 @@ it('recovers the open preview when a cached copy replaces a failed remote URL', 
   expect(screen.getByRole('img')).toHaveAttribute('src', cached.src)
   expect(screen.queryByText('Failed to load image')).not.toBeInTheDocument()
 })
+
+it('places zoom and image navigation after the image in reading and tab order', () => {
+  render(<PreviewFixture />)
+  const image = screen.getByRole('img')
+  for (const name of ['Zoom in', 'Fit to window', 'Next image']) {
+    const control = screen.getByRole('button', { name })
+    expect(
+      image.compareDocumentPosition(control) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  }
+})
+
+it('responds to every tiny trackpad pinch at a low fitted scale without percentage-sized jumps', async () => {
+  render(<PreviewFixture />)
+  loadImage(screen.getByRole('img'), 3840, 3840)
+  const content = screen.getByRole('img').parentElement
+  if (!content) throw new Error('Missing image content')
+  await waitFor(() =>
+    expect(content.style.transform).toContain('scale(0.15625)')
+  )
+  let previous = 0.15625
+  for (let tick = 0; tick < 12; tick++) {
+    fireEvent.wheel(screen.getByRole('img'), {
+      deltaY: -1,
+      ctrlKey: true,
+      clientX: 400,
+      clientY: 300,
+    })
+    const scale = Number(content.style.transform.match(/scale\(([^)]+)\)/)?.[1])
+    expect(scale).toBeGreaterThan(previous)
+    expect(scale / previous).toBeCloseTo(Math.exp(0.001), 6)
+    previous = scale
+  }
+})
+
+it('keeps touchscreen pinch proportional to finger distance at a low fitted scale', async () => {
+  render(<PreviewFixture />)
+  loadImage(screen.getByRole('img'), 3840, 3840)
+  const image = screen.getByRole('img')
+  const content = image.parentElement
+  if (!content) throw new Error('Missing image content')
+  await waitFor(() =>
+    expect(content.style.transform).toContain('scale(0.15625)')
+  )
+  const touches = (distance: number) => [
+    {
+      identifier: 1,
+      clientX: 400 - distance / 2,
+      clientY: 300,
+      pageX: 400 - distance / 2,
+      pageY: 300,
+    },
+    {
+      identifier: 2,
+      clientX: 400 + distance / 2,
+      clientY: 300,
+      pageX: 400 + distance / 2,
+      pageY: 300,
+    },
+  ]
+  fireEvent.touchStart(image, { touches: touches(200) })
+  for (const distance of [201, 202, 204, 220, 210, 200]) {
+    fireEvent.touchMove(image, { touches: touches(distance) })
+    const scale = Number(content.style.transform.match(/scale\(([^)]+)\)/)?.[1])
+    expect(scale).toBeCloseTo((0.15625 * distance) / 200, 6)
+  }
+  fireEvent.touchEnd(image, { touches: [] })
+})
+
+it('clamps repeated wheel zoom to both limits and allows reversing at either limit', async () => {
+  render(<PreviewFixture />)
+  loadImage(screen.getByRole('img'), 3840, 3840)
+  const image = screen.getByRole('img')
+  const content = image.parentElement
+  if (!content) throw new Error('Missing image content')
+  await waitFor(() =>
+    expect(content.style.transform).toContain('scale(0.15625)')
+  )
+  for (const deltaY of [-100, 100]) {
+    for (let tick = 0; tick < 100; tick++) {
+      fireEvent.wheel(image, { deltaY, clientX: 400, clientY: 300 })
+    }
+    const limit = deltaY < 0 ? 4 : 0.005
+    expect(content.style.transform).toContain(`scale(${limit})`)
+    fireEvent.wheel(image, { deltaY: -deltaY, clientX: 400, clientY: 300 })
+    expect(content.style.transform).not.toContain(`scale(${limit})`)
+  }
+})
