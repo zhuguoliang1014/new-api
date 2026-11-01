@@ -1622,3 +1622,67 @@ it('offers every style in the same order as the composer and keeps both selector
     screen.getByRole('button', { name: 'Try Concept art' })
   ).toHaveAttribute('aria-pressed', 'false')
 })
+
+it('keeps the selected style example visible in the composer when creations replace the inspiration gallery', async () => {
+  vi.mocked(readImageHistory).mockResolvedValue([
+    {
+      id: 'existing-creation',
+      ownerId: 1,
+      createdAt: 1,
+      parameters: {
+        ...useImagePlaygroundStore.getState().parameters,
+        prompt: 'My saved artwork',
+      },
+      images: [image],
+      referenceCount: 0,
+    },
+  ])
+  showStudio()
+  await ready()
+  await screen.findByText('My saved artwork')
+  expect(
+    screen.queryByRole('group', { name: 'Style inspiration' })
+  ).not.toBeInTheDocument()
+  const selector = screen.getByRole('combobox', { name: 'Style' })
+  fireEvent.change(selector, { target: { value: 'product' } })
+  expect(
+    screen.getByRole('img', { name: 'Product photography' })
+  ).toHaveAttribute('src', '/style-previews/product.jpg')
+  fireEvent.change(selector, { target: { value: 'watercolor' } })
+  expect(screen.getByRole('img', { name: 'Watercolor' })).toHaveAttribute(
+    'src',
+    '/style-previews/watercolor.jpg'
+  )
+  expect(
+    screen.queryByRole('img', { name: 'Product photography' })
+  ).not.toBeInTheDocument()
+  fireEvent.change(selector, { target: { value: '' } })
+  expect(
+    screen.queryByRole('img', { name: 'Watercolor' })
+  ).not.toBeInTheDocument()
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('opens the selected style example from the composer without submitting a generation', async () => {
+  const user = userEvent.setup()
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Style' }), {
+    target: { value: 'watercolor' },
+  })
+  const style = screen.getByRole('group', { name: 'Style' })
+  const preview = within(style).getByRole('button', {
+    name: 'Style inspiration',
+  })
+  preview.focus()
+  await user.keyboard('{Enter}')
+  const dialog = await screen.findByRole('dialog', { name: 'Watercolor' })
+  expect(within(dialog).getByRole('img')).toHaveAttribute(
+    'src',
+    '/style-previews/watercolor.jpg'
+  )
+  await user.keyboard('{Escape}')
+  await waitFor(() => expect(dialog).not.toBeInTheDocument())
+  expect(preview).toHaveFocus()
+  expect(createStudioTask).not.toHaveBeenCalled()
+})

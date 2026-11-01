@@ -16,95 +16,80 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Check } from 'lucide-react'
+import { Maximize2 } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LoadingState } from '@/components/loading-state'
 import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 
-import { stylePresets } from '../lib/style-presets'
+import { stylePresets, type StylePreset } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
-import { StudioImageHoverPreview } from './studio-image-hover-preview'
+
+const StudioPreview = lazy(() =>
+  import('./studio-preview').then((module) => ({
+    default: module.StudioPreview,
+  }))
+)
 
 export function StudioStyleSelector() {
   const { t } = useTranslation()
-  const labels: Record<string, string> = {
-    product: t('Product photography'),
-    portrait: t('Portrait'),
-    cinematic: t('Cinematic'),
-    neon: t('Neon night'),
-    watercolor: t('Watercolor'),
-    oilpainting: t('Oil painting'),
-    minimal: t('Japanese minimal'),
-    conceptart: t('Concept art'),
-  }
-
   const selectedStyleId = useImagePlaygroundStore(
     (state) => state.selectedStyleId
   )
-
+  const selectedStyle = stylePresets.find(
+    (preset) => preset.id === selectedStyleId
+  )
+  const [preview, setPreview] = useState<StylePreset | null>(null)
   return (
-    <div className='studio-dock-styles' role='group' aria-label={t('Style')}>
-      <Button
-        variant='ghost'
-        type='button'
-        className='studio-dock-style-chip'
-        aria-pressed={selectedStyleId === null}
-        aria-label={t('No style')}
-
-        onClick={() =>
-          useImagePlaygroundStore.setState({ selectedStyleId: null })
+    <div className='studio-field' role='group' aria-label={t('Style')}>
+      <Label htmlFor='studio-style'>{t('Style')}</Label>
+      <NativeSelect
+        id='studio-style'
+        className='studio-native-select'
+        value={selectedStyleId ?? ''}
+        onChange={(event) =>
+          useImagePlaygroundStore.setState({
+            selectedStyleId: event.target.value || null,
+          })
         }
       >
-        <span className='studio-dock-style-none' aria-hidden='true'>
-          ✦
-        </span>
-        {t('No style')}
-        <Check
-          className='studio-style-check'
-          role='img'
-          aria-label={t('Selected')}
-          aria-hidden={selectedStyleId !== null}
-        />
-      </Button>
-      {stylePresets.map((preset) => (
-        <StudioImageHoverPreview
-          key={preset.id}
-          src={preset.previewSrc}
-          label={labels[preset.id] ?? preset.label}
-          trigger={
-            <Button
-              variant='ghost'
-              type='button'
-              className='studio-dock-style-chip'
-              aria-label={labels[preset.id] ?? preset.label}
-              aria-pressed={selectedStyleId === preset.id}
-
-              onClick={() =>
-                useImagePlaygroundStore.setState({
-                  selectedStyleId:
-                    selectedStyleId === preset.id ? null : preset.id,
-                })
-              }
-            >
-              <img
-                className='studio-dock-style-thumb'
-                src={preset.previewSrc}
-                alt=''
-                aria-hidden='true'
-                loading='lazy'
-                referrerPolicy='no-referrer'
-              />
-              {labels[preset.id] ?? preset.label}
-              <Check
-                className='studio-style-check'
-                role='img'
-                aria-label={t('Selected')}
-                aria-hidden={selectedStyleId !== preset.id}
-              />
-            </Button>
-          }
-        />
-      ))}
+        <NativeSelectOption value=''>{t('No style')}</NativeSelectOption>
+        {stylePresets.map((preset) => (
+          <NativeSelectOption key={preset.id} value={preset.id}>
+            {t(preset.label)}
+          </NativeSelectOption>
+        ))}
+      </NativeSelect>
+      {selectedStyle && (
+        <Button
+          type='button'
+          variant='ghost'
+          className='studio-selected-style-preview'
+          aria-label={t('Style inspiration')}
+          aria-haspopup='dialog'
+          onClick={() => setPreview(selectedStyle)}
+        >
+          <img src={selectedStyle.previewSrc} alt={t(selectedStyle.label)} />
+          <span className='studio-selected-style-caption'>
+            <span>{t('Style inspiration')}</span>
+            <Maximize2 size={15} aria-hidden='true' />
+          </span>
+        </Button>
+      )}
+      {preview && (
+        <Suspense fallback={<LoadingState />}>
+          <StudioPreview
+            title={t(preview.label)}
+            images={[{ id: preview.id, src: preview.previewSrc }]}
+            index={0}
+            onIndexChange={() => undefined}
+            onClose={() => setPreview(null)}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

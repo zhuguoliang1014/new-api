@@ -45,7 +45,6 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { useStudioAgentConfig } from '../hooks/use-studio-agent-config'
 import { useStudioGroups } from '../hooks/use-studio-groups'
 import { getStudioDefaultSize, getStudioSizeSelection } from '../lib/sizes'
-import { stylePresets } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 import {
   getImageModelOptions,
@@ -56,6 +55,7 @@ import { StudioAgentSettings } from './studio-agent-settings'
 import { StudioCostEstimate } from './studio-cost-estimate'
 import { StudioParameters } from './studio-parameters'
 import { StudioReferences } from './studio-references'
+import { StudioStyleSelector } from './studio-style-selector'
 
 export function StudioComposer(props: {
   refining: boolean
@@ -71,9 +71,6 @@ export function StudioComposer(props: {
   const groups = useStudioGroups()
   const [promptSettingsOpen, setPromptSettingsOpen] = useState(false)
   const agentConfig = useStudioAgentConfig(promptSettingsOpen)
-  const selectedStyleId = useImagePlaygroundStore(
-    (state) => state.selectedStyleId
-  )
   const isComposingRef = useRef(false)
   const group = groups.data?.find((item) => item.id === parameters.group)
   let groupDescription = ''
@@ -395,28 +392,7 @@ export function StudioComposer(props: {
             />
             <div className='studio-section-divider' />
             <StudioParameters group={group} />
-            <div className='studio-field'>
-              <Label htmlFor='studio-style'>{t('Style')}</Label>
-              <NativeSelect
-                id='studio-style'
-                className='studio-native-select'
-                value={selectedStyleId ?? ''}
-                onChange={(event) =>
-                  useImagePlaygroundStore.setState({
-                    selectedStyleId: event.target.value || null,
-                  })
-                }
-              >
-                <NativeSelectOption value=''>
-                  {t('No style')}
-                </NativeSelectOption>
-                {stylePresets.map((preset) => (
-                  <NativeSelectOption key={preset.id} value={preset.id}>
-                    {t(preset.label)}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </div>
+            <StudioStyleSelector />
           </div>
           <div className='studio-submit-area'>
             <Button
