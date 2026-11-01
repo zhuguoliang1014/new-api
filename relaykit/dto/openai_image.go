@@ -41,6 +41,22 @@ type ImageRequest struct {
 	Mask              json.RawMessage `json:"mask,omitempty"`
 	InputFidelity     json.RawMessage `json:"input_fidelity,omitempty"`
 	Watermark         *bool           `json:"watermark,omitempty"`
+	// Stable Midjourney creative controls on the OpenAI Images endpoint.
+	HD              *bool    `json:"hd,omitempty"`
+	Raw             *bool    `json:"raw,omitempty"`
+	Tile            *bool    `json:"tile,omitempty"`
+	NegativePrompt  *string  `json:"negative_prompt,omitempty"`
+	Seed            *int64   `json:"seed,omitempty"`
+	Stylize         *int     `json:"stylize,omitempty"`
+	Chaos           *int     `json:"chaos,omitempty"`
+	Weird           *int     `json:"weird,omitempty"`
+	ImageWeight     *float64 `json:"iw,omitempty"`
+	CharacterRef    *string  `json:"cref,omitempty"`
+	CharacterWeight *int     `json:"cw,omitempty"`
+	StyleRef        *string  `json:"sref,omitempty"`
+	StyleWeight     *int     `json:"sw,omitempty"`
+	DepthRef        *string  `json:"dref,omitempty"`
+	DepthWeight     *float64 `json:"dw,omitempty"`
 	// zhipu 4v
 	WatermarkEnabled json.RawMessage `json:"watermark_enabled,omitempty"`
 	UserId           json.RawMessage `json:"user_id,omitempty"`

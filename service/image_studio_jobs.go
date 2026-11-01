@@ -22,7 +22,9 @@ import (
 )
 
 const ImageStudioRetention = 10 * time.Hour
-const ImageStudioMaxBody = 42 << 20
+
+// Five MJ references can occupy about 67 MiB after base64 encoding.
+const ImageStudioMaxBody = 72 << 20
 
 var studioTaskID = regexp.MustCompile(`^[a-zA-Z0-9_-]{20,64}$`)
 var ErrStudioTaskNotFound = errors.New("image task not found")

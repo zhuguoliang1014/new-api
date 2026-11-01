@@ -9,10 +9,10 @@
 | `gpt-image-2-basic`、`gpt-image-2.5-basic` | 去掉 `-basic` | 0.03/张 |
 | `gpt-image-2-hq`、`gpt-image-2.5-hq` | 去掉 `-hq` | 0.12/张 |
 | `gpt-image-2-native`、`gpt-image-2.5-flare-native`、`gpt-image-2.5-sunburst-native` | 去掉 `-native` | 0.225/张 |
-| `gemini-3-pro-image-preview` | 同名，香蕉 Pro | 0.1248/张 |
+| `gemini-nano-banana-2.1`、`gemini-3-pro-image`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image`、`gemini-3.1-flash-image-preview`、`gemini-2.5-flash-image` | 同名，香蕉系列 | 0.1248/张 |
 | `mj-v8.2` | 同名，MJ 标准档 | 1.30/次 |
 
-GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0.096`，乘 1.3；MJ 按用户确认的每次成本 1 元乘 1.3。本次只接入已明确成本的香蕉 Pro，没有给其他香蕉变体套用同一成本。
+GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0.096`，乘 1.3；MJ 按用户确认的每次成本 1 元乘 1.3。用户已确认六款香蕉模型同价，均采用上述成本和售价。
 
 每张计费表达式为 `tier("image", fixed(单价)) * image_count`。MJ 为 `tier("request", fixed(1.3))`，不能再乘返回图片数量。充值基础比例为 1 元人民币对应 1 站内美元额度；显示用的美元汇率不参与这里的基础售价换算。生图使用余额，既有套餐规则保持不变。
 
@@ -31,16 +31,30 @@ GPT 路线保留既有售价。香蕉 Pro 按用户提供成本 `0.12 × 0.8 = 0
 - https://doc.pandatk.com/#banana-gemini
 - https://doc.pandatk.com/#midjourney-stable
 
-MJ 使用同步 OpenAI Images JSON 接口，并非传统 MJ 异步任务协议。`n=1` 表示一次任务；通常返回四张独立图片，可能附带拼图封面，封面不是第五张独立生成图片。网关接受 1–4 张有效图片结果，按一次收费。工作台支持最多四张参考图，转成 data URL 放在 generations 的 JSON `images` 字段中，不发送 multipart edits。
+MJ 使用同步 OpenAI Images JSON 接口，并非传统 MJ 异步任务协议。`n=1` 表示一次任务；通常返回四张独立图片，可能附带拼图封面，封面不是第五张独立生成图片。网关接受 1–4 张有效图片结果，按一次收费。工作台支持最多五张参考图，转成 data URL 放在 generations 的 JSON `images` 字段中，不发送 multipart edits。
 
 标准价格固定 `quality="1"`、`hd=false`、`n=1`、`response_format="url"`，渠道参数覆盖也固定这些值，不开放未知价格的高清档。提示词（包括风格模板）最多 1023 个 Unicode 字符。提交上游后遇到错误、超时或无效响应禁止自动重试；服务端任务仍沿用未知结果不自动重放的规则。
 
 ## 验证与安全边界（2026-11-01）
 
-- 工作台 124 项前端测试；TypeScript、lint、格式、构建检查通过。
+- 工作台及共用选择组件 154 项前端测试；TypeScript、lint、格式、构建检查通过。
 - SQLite 3.50.4、MySQL 8.4.11、PostgreSQL 15.17 验证分组、逐模型限制、旧 Key 路由、撤销 Key 不重建以及真实数据库预扣、结算和退款。MJ 四张返回仅扣一次的计费用例在三库均通过。
 - 相关 Go 包及竞态回归通过。扩大后端回归时，未修改的套餐冻结测试 `TestSubscriptionFreezeDatabaseLifecycle/sqlite/reservation_before_freeze_remains_refundable_and_new_requests_are_excluded` 返回 `no active subscription`；用变更前代码 overlay 重跑也失败，记录为基线问题，不能声称全量测试通过。
 - 参考 OWASP Authentication Cheat Sheet、Session Management Cheat Sheet，以及 ASVS 5.0.0 的 8.2.1、8.2.2、8.2.3、8.3.1：授权在提交及实际执行时由服务端检查，保留账号、组权限、Key 所有权/状态/过期/IP/模型限制，撤销不自动重建；bootstrap 不返回凭据，审计只记录 Key ID。这里是相关控制的回归记录，不是完整 ASVS 合规声明。
 - 上游凭据只在香港受限恢复目录和渠道配置中保存，不进入仓库。模型目录读取已验证；本次尚未发起真实付费生成，不能用本地模拟或目录查询代替真实出图验收。原生 sunburst 既有上游 451 可用性问题仍可能发生。
 
 生产变更先备份，再执行带旧值保护的事务回滚演练；代码上线后才提交配置。恢复目录记录于运维手册，回退配置时只恢复本次目标字段并停用新渠道，不覆盖后续消费、订单或用户余额。
+
+## 模型选择与创作参数（2026-11-01）
+
+以下变更已完成本地验收，按用户明确授权发布；实际生产版本和配置核验记录见运维手册。
+
+- 模型选择移至信息说明上方，复用 `ModelSelector`，按香蕉、GPT 基础、GPT 高质量、GPT 原生及 Midjourney 分类，支持搜索渠道名和模型标识。移动端使用同一组件的字段展示方式。弹窗与选择框等宽，模型名称下方以灰色小字并排展示描述和单价；描述可截断，单价完整保留，图片按张、MJ 按次（通常 4 张）；单价不随草稿图片数量放大，未知价格显示破折号，避免误报为免费。
+- 香蕉开放 `gemini-nano-banana-2.1`、`gemini-3-pro-image`、`gemini-3-pro-image-preview`、`gemini-3.1-flash-image`、`gemini-3.1-flash-image-preview`、`gemini-2.5-flash-image`。用户已确认六个模型成本均为 ¥0.096/张，按成本乘 1.3，售价统一 ¥0.1248/张。本地渠道已补齐六个模型。
+- MJ 面板增加 Raw、无缝平铺、风格化、变化程度、怪异程度、随机种子、负面提示词及参考图权重；角色、风格、深度参考分别设置 HTTP(S) 链接与权重。前后端校验参数范围，并保留显式的零和 false。参考链接由上游读取。
+- MJ 普通参考图片上限为五张，其余模型保持四张；从 MJ 切换到其他模型时保留前四张。任务请求上限为 72 MiB，以容纳五张 10 MiB 图片的 base64 数据。MJ 画质仍固定标准档，不开放未确认价格的质量和高清选项。
+- 发布配置需补齐香蕉渠道的模型、模型资料及逐模型计费选项，并核对系统管理的工作台 Key 模型限制。保留用户手动限制与已撤销 Key，不扩大其授权。本次未修改认证实现。
+
+本地启动可使用 `DEV_ENV_FILE=/path/to/local.env sh dev-local.sh` 指定独立环境文件；不指定时仍读取既有 `.env`。此次验收使用独立本地数据库，未修改生产配置。14 个模型已通过本地模拟上游的 HTTP 任务、参数传递与计费检查；这不等于真实上游付费出图验证。
+
+本次验证：154 项前端回归、TypeScript、涉及文件 lint、构建、相关 Go 包竞态测试及 `relaykit` 独立构建通过。桌面和 320/390 像素视口检查了分类选择、参数校验与横向溢出；模型单价、未知及免费价格、键盘选择和窄屏搜索已覆盖。未验证旧版手机浏览器内核。

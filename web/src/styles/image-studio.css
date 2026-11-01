@@ -1012,3 +1012,40 @@
 .studio-prompt-heading > label {
   margin-right: auto;
 }
+
+/* Model-specific creative controls keep the dock's scroll and footer intact. */
+.image-studio .studio-mj-controls,
+.image-studio .studio-mj-references {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 18px;
+}
+.image-studio .studio-mj-controls {
+  margin-top: 20px;
+}
+.image-studio .studio-mj-toggles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.image-studio .studio-creative-range {
+  gap: 10px;
+}
+.image-studio .studio-creative-range input {
+  width: 76px;
+  height: 30px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.image-studio .studio-mj-reference {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.image-studio .studio-group-field {
+  overflow-wrap: anywhere;
+}

@@ -16,9 +16,10 @@ FRONTEND_DIR="${ROOT_DIR}/web"
 LOG_DIR="${ROOT_DIR}/.dev-logs"
 mkdir -p "${LOG_DIR}"
 
-if [ -f "${ROOT_DIR}/.env" ]; then
+DEV_ENV_FILE="${DEV_ENV_FILE:-${ROOT_DIR}/.env}"
+if [ -f "${DEV_ENV_FILE}" ]; then
   set -a
-  . "${ROOT_DIR}/.env"
+  . "${DEV_ENV_FILE}"
   set +a
 fi
 

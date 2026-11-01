@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -119,8 +120,13 @@ func CreateImageStudioTask(c *gin.Context) {
 		return
 	}
 	var metadata json.RawMessage
+	var mjOptions service.StudioMJOptions
 	count := 1
 	references := 0
+	maxReferences := 4
+	if profile.SizeMode == "ratio" {
+		maxReferences = 5
+	}
 	contentType := c.GetHeader("Content-Type")
 	size, quality, format, background, prompt := "auto", "auto", "png", "auto", ""
 	if strings.Contains(c.ContentType(), "multipart/form-data") {
@@ -166,6 +172,7 @@ func CreateImageStudioTask(c *gin.Context) {
 		}
 	} else {
 		var payload struct {
+			service.StudioMJOptions
 			Metadata   json.RawMessage `json:"studio_metadata"`
 			Stream     bool            `json:"stream"`
 			Count      *int            `json:"n"`
@@ -209,8 +216,13 @@ func CreateImageStudioTask(c *gin.Context) {
 			count = *payload.Count
 		}
 		if profile.SizeMode == "ratio" {
+			mjOptions = payload.StudioMJOptions
+			if mjOptions.Validate() != nil {
+				writePlaygroundError(c, 400, "invalid image task request")
+				return
+			}
 			references = len(payload.Images)
-			if references > 4 || utf8.RuneCountInString(prompt) > 1023 {
+			if references > maxReferences || utf8.RuneCountInString(prompt) > 1023 {
 				writePlaygroundError(c, 400, "invalid image task request")
 				return
 			}
@@ -228,10 +240,16 @@ func CreateImageStudioTask(c *gin.Context) {
 			}
 			// MJ accepts references on the JSON generations endpoint. Keep the
 			// fixed-price standard tier pinned independently of browser fields.
-			request := map[string]any{"prompt": prompt, "n": 1, "size": size, "quality": "1", "hd": false, "response_format": "url"}
-			if references > 0 {
-				request["images"] = payload.Images
-			}
+			request := struct {
+				service.StudioMJOptions
+				Prompt         string   `json:"prompt"`
+				Count          int      `json:"n"`
+				Size           string   `json:"size"`
+				Quality        string   `json:"quality"`
+				HD             bool     `json:"hd"`
+				ResponseFormat string   `json:"response_format"`
+				Images         []string `json:"images,omitempty"`
+			}{StudioMJOptions: mjOptions, Prompt: prompt, Count: 1, Size: size, Quality: "1", ResponseFormat: "url", Images: payload.Images}
 			body, err = common.Marshal(request)
 			if err != nil {
 				writePlaygroundError(c, 400, "invalid image task request")
@@ -241,14 +259,15 @@ func CreateImageStudioTask(c *gin.Context) {
 	}
 	var meta struct {
 		Parameters struct {
-			Prompt     string `json:"prompt"`
-			Count      int    `json:"count"`
-			Model      string `json:"model"`
-			Group      string `json:"group"`
-			Size       string `json:"size"`
-			Format     string `json:"format"`
-			Quality    string `json:"quality"`
-			Background string `json:"background"`
+			MJ         *service.StudioMJOptions `json:"mj,omitempty"`
+			Prompt     string                   `json:"prompt"`
+			Count      int                      `json:"count"`
+			Model      string                   `json:"model"`
+			Group      string                   `json:"group"`
+			Size       string                   `json:"size"`
+			Format     string                   `json:"format"`
+			Quality    string                   `json:"quality"`
+			Background string                   `json:"background"`
 		} `json:"parameters"`
 		ReferenceCount int     `json:"referenceCount"`
 		StyleID        *string `json:"styleId"`
@@ -257,12 +276,26 @@ func CreateImageStudioTask(c *gin.Context) {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
-	if count < 1 || count > 4 || count != meta.Parameters.Count || meta.ReferenceCount < 0 || meta.ReferenceCount > 4 || meta.ReferenceCount != references {
+	if count < 1 || count > 4 || count != meta.Parameters.Count || meta.ReferenceCount < 0 || meta.ReferenceCount > maxReferences || meta.ReferenceCount != references {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
 	if profile.MaxCount > 0 && count > profile.MaxCount {
 		writePlaygroundError(c, 400, "invalid image count")
+		return
+	}
+	if meta.Parameters.MJ != nil {
+		if profile.SizeMode != "ratio" || meta.Parameters.MJ.Validate() != nil {
+			writePlaygroundError(c, 400, "invalid image task metadata")
+			return
+		}
+	}
+	metadataOptions := service.StudioMJOptions{}
+	if meta.Parameters.MJ != nil {
+		metadataOptions = *meta.Parameters.MJ
+	}
+	if !reflect.DeepEqual(metadataOptions, mjOptions) {
+		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
 	if profile.SizeMode == "ratio" && (quality != "auto" || format != "png" || background != "auto") {

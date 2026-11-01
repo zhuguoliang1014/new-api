@@ -83,8 +83,15 @@ func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
 	router := gin.New()
 	router.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) { c.Set("id", 1) })
 	router.POST("/:kind", CreateImageStudioTask)
-	metadata := map[string]any{"parameters": map[string]any{"prompt": "A cat", "model": "mj-v8.2", "group": service.ImageStudioGroup, "size": "16:9", "quality": "auto", "format": "png", "background": "auto", "count": 1}, "referenceCount": 1, "styleId": nil}
-	fields := map[string]any{"prompt": "A cat", "size": "16:9", "n": 1, "images": []string{"data:image/png;base64,aW1hZ2U="}, "hd": true, "studio_metadata": metadata}
+	metadata := map[string]any{"parameters": map[string]any{"prompt": "A cat", "model": "mj-v8.2", "group": service.ImageStudioGroup, "size": "16:9", "quality": "auto", "format": "png", "background": "auto", "count": 1}, "referenceCount": 5, "styleId": nil}
+	references := []string{"data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U=", "data:image/png;base64,aW1hZ2U="}
+	fields := map[string]any{"prompt": "A cat", "size": "16:9", "n": 1, "images": references, "hd": true, "studio_metadata": metadata}
+	options := map[string]any{"raw": false, "tile": true, "seed": 0, "stylize": 0, "chaos": 30, "weird": 100, "negative_prompt": "text", "iw": 0, "cref": "https://example.com/c.png", "cw": 0, "sref": "https://example.com/s.png", "sw": 0, "dref": "https://example.com/d.png", "dw": 0}
+	metadata["parameters"].(map[string]any)["mj"] = options
+	for key, value := range options {
+		fields[key] = value
+	}
+
 	post := func(id string) *httptest.ResponseRecorder {
 		body, err := common.Marshal(fields)
 		require.NoError(t, err)
@@ -111,7 +118,15 @@ func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
 	}()
 	select {
 	case raw := <-captured:
-		require.JSONEq(t, `{"prompt":"A cat","size":"16:9","quality":"1","hd":false,"n":1,"response_format":"url","images":["data:image/png;base64,aW1hZ2U="]}`, string(raw))
+		var actual map[string]any
+		require.NoError(t, common.Unmarshal(raw, &actual))
+		expected := map[string]any{"prompt": "A cat", "size": "16:9", "quality": "1", "hd": false, "n": 1, "response_format": "url", "images": references}
+		for key, value := range options {
+			expected[key] = value
+		}
+		encoded, err := common.Marshal(expected)
+		require.NoError(t, err)
+		require.JSONEq(t, string(encoded), string(raw))
 		require.False(t, (<-requests).Edit)
 	case <-time.After(5 * time.Second):
 		t.Fatal("MJ task was not dispatched")
@@ -120,4 +135,12 @@ func TestStudioMJReferencesUseGenerationJSONAndPinStandardTier(t *testing.T) {
 		fields["images"] = images
 		require.Equal(t, 400, post("studio-mj-json-test-0002").Code)
 	}
+	fields["images"] = references
+	fields["stylize"] = 1001
+	require.Equal(t, 400, post("studio-mj-json-test-0003").Code)
+	fields["stylize"] = 1 // Metadata still records zero: history must describe the actual request.
+	require.Equal(t, 400, post("studio-mj-json-test-0004").Code)
+	fields["stylize"] = 0
+	fields["cref"] = "file:///etc/passwd"
+	require.Equal(t, 400, post("studio-mj-json-test-0005").Code)
 }

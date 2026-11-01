@@ -31,6 +31,7 @@ import {
 } from '../lib/sizes'
 import { useImagePlaygroundStore } from '../store'
 import { getImageModelOptions, type ImageParameters } from '../types'
+import { StudioMidjourneyParameters } from './studio-midjourney-parameters'
 
 function ParameterSelect(props: {
   id: string
@@ -98,7 +99,12 @@ export function StudioParameters(props: { group?: StudioGroup }) {
           >
             {t('Auto')}
           </Button>
-          {imageAspectPresets.map((preset) => (
+          {(options.isMidjourney
+            ? options.sizes
+                .filter((ratio) => ratio !== 'auto')
+                .map((ratio) => ({ ratio }))
+            : imageAspectPresets
+          ).map((preset) => (
             <Button
               key={preset.ratio}
               type='button'
@@ -223,6 +229,14 @@ export function StudioParameters(props: { group?: StudioGroup }) {
           </>
         )}
       </div>
+      {options.isMidjourney && <StudioMidjourneyParameters />}
+      {options.isBanana && (
+        <p className='studio-field-hint'>
+          {t(
+            'Banana returns one image per request. Size availability depends on the selected model.'
+          )}
+        </p>
+      )}
       {parameters.format === 'jpeg' && (
         <p className='studio-field-hint'>
           {t('JPEG does not support transparency. Use PNG or WebP.')}

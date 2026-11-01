@@ -22,8 +22,14 @@ import { api } from '@/lib/api'
 
 import type { ImageOutput, ImageRecord } from '../types'
 
-export function validateReferenceFiles(files: File[]): void {
-  if (files.length > 4) throw new Error(t('Use up to 4 reference images.'))
+export function validateReferenceFiles(files: File[], maxReferences = 4): void {
+  if (files.length > maxReferences) {
+    const message =
+      maxReferences === 4
+        ? t('Use up to 4 reference images.')
+        : t('Use up to {{count}} reference images.', { count: maxReferences })
+    throw new Error(message)
+  }
   for (const file of files) {
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
       throw new Error(t('Upload PNG, JPEG or WebP images.'))

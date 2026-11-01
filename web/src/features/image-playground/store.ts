@@ -104,6 +104,17 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         set({ parameters, references: [] })
         return
       }
+      const maxReferences = getImageModelOptions(parameters.model).maxReferences
+      if (modelChanged && state.references.length > maxReferences) {
+        for (const reference of state.references.slice(maxReferences)) {
+          URL.revokeObjectURL(reference.preview)
+        }
+        set({
+          parameters,
+          references: state.references.slice(0, maxReferences),
+        })
+        return
+      }
       set({ parameters })
     },
     clearDraft: () => {
@@ -123,7 +134,10 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         ...get().references.map((reference) => reference.file),
         ...files,
       ]
-      validateReferenceFiles(combined)
+      validateReferenceFiles(
+        combined,
+        getImageModelOptions(get().parameters.model).maxReferences
+      )
       set((state) => ({
         references: [
           ...state.references,

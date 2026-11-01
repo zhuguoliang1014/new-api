@@ -227,7 +227,7 @@ const studioTaskSchema = z.object({
   metadata: z.object({
     parameters: imageParametersSchema,
     styleId: z.string().nullable(),
-    referenceCount: z.number().int().min(0).max(4),
+    referenceCount: z.number().int().min(0).max(5),
   }),
   images: z
     .array(
@@ -263,7 +263,7 @@ export async function createStudioTask(
   if (options.isMidjourney && [...parsed.prompt].length > 1023) {
     throw new Error(t('Prompt is too long.'))
   }
-  validateReferenceFiles(references)
+  validateReferenceFiles(references, options.maxReferences)
   if (references.length && !options.supportsReferences) {
     throw new Error(t('Choose a model that supports reference images.'))
   }

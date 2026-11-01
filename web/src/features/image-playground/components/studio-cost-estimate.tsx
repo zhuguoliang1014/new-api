@@ -30,11 +30,20 @@ import { useAuthStore } from '@/stores/auth-store'
 import type { StudioGroup } from '../api'
 import { estimateStudioCost } from '../lib/cost'
 import { useImagePlaygroundStore } from '../store'
+import { getImageModelOptions } from '../types'
 
-export function StudioCostEstimate(props: { group?: StudioGroup }) {
+export function StudioCostEstimate(props: {
+  group?: StudioGroup
+  model?: string
+  presentation?: 'total' | 'unit'
+}) {
   const { t, i18n } = useTranslation()
   const scope = useAuthStore((state) => state.auth.session?.sid)
-  const parameters = useImagePlaygroundStore((state) => state.parameters)
+  const draft = useImagePlaygroundStore((state) => state.parameters)
+  const parameters =
+    props.presentation === 'unit'
+      ? { ...draft, model: props.model ?? draft.model, count: 1 }
+      : draft
   const { status, loading: statusLoading, error: statusError } = useStatus()
   const pricing = useQuery({
     queryKey: ['image-playground', 'pricing', scope],
@@ -62,18 +71,40 @@ export function StudioCostEstimate(props: { group?: StudioGroup }) {
           now === undefined ? undefined : new Date(now)
         )
   let label = t('Cost estimate unavailable')
+  const amount =
+    cost === null
+      ? null
+      : formatCnyCurrencyAmount(cost, {
+          digitsLarge: 6,
+          digitsSmall: 6,
+          abbreviate: false,
+          locale: toIntlLocale(i18n.resolvedLanguage || i18n.language),
+        })
   if (pricing.isLoading || statusLoading) {
     label = t('Estimating cost…')
   }
-  if (cost !== null) {
-    label = t('Estimated cost {{amount}}', {
-      amount: formatCnyCurrencyAmount(cost, {
-        digitsLarge: 6,
-        digitsSmall: 6,
-        abbreviate: false,
-        locale: toIntlLocale(i18n.resolvedLanguage || i18n.language),
-      }),
-    })
+  if (amount !== null) {
+    label = t('Estimated cost {{amount}}', { amount })
+  }
+  if (props.presentation === 'unit') {
+    let unitLabel = pricing.isLoading || statusLoading ? '…' : '—'
+    if (amount !== null) {
+      unitLabel = getImageModelOptions(parameters.model).isMidjourney
+        ? t('{{amount}}/request', { amount })
+        : t('{{amount}}/image', { amount })
+    }
+    return (
+      <span
+        className='text-muted-foreground text-xs font-normal whitespace-nowrap tabular-nums'
+        title={
+          cost === null
+            ? label
+            : t('Estimated at the base recharge rate. Final usage may vary.')
+        }
+      >
+        {unitLabel}
+      </span>
+    )
   }
   return (
     <p

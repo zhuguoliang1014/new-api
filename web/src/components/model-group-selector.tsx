@@ -73,6 +73,7 @@ interface ModelOption {
   value: string
   category?: string
   description?: string
+  price?: React.ReactNode
 }
 
 interface GroupOption {
@@ -84,6 +85,8 @@ interface GroupOption {
 }
 
 interface ModelSelectorProps {
+  id?: string
+  presentation?: 'compact' | 'field'
   selectedModel: string
   models: ModelOption[]
   onModelChange: (value: string) => void
@@ -103,35 +106,59 @@ const ModelTriggerButton = React.forwardRef<
   React.ComponentRef<typeof Button>,
   React.ComponentPropsWithoutRef<typeof Button> & {
     currentLabel: string
+    fieldLayout?: boolean
     triggerClassName?: string
     isDisabled?: boolean
   }
->(({ currentLabel, triggerClassName, isDisabled, ...props }, ref) => (
-  <Button
-    ref={ref}
-    variant='outline'
-    role='combobox'
-    size='sm'
-    disabled={isDisabled}
-    className={cn(
-      'flex h-8 items-center gap-2 border px-3 font-medium',
-      'justify-center p-0 sm:w-auto sm:justify-start sm:px-3',
-      'w-8',
-      'bg-background text-foreground',
-      'hover:bg-accent transition-colors',
-      'focus:!ring-0 focus:!outline-none',
-      'shadow-none',
-      triggerClassName
-    )}
-    {...props}
-  >
-    <CpuIcon className='text-muted-foreground block size-4 sm:hidden' />
-    <span className='text-muted-foreground sm:text-foreground hidden truncate text-xs sm:block'>
-      {currentLabel}
-    </span>
-    <ChevronsUpDown className='text-muted-foreground hidden h-4 w-4 opacity-50 sm:block' />
-  </Button>
-))
+>(
+  (
+    { currentLabel, fieldLayout, triggerClassName, isDisabled, ...props },
+    ref
+  ) => (
+    <Button
+      ref={ref}
+      variant='outline'
+      role='combobox'
+      size='sm'
+      disabled={isDisabled}
+      className={cn(
+        'flex h-8 items-center gap-2 border px-3 font-medium',
+        'justify-center p-0 sm:w-auto sm:justify-start sm:px-3',
+        'w-8',
+        'bg-background text-foreground',
+        'hover:bg-accent transition-colors',
+        !fieldLayout && 'focus:!ring-0 focus:!outline-none',
+        'shadow-none',
+        fieldLayout && '!h-auto !min-h-11 !w-full !justify-start !px-3 !py-2.5',
+        triggerClassName
+      )}
+      {...props}
+    >
+      <CpuIcon
+        className={cn(
+          'text-muted-foreground size-4 sm:hidden',
+          fieldLayout ? 'hidden' : 'block'
+        )}
+      />
+      <span
+        className={cn(
+          'sm:text-foreground min-w-0 truncate sm:block',
+          fieldLayout
+            ? 'text-foreground block flex-1 text-left text-sm'
+            : 'text-muted-foreground hidden text-xs'
+        )}
+      >
+        {currentLabel}
+      </span>
+      <ChevronsUpDown
+        className={cn(
+          'text-muted-foreground h-4 w-4 shrink-0 opacity-50 sm:block',
+          fieldLayout ? 'block' : 'hidden'
+        )}
+      />
+    </Button>
+  )
+)
 
 ModelTriggerButton.displayName = 'ModelTriggerButton'
 
@@ -176,7 +203,15 @@ GroupTriggerButton.displayName = 'GroupTriggerButton'
  * Styled following Scira's form-component design patterns
  */
 export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
-  ({ selectedModel, models, onModelChange, className, disabled = false }) => {
+  ({
+    selectedModel,
+    models,
+    onModelChange,
+    className,
+    disabled = false,
+    id,
+    presentation = 'compact',
+  }) => {
     const { t } = useTranslation()
     const [open, setOpen] = useState(false)
     const [searchQuery, setSearchQuery] = useState('')
@@ -214,6 +249,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
       Object.entries(groupedModels).forEach(([category, categoryModels]) => {
         const matches = categoryModels.filter(
           (m) =>
+            category.toLowerCase().includes(query) ||
             m.label.toLowerCase().includes(query) ||
             m.value.toLowerCase().includes(query) ||
             m.description?.toLowerCase().includes(query)
@@ -225,6 +261,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
 
       return filtered
     }, [groupedModels, searchQuery])
+
+    const handleOpenChange = useCallback((nextOpen: boolean) => {
+      setOpen(nextOpen)
+      if (!nextOpen) setSearchQuery('')
+    }, [])
 
     const handleModelChange = useCallback(
       (value: string) => {
@@ -241,12 +282,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
         className={cn(
           isMobile
             ? 'h-full flex-1 rounded-lg border-0 bg-transparent'
-            : 'rounded-lg'
+            : 'rounded-lg',
+          presentation === 'field' && 'min-h-0 p-1.5'
         )}
         filter={() => 1}
         shouldFilter={false}
       >
-        {!isMobile && (
+        {(!isMobile || presentation === 'field') && (
           <CommandInput
             placeholder={t('Search models...')}
             className='h-9'
@@ -254,9 +296,11 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
             onValueChange={setSearchQuery}
           />
         )}
-        <CommandEmpty>{t('No model found.')}</CommandEmpty>
         <CommandList
-          className={isMobile ? '!max-h-full flex-1 p-2' : 'max-h-[300px]'}
+          className={cn(
+            isMobile ? '!max-h-full flex-1 p-2' : 'max-h-[300px]',
+            presentation === 'field' && !isMobile && 'max-h-[420px] p-1'
+          )}
         >
           {Object.keys(filteredModels).length === 0 ? (
             <div className='text-muted-foreground px-3 py-6 text-xs'>
@@ -265,17 +309,24 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
           ) : (
             Object.entries(filteredModels).map(
               ([category, categoryModels], categoryIndex) => (
-                <CommandGroup key={category}>
+                <CommandGroup
+                  key={category}
+                  className={presentation === 'field' ? 'p-0' : undefined}
+                >
                   {categoryIndex > 0 && (
                     <div className='border-border my-1 border-t' />
                   )}
                   <div
                     className={cn(
                       'text-muted-foreground px-2 py-1 font-medium',
-                      isMobile ? 'text-xs' : 'text-[10px]'
+                      isMobile ? 'text-xs' : 'text-[10px]',
+                      presentation === 'field' &&
+                        'px-3 pt-3 pb-1.5 text-[11px] font-semibold'
                     )}
                   >
-                    {t('{{category}} Models', { category })}
+                    {presentation === 'field'
+                      ? category
+                      : t('{{category}} Models', { category })}
                   </div>
                   {categoryModels.map((model) => (
                     <CommandItem
@@ -286,27 +337,86 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                         'mb-0.5 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs',
                         'transition-all duration-200',
                         'hover:bg-accent',
-                        'data-[selected=true]:bg-accent'
+                        'data-[selected=true]:bg-accent',
+                        presentation === 'field' &&
+                          'min-h-12 gap-3 px-3 py-2.5 [&>svg:last-child]:hidden',
+                        presentation === 'field' &&
+                          selectedModel === model.value &&
+                          'bg-accent/60'
                       )}
                     >
-                      <div className='flex min-w-0 flex-1 items-center gap-1'>
+                      <div
+                        className={cn(
+                          'flex min-w-0 flex-1 items-center gap-1',
+                          presentation === 'field' && 'gap-2'
+                        )}
+                      >
+                        {presentation === 'field' && (
+                          <Check
+                            aria-hidden='true'
+                            className={cn(
+                              'size-3.5 shrink-0 text-primary',
+                              selectedModel !== model.value && 'opacity-0'
+                            )}
+                          />
+                        )}
                         <div
                           className={cn(
-                            'truncate font-medium',
-                            isMobile ? 'text-sm' : 'text-[11px]'
+                            'min-w-0 font-medium',
+                            presentation === 'field'
+                              ? 'flex-1 whitespace-normal break-words'
+                              : 'truncate',
+                            presentation === 'field' || isMobile
+                              ? 'text-sm'
+                              : 'text-[11px]'
                           )}
                         >
                           <span className='inline'>{model.label}</span>
+                          {presentation === 'field' &&
+                            (model.description ||
+                              (model.price !== undefined &&
+                                model.price !== null)) && (
+                              <span className='text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal'>
+                                {model.description && (
+                                  <span
+                                    title={model.description}
+                                    className='min-w-0 truncate'
+                                  >
+                                    {model.description}
+                                  </span>
+                                )}
+                                {model.price !== undefined &&
+                                  model.price !== null && (
+                                    <>
+                                      {model.description && (
+                                        <span aria-hidden='true'>·</span>
+                                      )}
+                                      <span className='shrink-0 whitespace-nowrap'>
+                                        {model.price}
+                                      </span>
+                                    </>
+                                  )}
+                              </span>
+                            )}
                         </div>
-                        <Check
-                          className={cn(
-                            'h-4 w-4 flex-shrink-0',
-                            selectedModel === model.value
-                              ? 'opacity-100'
-                              : 'opacity-0'
-                          )}
-                        />
+                        {presentation !== 'field' && (
+                          <Check
+                            className={cn(
+                              'h-4 w-4 flex-shrink-0',
+                              selectedModel === model.value
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                        )}
                       </div>
+                      {presentation !== 'field' &&
+                        model.price !== undefined &&
+                        model.price !== null && (
+                          <div className='ml-auto shrink-0 text-right'>
+                            {model.price}
+                          </div>
+                        )}
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -318,9 +428,12 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
     )
 
     return isMobile ? (
-      <Drawer open={open} onOpenChange={setOpen}>
+      <Drawer open={open} onOpenChange={handleOpenChange}>
         <DrawerTrigger asChild>
           <ModelTriggerButton
+            id={id}
+            aria-label={t('Model')}
+            fieldLayout={presentation === 'field'}
             currentLabel={currentModel?.label || t('Model')}
             triggerClassName={className}
             isDisabled={disabled}
@@ -328,8 +441,18 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
           />
         </DrawerTrigger>
         <DrawerContent className='flex max-h-[80vh] min-h-[60vh] flex-col'>
-          <DrawerHeader className='flex-shrink-0 pb-4'>
-            <DrawerTitle className='flex items-center gap-2 text-left text-lg font-medium'>
+          <DrawerHeader
+            className={cn(
+              'flex-shrink-0 pb-4',
+              presentation === 'field' && 'px-5 pt-3 pb-1'
+            )}
+          >
+            <DrawerTitle
+              className={cn(
+                'flex items-center gap-2 text-left text-lg font-medium',
+                presentation === 'field' && 'text-base'
+              )}
+            >
               {t('Select Model')}
             </DrawerTitle>
           </DrawerHeader>
@@ -339,10 +462,13 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
         </DrawerContent>
       </Drawer>
     ) : (
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
           render={
             <ModelTriggerButton
+              id={id}
+              aria-label={t('Model')}
+              fieldLayout={presentation === 'field'}
               currentLabel={currentModel?.label || t('Model')}
               triggerClassName={className}
               isDisabled={disabled}
@@ -351,10 +477,15 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
           }
         />
         <PopoverContent
-          className='bg-popover z-40 w-[90vw] max-w-[20em] rounded-lg border p-0 !shadow-none sm:w-[20em]'
+          className={cn(
+            'bg-popover z-40 border p-0',
+            presentation === 'field'
+              ? 'w-[var(--anchor-width)] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl shadow-lg'
+              : 'w-[90vw] max-w-[20em] rounded-lg !shadow-none sm:w-[20em]'
+          )}
           align='start'
           side='bottom'
-          sideOffset={4}
+          sideOffset={presentation === 'field' ? 8 : 4}
           collisionPadding={8}
         >
           {renderModelCommandContent()}

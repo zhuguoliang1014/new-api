@@ -152,6 +152,17 @@ function taskFixture(
     total_bytes: 0,
   }
 }
+async function selectModel(value: string) {
+  const user = userEvent.setup()
+  await user.click(screen.getByRole('combobox', { name: 'Model' }))
+  const option = screen
+    .getAllByRole('option')
+    .find((item) => item.getAttribute('data-value') === value)
+  expect(option).toBeDefined()
+  if (!option) throw new Error(`Model option ${value} was not shown`)
+  await user.click(option)
+}
+
 function acceptPendingTasks() {
   vi.mocked(createStudioTask).mockImplementation(
     async (id, _parameters, _references, metadata) => {
@@ -345,13 +356,11 @@ it('starts without a key setup dialog and exposes the selected group models', as
   await ready()
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   expect(screen.queryByLabelText('API Key')).not.toBeInTheDocument()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
-    target: { value: 'gpt-image-2.5-flare' },
-  })
+  await selectModel('gpt-image-2.5-flare')
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'high' },
   })
-  expect(screen.getByRole('combobox', { name: 'Model' })).toHaveValue(
+  expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent(
     'gpt-image-2'
   )
   expect(
@@ -1563,9 +1572,7 @@ it('shows the gray recharge estimate below generate and updates it for group, mo
     target: { value: '4' },
   })
   expect(await screen.findByText('Estimated cost ¥0.48')).toBeInTheDocument()
-  fireEvent.change(screen.getByRole('combobox', { name: 'Model' }), {
-    target: { value: 'gpt-image-2.5' },
-  })
+  await selectModel('gpt-image-2.5')
   expect(screen.getByText('Estimated cost ¥0.48')).toBeInTheDocument()
 })
 
@@ -1577,6 +1584,26 @@ it('shows unavailable instead of a made-up zero when pricing cannot be loaded', 
     await screen.findByText('Cost estimate unavailable')
   ).toBeInTheDocument()
   expect(screen.queryByText('Estimated cost ¥0.00')).not.toBeInTheDocument()
+})
+
+it('shows a per-image price at the right of each model even when the draft requests four images', async () => {
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'high' },
+  })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Image count' }), {
+    target: { value: '4' },
+  })
+  await userEvent.click(screen.getByRole('combobox', { name: 'Model' }))
+  for (const option of within(screen.getByRole('listbox')).getAllByRole(
+    'option'
+  )) {
+    expect(await within(option).findByText('¥0.12/image')).toHaveClass(
+      'text-muted-foreground'
+    )
+    expect(within(option).queryByText('¥0.48/image')).not.toBeInTheDocument()
+  }
 })
 
 it('selecting an inspiration preserves the draft and keeps focus outside the composer', async () => {
@@ -1698,7 +1725,12 @@ it('uses one image group and changes size limits and pricing controls with the m
       models: [
         'gpt-image-2-basic',
         'gpt-image-2-hq',
+        'gemini-nano-banana-2.1',
+        'gemini-3-pro-image',
         'gemini-3-pro-image-preview',
+        'gemini-3.1-flash-image',
+        'gemini-3.1-flash-image-preview',
+        'gemini-2.5-flash-image',
         'mj-v8.2',
       ],
       size_mode: 'upscale',
@@ -1716,19 +1748,56 @@ it('uses one image group and changes size limits and pricing controls with the m
   ])
   showStudio()
   const model = await screen.findByRole('combobox', { name: 'Model' })
-  await waitFor(() => expect(model).toHaveValue('gpt-image-2-basic'))
+  await waitFor(() => expect(model).toHaveTextContent('gpt-image-2'))
   expect(
     screen.queryByRole('combobox', { name: 'Generation group' })
   ).not.toBeInTheDocument()
+  const information = screen.getByLabelText('Selected model information')
+  expect(
+    model.compareDocumentPosition(information) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  await userEvent.click(model)
+  expect(screen.getByText('Banana')).toBeInTheDocument()
+  expect(screen.getByText('GPT Image · Basic')).toBeInTheDocument()
+  expect(screen.getByText('GPT Image · High quality')).toBeInTheDocument()
+  expect(screen.getByText('Midjourney')).toBeInTheDocument()
+  expect(
+    within(screen.getByRole('option', { name: /Midjourney v8.2/ })).getByText(
+      'Usually 4 images per request'
+    )
+  ).toBeInTheDocument()
+  for (const name of [
+    'gemini-nano-banana-2.1',
+    'gemini-3-pro-image',
+    'gemini-3-pro-image-preview',
+    'gemini-3.1-flash-image',
+    'gemini-3.1-flash-image-preview',
+    'gemini-2.5-flash-image',
+  ]) {
+    expect(
+      screen
+        .getAllByRole('option')
+        .some((item) => item.getAttribute('data-value') === name)
+    ).toBe(true)
+  }
+  await userEvent.type(
+    screen.getByPlaceholderText('Search models...'),
+    'gemini-2.5'
+  )
+  expect(
+    within(screen.getByRole('listbox')).getAllByRole('option')
+  ).toHaveLength(1)
+  await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '16:9' }))
-  fireEvent.change(model, { target: { value: 'gpt-image-2-hq' } })
+  await selectModel('gpt-image-2-hq')
   expect(screen.getByRole('button', { name: '8K' })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
   expect(useImagePlaygroundStore.getState().parameters.size).toBe('8192x4608')
-  fireEvent.change(model, { target: { value: 'gemini-3-pro-image-preview' } })
+  await selectModel('gemini-3-pro-image-preview')
   expect(
     screen.queryByRole('combobox', { name: 'Quality' })
   ).not.toBeInTheDocument()
@@ -1738,7 +1807,7 @@ it('uses one image group and changes size limits and pricing controls with the m
   expect(
     screen.queryByRole('combobox', { name: 'File format' })
   ).not.toBeInTheDocument()
-  fireEvent.change(model, { target: { value: 'mj-v8.2' } })
+  await selectModel('mj-v8.2')
   expect(useImagePlaygroundStore.getState().parameters.size).toBe('16:9')
   expect(
     screen.queryByRole('group', { name: 'Resolution' })

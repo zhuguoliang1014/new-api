@@ -20,6 +20,41 @@ import { z } from 'zod'
 
 import { imageAspectPresets, imageSizeValues, upscaleSizes } from './lib/sizes'
 
+const mjReferenceSchema = z
+  .string()
+  .max(8192)
+  .refine((value) => {
+    try {
+      const url = new URL(value)
+      return (
+        ['http:', 'https:'].includes(url.protocol) &&
+        Boolean(url.hostname) &&
+        !url.username &&
+        !url.password
+      )
+    } catch {
+      return false
+    }
+  })
+
+export const midjourneyParametersSchema = z.object({
+  raw: z.boolean().optional(),
+  tile: z.boolean().optional(),
+  negative_prompt: z.string().max(4000).optional(),
+  seed: z.number().int().min(0).max(4294967295).optional(),
+  stylize: z.number().int().min(0).max(1000).optional(),
+  chaos: z.number().int().min(0).max(100).optional(),
+  weird: z.number().int().min(0).max(3000).optional(),
+  iw: z.number().min(0).max(3).optional(),
+  cref: mjReferenceSchema.optional(),
+  cw: z.number().int().min(0).max(100).optional(),
+  sref: mjReferenceSchema.optional(),
+  sw: z.number().int().min(0).max(1000).optional(),
+  dref: mjReferenceSchema.optional(),
+  dw: z.number().min(0).max(100).optional(),
+})
+export type MidjourneyParameters = z.infer<typeof midjourneyParametersSchema>
+
 export const imageParametersSchema = z.object({
   prompt: z
     .string()
@@ -36,6 +71,7 @@ export const imageParametersSchema = z.object({
         /^\d{3,5}x\d{3,5}$/.test(size)
     ),
   group: z.string().optional(),
+  mj: midjourneyParametersSchema.optional(),
   quality: z.enum(['auto', 'low', 'medium', 'high', 'standard', 'hd']),
   count: z.number().int().min(1).max(4),
   format: z.enum(['png', 'jpeg', 'webp']),
@@ -146,6 +182,7 @@ export function getImageModelOptions(model: string) {
     isBanana,
     isMidjourney,
     supportsFlexibleSizes,
+    maxReferences: isMidjourney ? 5 : 4,
     sizes,
     qualities,
     maxCount: isDalle3 || isBanana || isMidjourney ? 1 : 4,
@@ -160,6 +197,7 @@ export function normalizeImageParameters(
   return {
     ...parameters,
     size: options.sizes.includes(parameters.size) ? parameters.size : 'auto',
+    mj: options.isMidjourney ? parameters.mj : undefined,
     quality: options.qualities.includes(parameters.quality)
       ? parameters.quality
       : 'auto',
@@ -175,8 +213,8 @@ export function normalizeImageParameters(
 /** The same scalar fields feed both the relay request and its display estimate. */
 export function getImageRequestFields(
   parameters: ImageParameters
-): Record<string, string | number> {
-  const fields: Record<string, string | number> = {
+): Record<string, string | number | boolean> {
+  const fields: Record<string, string | number | boolean> = {
     prompt: parameters.prompt,
     n: parameters.count,
   }
@@ -184,6 +222,11 @@ export function getImageRequestFields(
   if (!options.isBanana && !options.isMidjourney) {
     fields.quality = parameters.quality
     fields.output_format = parameters.format
+  }
+  if (options.isMidjourney && parameters.mj) {
+    for (const [key, value] of Object.entries(parameters.mj)) {
+      if (value !== undefined && value !== '') fields[key] = value
+    }
   }
   if (parameters.size !== 'auto') fields.size = parameters.size
   if (options.isGptImage && parameters.background !== 'auto') {

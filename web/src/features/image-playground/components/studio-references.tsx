@@ -27,12 +27,14 @@ import { useImagePlaygroundStore } from '../store'
 import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 type StudioReferencesProps = {
+  maxReferences?: number
   supportsReferences: boolean
   onAddFiles: (files: File[]) => void
 }
 
 export function StudioReferences(props: StudioReferencesProps) {
   const { t } = useTranslation()
+  const maxReferences = props.maxReferences ?? 4
   const references = useImagePlaygroundStore((state) => state.references)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -43,7 +45,9 @@ export function StudioReferences(props: StudioReferencesProps) {
           {t('Reference images')}
           <span className='studio-optional'>{t('Optional')}</span>
         </Label>
-        <span>{references.length}/4</span>
+        <span>
+          {references.length}/{maxReferences}
+        </span>
       </div>
       <input
         id='studio-reference'
@@ -111,14 +115,16 @@ export function StudioReferences(props: StudioReferencesProps) {
             </Button>
           </div>
         ))}
-        {references.length < 4 && (
+        {references.length < maxReferences && (
           <Button
             type='button'
             variant='ghost'
             className={`studio-upload-button${references.length === 0 ? ' studio-upload-empty' : ''}`}
             aria-label={t('Add images to guide your creation')}
             title={t('Drop, paste or choose · PNG, JPEG, WebP · 10 MB each')}
-            disabled={!props.supportsReferences || references.length >= 4}
+            disabled={
+              !props.supportsReferences || references.length >= maxReferences
+            }
             onClick={() => fileInput.current?.click()}
           >
             <ImagePlus size={21} strokeWidth={1.4} aria-hidden='true' />

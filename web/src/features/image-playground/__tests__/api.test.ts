@@ -189,16 +189,27 @@ it('loads persisted task IDs through the authenticated query endpoint', async ()
   expect(get).toHaveBeenCalledWith('/api/image-playground/tasks', { signal })
 })
 
-it('submits MJ reference images as JSON without GPT-only fields', async () => {
+it('submits five MJ references and explicit zero controls as JSON without GPT-only fields', async () => {
   const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
     data: { success: true, data: accepted },
   })
-  const input = { ...parameters, group: '画图', model: 'mj-v8.2', size: '16:9' }
+  const input = {
+    ...parameters,
+    group: '画图',
+    model: 'mj-v8.2',
+    size: '16:9',
+    mj: { seed: 0, chaos: 0, raw: false, tile: true, stylize: 250 },
+  }
+  const references = Array.from(
+    { length: 5 },
+    (_, index) =>
+      new File(['reference'], `reference-${index}.png`, { type: 'image/png' })
+  )
   await createStudioTask(
     taskID,
     input,
-    [new File(['reference'], 'reference.png', { type: 'image/png' })],
-    { ...metadata, parameters: input, referenceCount: 1 },
+    references,
+    { ...metadata, parameters: input, referenceCount: 5 },
     new AbortController().signal
   )
   const [path, body] = post.mock.calls[0]
@@ -208,7 +219,12 @@ it('submits MJ reference images as JSON without GPT-only fields', async () => {
     n: 1,
     size: '16:9',
     response_format: 'url',
-    images: ['data:image/png;base64,cmVmZXJlbmNl'],
+    images: Array(5).fill('data:image/png;base64,cmVmZXJlbmNl'),
+    seed: 0,
+    chaos: 0,
+    raw: false,
+    tile: true,
+    stylize: 250,
   })
   expect(body).not.toHaveProperty('quality')
   expect(body).not.toHaveProperty('output_format')

@@ -29,6 +29,7 @@ import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
+import { ModelSelector } from '@/components/model-group-selector'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -79,6 +80,10 @@ export function StudioComposer(props: {
   if (modelProfile?.size_mode === 'ratio') {
     groupDescription = t(
       'Charged per request. Usually returns four images; a grid cover is optional.'
+    )
+  } else if (parameters.model.startsWith('gemini-')) {
+    groupDescription = t(
+      'Create or edit an image with Banana. Use reference images to guide the result.'
     )
   } else if (modelProfile?.size_mode === 'native') {
     groupDescription = t('For detailed creative work')
@@ -155,6 +160,7 @@ export function StudioComposer(props: {
         Math.max(width, height) <= Math.min(width, height) * 3)
   const canGenerate = Boolean(
     sizeSupported &&
+    imageParametersSchema.safeParse(parameters).success &&
     parameters.prompt.trim() &&
     group?.available &&
     group.models.includes(parameters.model) &&
@@ -194,11 +200,85 @@ export function StudioComposer(props: {
                 <Plus size={17} />
               </Button>
             </div>
-            <div className='studio-field studio-group-field'>
+            <div className='studio-field'>
+              <Label htmlFor='studio-model'>{t('Model')}</Label>
+              <ModelSelector
+                id='studio-model'
+                presentation='field'
+                selectedModel={parameters.model}
+                disabled={!group?.models.length}
+                models={(group?.models ?? []).map((model) => {
+                  let label = model
+                  let description = model
+                  let category = t('Other')
+                  if (model.endsWith('-basic')) {
+                    label = model.slice(0, -6)
+                    description = t('Basic · up to 4K')
+                    category = t('GPT Image · Basic')
+                  } else if (model.endsWith('-hq')) {
+                    label = model.slice(0, -3)
+                    description = t('High quality · up to 8K')
+                    category = t('GPT Image · High quality')
+                  } else if (model.endsWith('-native')) {
+                    label = model.slice(0, -7)
+                    description = t('Native · up to 4K')
+                    category = t('GPT Image · Native')
+                  } else if (model.startsWith('gemini-')) {
+                    category = t('Banana')
+                    if (model.includes('3-pro')) {
+                      label = t('Banana Pro')
+                    } else if (model.includes('3.1-flash')) {
+                      label = t('Banana 2')
+                    } else if (model.includes('nano-banana')) {
+                      label = `${t('Banana')} · 2.1`
+                    } else {
+                      label = `${t('Banana')} · Gemini 2.5 Flash`
+                    }
+                    if (model.endsWith('-preview')) {
+                      label += ` · ${t('Preview')}`
+                    }
+                  } else if (model === 'mj-v8.2') {
+                    label = 'Midjourney v8.2'
+                    description = t('Usually 4 images per request')
+                    category = 'Midjourney'
+                  }
+                  return {
+                    value: model,
+                    label,
+                    category,
+                    description,
+                    price: (
+                      <StudioCostEstimate
+                        group={group}
+                        model={model}
+                        presentation='unit'
+                      />
+                    ),
+                  }
+                })}
+                onModelChange={(model) => {
+                  setParameters({
+                    model,
+                    size: getStudioDefaultSize(
+                      getStudioModelProfile(group, model) ?? {
+                        max_resolution: 4,
+                        size_mode: 'native',
+                      },
+                      getStudioSizeSelection(
+                        parameters.size,
+                        modelProfile?.size_mode ?? 'native'
+                      ).ratio
+                    ),
+                  })
+                }}
+              />
+            </div>
+            <div
+              className='studio-field studio-group-field'
+              aria-label={t('Selected model information')}
+            >
               {groups.data?.length === 1 ? (
-                <p className='studio-field-hint'>
-                  {t(group?.name ?? 'Image generation')}
-                </p>
+                <p className='studio-field-hint'>{parameters.model}</p>
               ) : (
                 <>
                   <Label htmlFor='studio-group'>{t('Generation group')}</Label>
@@ -273,55 +353,6 @@ export function StudioComposer(props: {
                   </Button>
                 </div>
               )}
-            </div>
-            <div className='studio-field'>
-              <Label htmlFor='studio-model'>{t('Model')}</Label>
-              <NativeSelect
-                id='studio-model'
-                className='studio-native-select'
-                value={parameters.model}
-                disabled={!group?.models.length}
-                onChange={(event) => {
-                  const model = event.target.value
-                  setParameters({
-                    model,
-                    size: getStudioDefaultSize(
-                      getStudioModelProfile(group, model) ?? {
-                        max_resolution: 4,
-                        size_mode: 'native',
-                      },
-                      getStudioSizeSelection(
-                        parameters.size,
-                        modelProfile?.size_mode ?? 'native'
-                      ).ratio
-                    ),
-                  })
-                }}
-              >
-                {group?.models.map((model) => {
-                  let label = model
-                  if (model.endsWith('-basic')) {
-                    label = `${model.slice(0, -6)} · ${t('Basic · up to 4K')}`
-                  }
-                  if (model.endsWith('-hq')) {
-                    label = `${model.slice(0, -3)} · ${t('High quality · up to 8K')}`
-                  }
-                  if (model.endsWith('-native')) {
-                    label = `${model.slice(0, -7)} · ${t('Native · up to 4K')}`
-                  }
-                  if (model === 'gemini-3-pro-image-preview') {
-                    label = `${t('Banana Pro')} · ${model}`
-                  }
-                  if (model === 'mj-v8.2') {
-                    label = `Midjourney v8.2 · ${t('Per request')}`
-                  }
-                  return (
-                    <NativeSelectOption key={model} value={model}>
-                      {label}
-                    </NativeSelectOption>
-                  )
-                })}
-              </NativeSelect>
             </div>
             <div className='studio-prompt-heading'>
               <Label htmlFor='studio-prompt'>{t('Image prompt')}</Label>
@@ -455,6 +486,7 @@ export function StudioComposer(props: {
               <span>{t('Optional')}</span>
             </div>
             <StudioReferences
+              maxReferences={modelOptions.maxReferences}
               supportsReferences={modelOptions.supportsReferences}
               onAddFiles={(files) => {
                 try {
