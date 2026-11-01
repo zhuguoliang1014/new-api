@@ -199,7 +199,8 @@ it('keeps single, multiple, downloading and pending creation cards at the same h
     expect(media).toHaveStyle({ height: '296px', flexShrink: '0' })
   }
   expect(screen.queryByText(/Server copy expires/)).not.toBeInTheDocument()
-  fireEvent.error(screen.getAllByAltText('Generated image').at(-1)!)
+  const images = screen.getAllByAltText('Generated image')
+  fireEvent.error(images[images.length - 1])
   expect(
     screen.getByText('Failed to load image').closest('.studio-image-error')
   ).toHaveStyle({
