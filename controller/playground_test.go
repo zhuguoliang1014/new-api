@@ -445,7 +445,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		encoded, err = common.Marshal(usable)
 		require.NoError(t, err)
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(string(encoded)))
-		for _, name := range []string{"gpt-image-2-basic", "gpt-image-2-hq", "gpt-image-2-native", "gemini-3-pro-image-preview", "mj-v8.2", "unapproved-text-model"} {
+		for _, name := range []string{"gpt-image-2-basic", service.ImageStudioDefaultModel, "gpt-image-2-hq", "gpt-image-2-native", "gemini-3-pro-image-preview", "mj-v8.2", "unapproved-text-model"} {
 			require.NoError(t, db.Create(&model.Ability{Group: service.ImageStudioGroup, Model: name, ChannelId: 2, Enabled: true}).Error)
 		}
 		response := request("/bootstrap", "", "", "{}", false)
@@ -463,7 +463,8 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 		require.Len(t, payload.Data, 1)
 		assert.Equal(t, service.ImageStudioGroup, payload.Data[0].ID)
-		require.Len(t, payload.Data[0].Models, 5)
+		require.Len(t, payload.Data[0].Models, 6)
+		assert.Equal(t, service.ImageStudioDefaultModel, payload.Data[0].Models[0])
 		assert.Equal(t, 8192, payload.Data[0].Profiles["gpt-image-2-hq"].Edge)
 		assert.Equal(t, 4096, payload.Data[0].Profiles["gpt-image-2-basic"].Edge)
 		assert.Equal(t, "ratio", payload.Data[0].Profiles["mj-v8.2"].Mode)
@@ -489,6 +490,14 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		token, err := model.GetImageStudioToken(user.Id, service.ImageStudioGroup)
 		require.NoError(t, err)
 		assert.NotContains(t, response.Body.String(), token.Key)
+		originalLimits := token.ModelLimits
+		require.NoError(t, db.Model(token).Update("model_limits", "gpt-image-2-hq").Error)
+		response = request("/bootstrap", "", "", "{}", false)
+		require.Equal(t, 200, response.Code)
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+		require.Len(t, payload.Data, 1)
+		assert.Equal(t, []string{"gpt-image-2-hq"}, payload.Data[0].Models)
+		require.NoError(t, db.Model(token).Update("model_limits", originalLimits).Error)
 		require.NoError(t, db.Model(token).Update("status", common.TokenStatusDisabled).Error)
 		assert.Equal(t, 200, request("/bootstrap", "", "", "{}", false).Code)
 		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, "mj-v8.2", `{}`, false).Code)

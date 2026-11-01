@@ -475,6 +475,12 @@ func BootstrapImageStudio(c *gin.Context) {
 			_, ok := service.GetImageStudioModelProfile(profile.Group, name)
 			return !ok
 		})
+		// The first permitted model is the workbench default. Prefer the basic
+		// GPT Image 2.5 route without changing the user's explicit selection.
+		if index := slices.Index(models, service.ImageStudioDefaultModel); index > 0 {
+			copy(models[1:index+1], models[:index])
+			models[0] = service.ImageStudioDefaultModel
+		}
 		if len(models) > 0 {
 			groups[profile.Group] = models
 		}

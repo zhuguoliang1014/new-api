@@ -2,7 +2,10 @@ package service
 
 import "strings"
 
-const ImageStudioGroup = "画图"
+const (
+	ImageStudioGroup        = "画图"
+	ImageStudioDefaultModel = "gpt-image-2.5-basic"
+)
 
 // Legacy routes retain their capabilities for existing keys. The unified
 // route resolves model-specific limits below; prices and models remain live.
