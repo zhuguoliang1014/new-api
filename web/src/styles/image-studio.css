@@ -457,6 +457,10 @@
 }
 .studio-result-card,
 .studio-job-card {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 520px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--g-border);
@@ -474,7 +478,10 @@
 }
 .studio-results-grid {
   display: grid;
+  height: 296px;
+  flex-shrink: 0;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
   gap: 4px;
   border-radius: 10px;
   overflow: hidden;
@@ -483,18 +490,24 @@
 .studio-results-single {
   grid-template-columns: minmax(0, 1fr);
 }
+.studio-result-image {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
 .studio-image-button {
   display: flex;
+  flex: 1;
   position: relative;
   width: 100%;
-  height: 210px;
+  min-height: 0;
+  height: 0;
   padding: 0;
   border-radius: 0;
   overflow: hidden;
   background: transparent;
-}
-.studio-results-single .studio-image-button {
-  height: 295px;
 }
 .studio-image-button:hover,
 .studio-image-button:focus-visible {
@@ -524,6 +537,10 @@
 .studio-image-dimensions {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  max-height: 56px;
+  overflow-y: auto;
   justify-content: center;
   gap: 8px;
   padding: 4px 8px;
@@ -531,7 +548,18 @@
   font-size: 10px;
 }
 .studio-card-details {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px 8px 4px;
+}
+.studio-card-details > * {
+  flex-shrink: 0;
+}
+.studio-card-details .studio-creation-actions {
+  margin-top: auto;
 }
 .studio-card-prompt {
   display: -webkit-box;
@@ -605,6 +633,10 @@
 }
 .studio-job-card {
   padding: 14px 16px;
+  overflow-y: auto;
+}
+.studio-job-card > * {
+  flex-shrink: 0;
 }
 .studio-job-top {
   display: flex;
@@ -620,8 +652,9 @@
 }
 .studio-job-visual {
   display: grid;
+  flex: 1;
   place-items: center;
-  height: 166px;
+  min-height: 100px;
   color: var(--g-accent);
 }
 .studio-job-time {

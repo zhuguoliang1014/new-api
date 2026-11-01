@@ -282,6 +282,60 @@ async function ready() {
   )
 }
 
+it('defaults to the highest group resolution while keeping explicit choices and the aspect ratio', async () => {
+  showStudio()
+  await ready()
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.getByText('For detailed creative work')).toBeInTheDocument()
+  expect(screen.queryByText(/Maximum edge:/)).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '16:9' }))
+  fireEvent.click(screen.getByRole('button', { name: '1K' }))
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'A coastal house' },
+  })
+  expect(screen.getByRole('button', { name: '1K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'high' },
+  })
+  expect(screen.getByRole('button', { name: '8K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.getByRole('button', { name: '16:9' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(
+    screen.getByText('For high-resolution posters and covers')
+  ).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
+    target: { value: 'basic' },
+  })
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(
+    screen.getByText('For everyday images and batch creation')
+  ).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() =>
+    expect(createStudioTask).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ group: 'basic', size: '4096x2304' }),
+      [],
+      expect.any(Object),
+      expect.any(AbortSignal)
+    )
+  )
+})
+
 it('starts without a key setup dialog and exposes the selected group models', async () => {
   vi.mocked(getPlaygroundAgentConfig).mockResolvedValueOnce({
     prompt: null,
@@ -310,7 +364,10 @@ it('starts without a key setup dialog and exposes the selected group models', as
     target: { value: 'basic' },
   })
   expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
-  expect(useImagePlaygroundStore.getState().parameters.size).toBe('auto')
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
 })
 
 it('keeps submission disabled and offers retry when groups fail to load', async () => {
@@ -930,12 +987,10 @@ it.each([
   async ({ resolution, ratio, size }) => {
     showStudio()
     await ready()
-    expect(
-      within(screen.getByRole('group', { name: 'Aspect ratio' })).getByRole(
-        'button',
-        { name: 'Auto' }
-      )
-    ).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
     fireEvent.click(screen.getByRole('button', { name: resolution }))
     fireEvent.click(screen.getByRole('button', { name: ratio }))
     expect(screen.getByRole('button', { name: resolution })).toHaveAttribute(
@@ -1029,7 +1084,7 @@ it('returns to automatic sizing from the dock after choosing a ratio and resolut
   showStudio()
   await ready()
   fireEvent.click(screen.getByRole('button', { name: '16:9' }))
-  expect(screen.getByRole('button', { name: '1K' })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
@@ -1420,7 +1475,11 @@ it('keeps the remaining job running when one of two parallel requests fails', as
   expect(createStudioTask).toHaveBeenNthCalledWith(
     1,
     expect.any(String),
-    expect.objectContaining({ group: 'native', size: 'auto', prompt: 'First' }),
+    expect.objectContaining({
+      group: 'native',
+      size: '2880x2880',
+      prompt: 'First',
+    }),
     [],
     expect.any(Object),
     expect.any(AbortSignal)

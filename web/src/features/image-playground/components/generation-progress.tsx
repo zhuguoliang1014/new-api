@@ -122,11 +122,6 @@ export function GenerationProgress(props: { job: ImageJob }) {
           })}
         </p>
       )}
-      {job.serverTask && !job.error && (
-        <p className='studio-field-hint'>
-          {t('Safe to refresh. Images stay on the server for 10 hours.')}
-        </p>
-      )}
       {job.error ? (
         <>
           <p className='studio-field-error' role='alert'>

@@ -44,6 +44,7 @@ import { handleServerError } from '@/lib/handle-server-error'
 
 import { useStudioAgentConfig } from '../hooks/use-studio-agent-config'
 import { useStudioGroups } from '../hooks/use-studio-groups'
+import { getStudioDefaultSize, getStudioSizeSelection } from '../lib/sizes'
 import { stylePresets } from '../lib/style-presets'
 import { useImagePlaygroundStore } from '../store'
 import {
@@ -75,6 +76,14 @@ export function StudioComposer(props: {
   )
   const isComposingRef = useRef(false)
   const group = groups.data?.find((item) => item.id === parameters.group)
+  let groupDescription = ''
+  if (group?.size_mode === 'native') {
+    groupDescription = t('For detailed creative work')
+  } else if (group && group.max_resolution > 4) {
+    groupDescription = t('For high-resolution posters and covers')
+  } else if (group) {
+    groupDescription = t('For everyday images and batch creation')
+  }
   const form = useForm<ImageParameters>({
     resolver: zodResolver(imageParametersSchema),
     values: parameters,
@@ -87,10 +96,13 @@ export function StudioComposer(props: {
       setParameters({
         group: first.id,
         model: first.models[0] ?? '',
-        size: 'auto',
+        size: getStudioDefaultSize(first),
       })
     } else if (!selected.models.includes(parameters.model)) {
-      setParameters({ model: selected.models[0] ?? '', size: 'auto' })
+      setParameters({
+        model: selected.models[0] ?? '',
+        size: getStudioDefaultSize(selected),
+      })
     }
   }, [groups.data, parameters.group, parameters.model, setParameters])
   const modelOptions = getImageModelOptions(parameters.model)
@@ -169,7 +181,13 @@ export function StudioComposer(props: {
                       model: next.models.includes(parameters.model)
                         ? parameters.model
                         : (next.models[0] ?? ''),
-                      size: 'auto',
+                      size: getStudioDefaultSize(
+                        next,
+                        getStudioSizeSelection(
+                          parameters.size,
+                          group?.size_mode ?? 'native'
+                        ).ratio
+                      ),
                     })
                   }
                 }}
@@ -185,14 +203,7 @@ export function StudioComposer(props: {
                   </NativeSelectOption>
                 ))}
               </NativeSelect>
-              {group && (
-                <p className='studio-field-hint'>
-                  {t(
-                    'Maximum edge: {{edge}} px · maximum area: {{pixels}} MP',
-                    { edge: maxEdge, pixels: (maxPixels / 1000000).toFixed(2) }
-                  )}
-                </p>
-              )}
+              {group && <p className='studio-field-hint'>{groupDescription}</p>}
               {!sizeSupported && (
                 <p className='studio-field-error' role='alert'>
                   {t('the selected image size is not supported by this group')}

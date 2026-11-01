@@ -36,8 +36,10 @@ it('uses received bytes for download progress without inventing a generation per
   const view = render(<GenerationProgress job={job} />)
   expect(screen.getByText('Creating...')).toBeInTheDocument()
   expect(
-    screen.getByText('Safe to refresh. Images stay on the server for 10 hours.')
-  ).toBeInTheDocument()
+    screen.queryByText(
+      'Safe to refresh. Images stay on the server for 10 hours.'
+    )
+  ).not.toBeInTheDocument()
   expect(view.container.textContent).not.toContain('%')
   expect(
     screen.queryByRole('button', { name: 'Stop waiting' })

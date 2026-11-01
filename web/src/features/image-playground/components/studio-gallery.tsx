@@ -160,12 +160,13 @@ export function StudioGallery() {
                 className={`studio-results-grid${record.images.length === 1 ? ' studio-results-single' : ''}`}
               >
                 {record.images.map((image, index) => (
-                  <ImageArtwork
-                    key={image.id}
-                    image={image}
-                    requestedSize={record.parameters.size}
-                    onPreview={() => setPreview({ index, record })}
-                  />
+                  <div key={image.id} className='studio-result-image'>
+                    <ImageArtwork
+                      image={image}
+                      requestedSize={record.parameters.size}
+                      onPreview={() => setPreview({ index, record })}
+                    />
+                  </div>
                 ))}
               </div>
               <div className='studio-card-details'>
@@ -198,18 +199,6 @@ export function StudioGallery() {
                     )}
                   </p>
                 )}
-                {record.serverTask &&
-                  record.localSaveStatus !== 'saved' &&
-                  record.expiresAt && (
-                    <p className='studio-field-hint'>
-                      {t('Server copy expires at {{time}}', {
-                        time: new Date(record.expiresAt).toLocaleTimeString(
-                          locale,
-                          { hour: '2-digit', minute: '2-digit' }
-                        ),
-                      })}
-                    </p>
-                  )}
                 {record.localSaveStatus === 'failed' && (
                   <Button
                     variant='outline'

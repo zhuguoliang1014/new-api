@@ -145,6 +145,62 @@ it('keeps completed creations visible together without a separate history rail',
   }
 })
 
+it('keeps single, multiple, downloading and pending creation cards at the same height', () => {
+  const parameters = useImagePlaygroundStore.getState().parameters
+  useImagePlaygroundStore.setState({
+    records: [1, 2, 4].map((count) => ({
+      id: `uniform-${count}`,
+      ownerId: 1,
+      createdAt: count,
+      parameters: {
+        ...parameters,
+        prompt: 'A detailed landscape '.repeat(count * 10),
+      },
+      images: Array.from({ length: count }, (_, i) => ({
+        id: `${count}-${i}`,
+        src: 'data:image/png;base64,aW1hZ2U=',
+      })),
+      referenceCount: 0,
+      serverTask: true,
+      expiresAt: Date.now() + 36000000,
+      localSaveStatus: count === 1 ? 'saving' : 'saved',
+    })),
+    jobs: [
+      {
+        id: 'pending',
+        parameters,
+        controller: new AbortController(),
+        startedAt: Date.now(),
+        referenceCount: 0,
+        serverTask: true,
+        status: 'generating',
+      },
+    ],
+  })
+  render(
+    <div className='image-studio'>
+      <StudioGallery />
+    </div>
+  )
+  const cards = screen.getAllByRole('article')
+  expect(cards).toHaveLength(4)
+  for (const card of cards) {
+    expect(card).toHaveStyle({
+      height: '520px',
+      boxSizing: 'border-box',
+      display: 'flex',
+      flexDirection: 'column',
+    })
+  }
+  for (const preview of screen.getAllByRole('button', {
+    name: 'Image Preview',
+  })) {
+    const media = preview.closest('.studio-results-grid')
+    expect(media).toHaveStyle({ height: '296px', flexShrink: '0' })
+  }
+  expect(screen.queryByText(/Server copy expires/)).not.toBeInTheDocument()
+})
+
 it('keeps a useful empty state and the search and filters available before generation', () => {
   render(
     <div className='image-studio'>
