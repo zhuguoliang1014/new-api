@@ -31,7 +31,7 @@ import {
 } from '@/components/ui/popover'
 import { handleServerError } from '@/lib/handle-server-error'
 
-import { getImageAuthScope } from '../api'
+import { deleteStudioTask, getImageAuthScope } from '../api'
 import { deleteImageRecord } from '../lib/history'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageRecord } from '../types'
@@ -54,6 +54,12 @@ export function StudioCreationActions(props: { record?: ImageRecord }) {
     const scope = getImageAuthScope()
     setDeleteBusy(true)
     try {
+      if (
+        deleting.serverTask &&
+        (!deleting.expiresAt || deleting.expiresAt > Date.now())
+      ) {
+        await deleteStudioTask(deleting.id)
+      }
       await deleteImageRecord(deleting.ownerId, deleting.id)
       if (scope !== getImageAuthScope()) return
       useImagePlaygroundStore.setState((state) => ({

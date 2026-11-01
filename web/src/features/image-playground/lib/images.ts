@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { t } from 'i18next'
 
+import { api } from '@/lib/api'
+
 import type { ImageOutput, ImageRecord } from '../types'
 
 export function validateReferenceFiles(files: File[]): void {
@@ -34,8 +36,19 @@ export function validateReferenceFiles(files: File[]): void {
 
 export async function getImageBlob(
   src: string,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  onProgress?: (loaded: number, total: number) => void
 ): Promise<Blob> {
+  if (src.startsWith('/api/image-playground/tasks/')) {
+    const response = await api.get<Blob>(src, {
+      signal,
+      responseType: 'blob',
+      timeout: 600000,
+      onDownloadProgress: (event) =>
+        onProgress?.(event.loaded, event.total ?? 0),
+    })
+    return response.data
+  }
   // Image hosts receive no API key or cookies. Remote hosts must allow CORS
   // for downloads/reference reuse; viewing the result does not require CORS.
   const response = await fetch(src, {
@@ -52,6 +65,7 @@ export async function getImageBlob(
   if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type)) {
     throw new Error(t('Upload PNG, JPEG or WebP images.'))
   }
+  onProgress?.(blob.size, blob.size)
   return blob
 }
 
@@ -109,19 +123,42 @@ export async function downloadImagesArchive(
 /** Preserve original image bytes in the existing IndexedDB history format. */
 export async function cacheImageRecord(
   record: ImageRecord,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onProgress?: (loaded: number, total: number) => void
 ): Promise<ImageRecord> {
+  const totals = record.images.map((image) => image.bytes ?? 0)
+  const downloaded = record.images.map((image) =>
+    image.src.startsWith('data:') ? (image.bytes ?? 0) : 0
+  )
   const images = await Promise.all(
-    record.images.map(async (image) => {
-      if (!/^https?:\/\//i.test(image.src)) return image
+    record.images.map(async (image, index) => {
+      if (
+        !/^https?:\/\//i.test(image.src) &&
+        !image.src.startsWith('/api/image-playground/tasks/')
+      ) {
+        return image
+      }
       const controller = new AbortController()
       const abort = () => controller.abort()
       signal.addEventListener('abort', abort, { once: true })
       if (signal.aborted) controller.abort()
       // A stalled image host must not keep the studio busy indefinitely.
-      const timeout = window.setTimeout(abort, 30000)
+      const timeout = window.setTimeout(abort, 600000)
       try {
-        const blob = await getImageBlob(image.src, controller.signal)
+        const blob = await getImageBlob(
+          image.src,
+          controller.signal,
+          (loaded, total) => {
+            downloaded[index] = loaded
+            if (total) totals[index] = total
+            onProgress?.(
+              downloaded.reduce((sum, bytes) => sum + bytes, 0),
+              totals.every((bytes) => bytes > 0)
+                ? totals.reduce((sum, bytes) => sum + bytes, 0)
+                : 0
+            )
+          }
+        )
         if (controller.signal.aborted) return image
         const src = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader()
@@ -140,7 +177,7 @@ export async function cacheImageRecord(
           )
           reader.readAsDataURL(blob)
         })
-        return { ...image, src }
+        return { ...image, src, bytes: blob.size }
       } catch {
         // Keep usable links and the other images if this host rejects CORS,
         // the link expired, or the browser cannot read the original bytes.
@@ -155,7 +192,11 @@ export async function cacheImageRecord(
   return {
     ...record,
     images,
-    localSaveStatus: images.some((image) => /^https?:/i.test(image.src))
+    localSaveStatus: images.some(
+      (image) =>
+        /^https?:/i.test(image.src) ||
+        image.src.startsWith('/api/image-playground/tasks/')
+    )
       ? 'failed'
       : 'saved',
   }

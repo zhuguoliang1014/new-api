@@ -14,11 +14,17 @@ GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 
 import { useAuthStore } from '@/stores/auth-store'
 
-import { generateImages, imageRelayClient, refinePrompt } from '../api'
+import {
+  createStudioTask,
+  imageRelayClient,
+  listStudioTasks,
+  refinePrompt,
+  type StudioTask,
+} from '../api'
 import { defaultImageParameters } from '../types'
 
 beforeEach(() => {
@@ -44,135 +50,141 @@ beforeEach(() => {
 const parameters = {
   ...defaultImageParameters,
   prompt: 'A quiet mountain lake',
+  group: '【生图】超分高质量1-10k',
 }
 
-describe('agent image playground contracts', () => {
-  it('refines a plain-language prompt through the authenticated backend route', async () => {
-    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
-      data: { success: true, data: { prompt: 'A cinematic mountain lake' } },
-    })
+const taskID = 'studio-task-example-0001'
+const metadata = { parameters, styleId: null, referenceCount: 0 }
+const accepted: StudioTask = {
+  id: taskID,
+  status: 'queued',
+  created_at: 1,
+  expires_at: 36001,
+  metadata,
+  images: [],
+  downloaded_bytes: 0,
+  total_bytes: 0,
+}
 
-    await expect(refinePrompt('  A mountain lake  ')).resolves.toBe(
-      'A cinematic mountain lake'
-    )
-    expect(post).toHaveBeenCalledWith(
-      '/api/image-playground/refine-prompt',
-      { prompt: 'A mountain lake' },
-      expect.objectContaining({ skipAuthRefresh: true })
-    )
+it('refines a prompt through the authenticated backend route', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+    data: { success: true, data: { prompt: 'A cinematic mountain lake' } },
   })
-
-  it('posts generation options without an API key or model selector', async () => {
-    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
-      data: { data: [{ b64_json: 'aW1hZ2U=', revised_prompt: 'A lake' }] },
-    })
-
-    const result = await generateImages(
-      { ...parameters, count: 2, size: '1536x1024', quality: 'high' },
-      [],
-      new AbortController().signal
-    )
-    expect(post).toHaveBeenCalledWith(
-      '/pg/images/generations',
-      {
-        prompt: parameters.prompt,
-        n: 2,
-        size: '1536x1024',
-        quality: 'high',
-        output_format: 'png',
-      },
-      expect.objectContaining({ skipAuthRefresh: true })
-    )
-    expect(post.mock.calls[0][2]).not.toHaveProperty('headers.Authorization')
-    expect(post.mock.calls[0][1]).not.toHaveProperty('model')
-    expect(result[0]).toMatchObject({
-      src: 'data:image/png;base64,aW1hZ2U=',
-      revisedPrompt: 'A lake',
-    })
-  })
-
-  it('uses the session edit route and preserves every uploaded reference', async () => {
-    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
-      data: { data: [{ url: 'https://images.example/one.webp' }] },
-    })
-    const files = [
-      new File(['first'], 'first.png', { type: 'image/png' }),
-      new File(['second'], 'second.webp', { type: 'image/webp' }),
-    ]
-
-    await generateImages(
-      { ...parameters, format: 'webp', count: 3 },
-      files,
-      new AbortController().signal
-    )
-    const [path, body, config] = post.mock.calls[0]
-    expect(path).toBe('/pg/images/edits')
-    expect(body).toBeInstanceOf(FormData)
-    expect((body as FormData).getAll('image[]')).toEqual(files)
-    expect((body as FormData).get('n')).toBe('3')
-    expect((body as FormData).get('output_format')).toBe('webp')
-    expect(config).toMatchObject({ skipAuthRefresh: true })
-  })
-
-  it.each([0, -1, 5, 1.5])(
-    'rejects image count %s before sending a request',
-    async (count) => {
-      const post = vi.spyOn(imageRelayClient, 'post')
-      await expect(
-        generateImages(
-          { ...parameters, count },
-          [],
-          new AbortController().signal
-        )
-      ).rejects.toThrow()
-      expect(post).not.toHaveBeenCalled()
-    }
+  await expect(refinePrompt('  A mountain lake  ')).resolves.toBe(
+    'A cinematic mountain lake'
   )
-
-  it('rejects missing or unsafe image responses', async () => {
-    vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
-      data: { data: [{ url: 'javascript:alert(1)' }] },
-    })
-    await expect(
-      generateImages(parameters, [], new AbortController().signal)
-    ).rejects.toThrow('usable images')
-  })
+  expect(post).toHaveBeenCalledWith(
+    '/api/image-playground/refine-prompt',
+    { prompt: 'A mountain lake' },
+    expect.objectContaining({ skipAuthRefresh: true })
+  )
 })
 
 it.each([false, true])(
-  'pins the requested group and model for a concurrent request (references: %s)',
+  'submits one durable task with group, model and idempotency ID (references: %s)',
   async (withReferences) => {
     const post = vi
       .spyOn(imageRelayClient, 'post')
-      .mockResolvedValue({ data: { data: [{ b64_json: 'aW1hZ2U=' }] } })
-    const group = '【生图】超分高质量1-10k'
-    await generateImages(
-      {
-        ...parameters,
-        group,
-        model: 'gpt-image-2.5',
-        size: '10240x5760',
-        quality: 'high',
-      },
-      withReferences
-        ? [new File(['image'], 'ref.png', { type: 'image/png' })]
-        : [],
+      .mockResolvedValue({ data: { success: true, data: accepted } })
+    const files = withReferences
+      ? [
+          new File(['first'], 'first.png', { type: 'image/png' }),
+          new File(['second'], 'second.webp', { type: 'image/webp' }),
+        ]
+      : []
+    const input = { ...parameters, size: '8192x4608', quality: 'high' as const }
+    const result = await createStudioTask(
+      taskID,
+      input,
+      files,
+      { ...metadata, parameters: input, referenceCount: files.length },
       new AbortController().signal
     )
+    expect(result.id).toBe(taskID)
     expect(post).toHaveBeenCalledOnce()
-    const [, body, config] = post.mock.calls[0]
+    const [path, body, config] = post.mock.calls[0]
+    expect(path).toBe(
+      `/api/image-playground/tasks/create/${withReferences ? 'edits' : 'generations'}`
+    )
     expect(config).toMatchObject({
       skipAuthRefresh: true,
       headers: {
-        'X-Studio-Group': encodeURIComponent(group),
-        'X-Studio-Model': 'gpt-image-2.5',
+        'X-Studio-Task-ID': taskID,
+        'X-Studio-Group': encodeURIComponent(parameters.group),
+        'X-Studio-Model': parameters.model,
       },
     })
-    expect(
-      body instanceof FormData
-        ? body.get('size')
-        : (body as { size: string }).size
-    ).toBe('10240x5760')
     expect(config).not.toHaveProperty('headers.Authorization')
+    if (withReferences) {
+      expect(body).toBeInstanceOf(FormData)
+      expect((body as FormData).getAll('image[]')).toEqual(files)
+      expect((body as FormData).get('size')).toBe('8192x4608')
+      expect(
+        JSON.parse(String((body as FormData).get('studio_metadata')))
+      ).toMatchObject({ referenceCount: 2 })
+    } else {
+      expect(body).toMatchObject({
+        size: '8192x4608',
+        response_format: 'url',
+        studio_metadata: { parameters: input },
+      })
+      expect(body).not.toHaveProperty('model')
+    }
   }
 )
+
+it.each([0, -1, 5, 1.5])(
+  'rejects count %s before submitting a paid task',
+  async (count) => {
+    const post = vi.spyOn(imageRelayClient, 'post')
+    await expect(
+      createStudioTask(
+        taskID,
+        { ...parameters, count },
+        [],
+        metadata,
+        new AbortController().signal
+      )
+    ).rejects.toThrow()
+    expect(post).not.toHaveBeenCalled()
+  }
+)
+
+it('does not submit a task after the session has ended', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post')
+  useAuthStore.getState().auth.reset()
+  await expect(
+    createStudioTask(
+      taskID,
+      parameters,
+      [],
+      metadata,
+      new AbortController().signal
+    )
+  ).rejects.toThrow('Aborted')
+  expect(post).not.toHaveBeenCalled()
+})
+
+it('rejects a malformed task response instead of treating it as a completed image', async () => {
+  vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+    data: { success: true, data: { id: '../../outside', status: 'ready' } },
+  })
+  await expect(
+    createStudioTask(
+      taskID,
+      parameters,
+      [],
+      metadata,
+      new AbortController().signal
+    )
+  ).rejects.toThrow()
+})
+
+it('loads persisted task IDs through the authenticated query endpoint', async () => {
+  const get = vi
+    .spyOn(imageRelayClient, 'get')
+    .mockResolvedValue({ data: { success: true, data: [accepted] } })
+  const signal = new AbortController().signal
+  await expect(listStudioTasks(signal)).resolves.toEqual([accepted])
+  expect(get).toHaveBeenCalledWith('/api/image-playground/tasks', { signal })
+})

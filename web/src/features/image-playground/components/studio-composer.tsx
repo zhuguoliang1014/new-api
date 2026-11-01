@@ -94,7 +94,25 @@ export function StudioComposer(props: {
     }
   }, [groups.data, parameters.group, parameters.model, setParameters])
   const modelOptions = getImageModelOptions(parameters.model)
+  const [width, height] = parameters.size.split('x').map(Number)
+  const maxEdge =
+    group?.max_edge ??
+    (group?.size_mode === 'native' ? 3840 : (group?.max_resolution ?? 4) * 1024)
+  const maxPixels =
+    group?.max_pixels ??
+    (group?.size_mode === 'native' ? 8294400 : maxEdge * maxEdge)
+  const sizeSupported =
+    parameters.size === 'auto' ||
+    (width >= 256 &&
+      height >= 256 &&
+      width <= maxEdge &&
+      height <= maxEdge &&
+      width * height <= maxPixels &&
+      width % 16 === 0 &&
+      height % 16 === 0 &&
+      Math.max(width, height) <= Math.min(width, height) * 3)
   const canGenerate = Boolean(
+    sizeSupported &&
     parameters.prompt.trim() &&
     group?.available &&
     group.models.includes(parameters.model) &&
@@ -168,7 +186,17 @@ export function StudioComposer(props: {
                 ))}
               </NativeSelect>
               {group && (
-                <p className='studio-field-hint'>{group.description}</p>
+                <p className='studio-field-hint'>
+                  {t(
+                    'Maximum edge: {{edge}} px · maximum area: {{pixels}} MP',
+                    { edge: maxEdge, pixels: (maxPixels / 1000000).toFixed(2) }
+                  )}
+                </p>
+              )}
+              {!sizeSupported && (
+                <p className='studio-field-error' role='alert'>
+                  {t('the selected image size is not supported by this group')}
+                </p>
               )}
               {group && !group.available && (
                 <p className='studio-field-error' role='alert'>

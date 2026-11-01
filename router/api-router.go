@@ -17,11 +17,25 @@ import (
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
-	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
+	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{`^/api/image-playground/tasks/[^/]+/images/`})))
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
+	studioTasks := apiRouter.Group("/image-playground/tasks", middleware.UserAuth(), controller.ImageStudioTasksAvailable)
+	studioTasks.GET("", controller.ListImageStudioTasks)
+	studioTasks.GET("/:id", controller.GetImageStudioTask)
+	studioTasks.DELETE("/:id", controller.DeleteImageStudioTask)
+	studioTasks.POST("/:id/retry-download", controller.RetryImageStudioDownload)
+	studioTasks.GET("/:id/images/:index", controller.DownloadImageStudioImage)
+	studioTasks.POST("/create/:kind", func(c *gin.Context) {
+		if c.Param("kind") != "generations" && c.Param("kind") != "edits" {
+			c.AbortWithStatus(404)
+			return
+		}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 42<<20)
+		c.Next()
+	}, middleware.PlaygroundAgent(middleware.PlaygroundAgentImage), controller.CreateImageStudioTask)
 	apiRouter.POST("/image-playground/bootstrap", middleware.UserAuth(), middleware.DisableCache(), controller.BootstrapImageStudio)
 	apiRouter.GET("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.GetPlaygroundAgentConfig)
 	apiRouter.PUT("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.UpdatePlaygroundAgentConfig)

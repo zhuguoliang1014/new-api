@@ -29,10 +29,13 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { getPricing } from '@/features/pricing/api'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
-  generateImages,
+  createStudioTask,
+  listStudioTasks,
+  type StudioTask,
   getPlaygroundAgentConfig,
   getStudioGroups,
   refinePrompt,
@@ -109,7 +112,10 @@ vi.mock('@/features/keys/api', async (original) => ({
 
 vi.mock('../api', async (original) => ({
   ...(await original<typeof import('../api')>()),
-  generateImages: vi.fn(),
+  createStudioTask: vi.fn(),
+  listStudioTasks: vi.fn(),
+  deleteStudioTask: vi.fn().mockResolvedValue(undefined),
+  retryStudioDownload: vi.fn().mockResolvedValue(undefined),
   getStudioGroups: vi.fn(),
   refinePrompt: vi.fn(),
   getPlaygroundAgentConfig: vi.fn().mockResolvedValue({
@@ -127,6 +133,38 @@ vi.mock('../lib/history', () => ({
 }))
 const image = { id: 'image-one', src: 'data:image/png;base64,aW1hZ2U=' }
 let client: QueryClient
+let serverTasks: StudioTask[]
+function taskFixture(
+  id: string,
+  metadata: StudioTask['metadata'],
+  status: StudioTask['status'] = 'ready'
+): StudioTask {
+  return {
+    id,
+    metadata,
+    status,
+    created_at: Date.now(),
+    expires_at: Math.floor(Date.now() / 1000) + 36000,
+    images: [
+      { index: 0, width: 32, height: 16, bytes: 5, content_type: 'image/png' },
+    ],
+    downloaded_bytes: 0,
+    total_bytes: 0,
+  }
+}
+function acceptPendingTasks() {
+  vi.mocked(createStudioTask).mockImplementation(
+    async (id, _parameters, _references, metadata) => {
+      const task = taskFixture(id, metadata, 'generating')
+      serverTasks.push(task)
+      return task
+    }
+  )
+}
+async function updateTask(index: number, changes: Partial<StudioTask>) {
+  serverTasks[index] = { ...serverTasks[index], ...changes }
+  await client.invalidateQueries({ queryKey: ['image-studio-tasks'] })
+}
 
 beforeEach(() => {
   useImagePlaygroundStore.getState().setScope(null)
@@ -173,7 +211,7 @@ beforeEach(() => {
       description: 'High resolution',
       ratio: 1.2,
       models: ['gpt-image-2', 'gpt-image-2.5'],
-      max_resolution: 10,
+      max_resolution: 8,
       size_mode: 'upscale',
       available: true,
     },
@@ -200,7 +238,18 @@ beforeEach(() => {
   })
   vi.mocked(readImageHistory).mockResolvedValue([])
   vi.mocked(saveImageRecord).mockResolvedValue()
-  vi.mocked(generateImages).mockResolvedValue([image])
+  serverTasks = []
+  vi.mocked(listStudioTasks).mockImplementation(async () => [...serverTasks])
+  vi.mocked(createStudioTask).mockImplementation(
+    async (id, _parameters, _references, metadata) => {
+      const task = taskFixture(id, metadata)
+      serverTasks.push(task)
+      return task
+    }
+  )
+  vi.spyOn(api, 'get').mockResolvedValue({
+    data: new Blob(['image'], { type: 'image/png' }),
+  })
   vi.mocked(refinePrompt).mockResolvedValue('A polished studio prompt')
   vi.mocked(savePlaygroundAgentConfig).mockImplementation(
     async (config) => config
@@ -254,12 +303,13 @@ it('starts without a key setup dialog and exposes the selected group models', as
   expect(
     screen.queryByRole('option', { name: 'gpt-image-2.5-flare' })
   ).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '10K' }))
-  expect(useImagePlaygroundStore.getState().parameters.size).toBe('10240x10240')
+  expect(screen.queryByRole('button', { name: '10K' })).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: '8K' }))
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('8192x8192')
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'basic' },
   })
-  expect(screen.queryByRole('button', { name: '10K' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
   expect(useImagePlaygroundStore.getState().parameters.size).toBe('auto')
 })
 
@@ -362,23 +412,27 @@ it('keeps the draft intact while applying a selected style to generation', async
   ).toBe('画一只猫')
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByRole('button', { name: 'Continue editing' })
-  expect(generateImages).toHaveBeenCalledTimes(1)
-  expect(generateImages).toHaveBeenCalledWith(
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
+  expect(createStudioTask).toHaveBeenCalledWith(
+    expect.any(String),
     expect.objectContaining({
       prompt: expect.stringContaining('画一只猫 placed on'),
     }),
     [],
+    expect.any(Object),
     expect.any(AbortSignal)
   )
   expect(screen.getByRole('combobox', { name: 'Style' })).toHaveValue('product')
-  expect(saveImageRecord).toHaveBeenCalledWith(
-    expect.objectContaining({
-      ownerId: 1,
-      referenceCount: 0,
-      images: [image],
-      styleId: 'product',
-      parameters: expect.objectContaining({ prompt: '画一只猫' }),
-    })
+  await waitFor(() =>
+    expect(saveImageRecord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ownerId: 1,
+        referenceCount: 0,
+        images: [expect.objectContaining({ src: image.src })],
+        styleId: 'product',
+        parameters: expect.objectContaining({ prompt: '画一只猫' }),
+      })
+    )
   )
   fireEvent.click(screen.getByRole('button', { name: 'Image Preview' }))
   expect(await screen.findByRole('dialog')).toBeInTheDocument()
@@ -478,19 +532,21 @@ it.each([
         keyCode,
       })
     })
-    expect(generateImages).not.toHaveBeenCalled()
+    expect(createStudioTask).not.toHaveBeenCalled()
     expect(prompt).toHaveValue('画一只猫')
 
     fireEvent.compositionEnd(prompt, { data: '猫' })
     fireEvent.keyDown(prompt, { key: 'Enter', ctrlKey: true, keyCode: 13 })
     await waitFor(() =>
-      expect(generateImages).toHaveBeenCalledWith(
+      expect(createStudioTask).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({ prompt: '画一只猫' }),
         [],
+        expect.any(Object),
         expect.any(AbortSignal)
       )
     )
-    expect(generateImages).toHaveBeenCalledTimes(1)
+    expect(createStudioTask).toHaveBeenCalledTimes(1)
   }
 )
 
@@ -526,9 +582,11 @@ it('preserves the caret while composing Chinese in the middle of a prompt', asyn
   expect(prompt.selectionStart).toBe(4)
   fireEvent.keyDown(prompt, { key: 'Enter', metaKey: true })
   await waitFor(() =>
-    expect(generateImages).toHaveBeenCalledWith(
+    expect(createStudioTask).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({ prompt: '画 你的 风景' }),
       [],
+      expect.any(Object),
       expect.any(AbortSignal)
     )
   )
@@ -550,32 +608,28 @@ it('keeps committed Chinese text and multiline edits when output settings change
   expect(prompt).toHaveValue('画一只猫')
   fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗边' } })
   fireEvent.keyDown(prompt, { key: 'Enter' })
-  expect(generateImages).not.toHaveBeenCalled()
+  expect(createStudioTask).not.toHaveBeenCalled()
   fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗' } })
   fireEvent.change(prompt, { target: { value: '' } })
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
   fireEvent.change(prompt, { target: { value: '画一只猫\n坐在窗' } })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() =>
-    expect(generateImages).toHaveBeenCalledWith(
+    expect(createStudioTask).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({
         prompt: '画一只猫\n坐在窗',
         size: '1536x1024',
       }),
       [],
+      expect.any(Object),
       expect.any(AbortSignal)
     )
   )
 })
 
-it('keeps submission available during a request and preserves its result after returning', async () => {
-  let finish!: (value: (typeof image)[]) => void
-  vi.mocked(generateImages).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      })
-  )
+it('recovers a server task after refresh without resubmitting generation', async () => {
+  acceptPendingTasks()
   const view = showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -584,17 +638,24 @@ it('keeps submission available during a request and preserves its result after r
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByText('Creating...')
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+  expect(
+    window.dispatchEvent(new Event('beforeunload', { cancelable: true }))
+  ).toBe(true)
   view.unmount()
-  await act(async () => finish([image]))
+  useImagePlaygroundStore.setState({
+    jobs: [],
+    records: [],
+    historyLoaded: false,
+  })
+  serverTasks[0] = { ...serverTasks[0], status: 'ready' }
   showStudio()
   expect(
     await screen.findByRole('button', { name: 'Continue editing' })
   ).toBeEnabled()
-  expect(generateImages).toHaveBeenCalledTimes(1)
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
 })
-
 it('shows API failure once and keeps the draft for an explicit retry', async () => {
-  vi.mocked(generateImages).mockRejectedValue(new Error('Insufficient quota'))
+  vi.mocked(createStudioTask).mockRejectedValue(new Error('Insufficient quota'))
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -608,7 +669,7 @@ it('shows API failure once and keeps the draft for an explicit retry', async () 
     'A mountain lake'
   )
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
-  expect(generateImages).toHaveBeenCalledTimes(1)
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
   expect(saveImageRecord).not.toHaveBeenCalled()
 })
 
@@ -630,23 +691,19 @@ it('uploads and removes references and sends only the remaining files to edits',
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() =>
-    expect(generateImages).toHaveBeenCalledWith(
+    expect(createStudioTask).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({ prompt: 'Keep the scene, make it snowy' }),
       [files[1]],
+      expect.any(Object),
       expect.any(AbortSignal)
     )
   )
   expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:reference')
 })
 
-it('cancels the pending job and drops drafts, references and late results on logout', async () => {
-  let finish!: (value: (typeof image)[]) => void
-  vi.mocked(generateImages).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      })
-  )
+it('clears private browser state on logout while the server task continues', async () => {
+  acceptPendingTasks()
   showStudio()
   await ready()
   fireEvent.change(screen.getByLabelText(/Reference images/), {
@@ -657,11 +714,8 @@ it('cancels the pending job and drops drafts, references and late results on log
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await screen.findByText('Creating...')
-  const signal = vi.mocked(generateImages).mock
-    .calls[0][2] as unknown as AbortSignal
   act(() => useAuthStore.getState().auth.reset())
-  expect(signal.aborted).toBe(true)
-  await act(async () => finish([image]))
+  await act(async () => updateTask(0, { status: 'ready' }))
   expect(useImagePlaygroundStore.getState()).toMatchObject({
     records: [],
     references: [],
@@ -669,8 +723,8 @@ it('cancels the pending job and drops drafts, references and late results on log
     jobs: [],
   })
   expect(saveImageRecord).not.toHaveBeenCalled()
+  expect(serverTasks[0].status).toBe('ready')
 })
-
 it('keeps the simple composer free of credential and model controls', async () => {
   showStudio()
   await ready()
@@ -747,8 +801,8 @@ it('reports storage failure while keeping generated images available for downloa
 })
 
 it('stops a request without retrying and restores submission with a charge-status explanation', async () => {
-  vi.mocked(generateImages).mockImplementation(
-    (_parameters, _references, signal) => {
+  vi.mocked(createStudioTask).mockImplementation(
+    (_id, _parameters, _references, _metadata, signal) => {
       const requestSignal = signal as unknown as AbortSignal
       return new Promise((_resolve, reject) => {
         requestSignal.addEventListener('abort', () =>
@@ -775,7 +829,7 @@ it('stops a request without retrying and restores submission with a charge-statu
   expect(
     window.dispatchEvent(new Event('beforeunload', { cancelable: true }))
   ).toBe(true)
-  expect(generateImages).toHaveBeenCalledTimes(1)
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
 })
 
 it('shows output settings together and prevents a transparent JPEG request', async () => {
@@ -810,24 +864,18 @@ it('allows viewing an older creation while a new request is in progress', async 
       referenceCount: 0,
     },
   ])
-  let finish!: (value: (typeof image)[]) => void
-  vi.mocked(generateImages).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      })
-  )
+  acceptPendingTasks()
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'A new mountain' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await screen.findByRole('button', { name: 'Stop waiting' })
+  await screen.findByText('Creating...')
   expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Continue editing' })).toBeEnabled()
   expect(screen.getByRole('button', { name: 'Reuse settings' })).toBeEnabled()
-  await act(async () => finish([image]))
+  await act(async () => updateTask(0, { status: 'ready' }))
 })
 
 it('keeps the original creation settings when another image finishes during an open preview', async () => {
@@ -848,23 +896,17 @@ it('keeps the original creation settings when another image finishes during an o
   vi.spyOn(imageFiles, 'getImageBlob').mockResolvedValue(
     new Blob(['img'], { type: 'image/png' })
   )
-  let finish!: (value: (typeof image)[]) => void
-  vi.mocked(generateImages).mockImplementation(
-    () =>
-      new Promise((resolve) => {
-        finish = resolve
-      })
-  )
+  acceptPendingTasks()
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'A new mountain' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await screen.findByRole('button', { name: 'Stop waiting' })
+  await screen.findByText('Creating...')
   fireEvent.click(screen.getByRole('button', { name: 'Image Preview' }))
   const dialog = await screen.findByRole('dialog')
-  await act(async () => finish([{ ...image, id: 'new-image' }]))
+  await act(async () => updateTask(0, { status: 'ready' }))
   fireEvent.click(
     within(dialog).getByRole('button', { name: 'Continue editing' })
   )
@@ -905,9 +947,11 @@ it.each([
     })
     fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
     await waitFor(() =>
-      expect(generateImages).toHaveBeenCalledWith(
+      expect(createStudioTask).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({ size }),
         [],
+        expect.any(Object),
         expect.any(AbortSignal)
       )
     )
@@ -1007,9 +1051,11 @@ it('returns to automatic sizing from the dock after choosing a ratio and resolut
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
   await waitFor(() =>
-    expect(generateImages).toHaveBeenCalledWith(
+    expect(createStudioTask).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({ size: 'auto' }),
       [],
+      expect.any(Object),
       expect.any(AbortSignal)
     )
   )
@@ -1031,11 +1077,13 @@ it('reuses the user prompt and selected style without applying the template twic
     'A perfume bottle'
   )
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(generateImages).toHaveBeenCalledTimes(2))
-  expect(generateImages).toHaveBeenNthCalledWith(
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(2))
+  expect(createStudioTask).toHaveBeenNthCalledWith(
     2,
-    vi.mocked(generateImages).mock.calls[0][0],
+    expect.any(String),
+    vi.mocked(createStudioTask).mock.calls[0][1],
     [],
+    expect.any(Object),
     expect.any(AbortSignal)
   )
 })
@@ -1180,16 +1228,7 @@ it('opens the reference hover card on touch and removes it together with the ref
 
 afterEach(() => vi.unstubAllGlobals())
 
-it('stores URL image bytes locally and displays the saved copy after history is reloaded', async () => {
-  const remote = { id: 'remote', src: 'https://images.example/temporary.png' }
-  vi.mocked(generateImages).mockResolvedValue([remote])
-  vi.stubGlobal(
-    'fetch',
-    vi.fn().mockResolvedValue({
-      ok: true,
-      blob: async () => new Blob(['image bytes'], { type: 'image/png' }),
-    })
-  )
+it('caches server image bytes and reads the local copy after server expiry', async () => {
   const view = showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -1199,32 +1238,30 @@ it('stores URL image bytes locally and displays the saved copy after history is 
   await waitFor(() =>
     expect(saveImageRecord).toHaveBeenCalledWith(
       expect.objectContaining({
-        images: [{ ...remote, src: 'data:image/png;base64,aW1hZ2UgYnl0ZXM=' }],
+        localSaveStatus: 'saved',
+        images: [expect.objectContaining({ src: image.src })],
       })
     )
   )
   const saved = vi.mocked(saveImageRecord).mock.calls.at(-1)?.[0]
-  if (!saved) throw new Error('Expected saved image history')
-  expect(fetch).toHaveBeenCalledWith(
-    remote.src,
-    expect.objectContaining({
-      credentials: 'omit',
-      referrerPolicy: 'no-referrer',
-    })
+  if (!saved) throw new Error('Expected a saved image record')
+  expect(api.get).toHaveBeenCalledWith(
+    expect.stringMatching(/\/api\/image-playground\/tasks\/.+\/images\/0$/),
+    expect.objectContaining({ responseType: 'blob' })
   )
   view.unmount()
   act(() =>
     useImagePlaygroundStore.setState({ records: [], historyLoaded: false })
   )
   vi.mocked(readImageHistory).mockResolvedValue([saved])
-  vi.mocked(fetch).mockRejectedValue(new Error('link expired'))
+  serverTasks = []
+  vi.mocked(api.get).mockRejectedValue(new Error('server copy expired'))
   showStudio()
   expect(await screen.findByAltText('Generated image')).toHaveAttribute(
     'src',
-    saved.images[0].src
+    saved.images[0].previewSrc ?? saved.images[0].src
   )
 })
-
 it('saves accessible legacy links on history load without changing their settings', async () => {
   const record = {
     id: 'legacy-url',
@@ -1252,7 +1289,10 @@ it('saves accessible legacy links on history load without changing their setting
         id: record.id,
         parameters: record.parameters,
         images: [
-          { id: 'legacy-image', src: 'data:image/webp;base64,bGVnYWN5' },
+          expect.objectContaining({
+            id: 'legacy-image',
+            src: 'data:image/webp;base64,bGVnYWN5',
+          }),
         ],
       }),
       true
@@ -1264,57 +1304,44 @@ it('saves accessible legacy links on history load without changing their setting
   )
 })
 
-it('retains successful local copies and warns when another temporary link cannot be saved', async () => {
-  vi.mocked(generateImages).mockResolvedValue([
-    { id: 'available', src: 'https://images.example/available.png' },
-    { id: 'blocked', src: 'https://images.example/blocked.png' },
-  ])
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => {
-      if (url.includes('blocked')) throw new TypeError('CORS blocked')
-      return {
-        ok: true,
-        blob: async () => new Blob(['image'], { type: 'image/png' }),
-      }
-    })
+it('keeps cached originals when another server image download fails', async () => {
+  vi.mocked(createStudioTask).mockImplementation(
+    async (id, _parameters, _references, metadata) => {
+      const task = taskFixture(id, metadata)
+      task.images.push({ ...task.images[0], index: 1 })
+      serverTasks.push(task)
+      return task
+    }
   )
+  vi.mocked(api.get).mockImplementation(async (url) => {
+    if (url.endsWith('/1')) throw new Error('download interrupted')
+    return { data: new Blob(['image'], { type: 'image/png' }) }
+  })
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'A lake' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  expect(
-    await screen.findByText(
-      'Some images could not be saved locally. Download them before their links expire.'
-    )
-  ).toBeInTheDocument()
-  expect(
-    vi
-      .mocked(saveImageRecord)
-      .mock.calls.at(-1)?.[0]
-      .images.map((item) => item.src)
-  ).toEqual([
-    'data:image/png;base64,aW1hZ2U=',
-    'https://images.example/blocked.png',
+  await screen.findByText(
+    'Some images could not be saved locally. Download them before their links expire.'
+  )
+  const saved = vi.mocked(saveImageRecord).mock.calls.at(-1)?.[0]
+  expect(saved?.images.map((item) => item.src)).toEqual([
+    image.src,
+    expect.stringMatching(/\/images\/1$/),
   ])
+  expect(screen.getByRole('button', { name: 'Retry download' })).toBeEnabled()
   expect(screen.queryByText('Creation interrupted')).not.toBeInTheDocument()
 })
-
 it('discards local image downloads when the account changes', async () => {
-  let finish!: (value: unknown) => void
-  vi.mocked(generateImages).mockResolvedValue([
-    { id: 'remote', src: 'https://images.example/temporary.png' },
-  ])
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(
-      () =>
-        new Promise((resolve) => {
+  let finish!: (value: { data: Blob }) => void
+  vi.mocked(api.get).mockImplementation((url) =>
+    url.includes('thumbnail')
+      ? Promise.resolve({ data: new Blob(['preview'], { type: 'image/jpeg' }) })
+      : new Promise((resolve) => {
           finish = resolve
         })
-    )
   )
   showStudio()
   await ready()
@@ -1322,41 +1349,32 @@ it('discards local image downloads when the account changes', async () => {
     target: { value: 'A lake' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(fetch).toHaveBeenCalled())
+  await waitFor(() => expect(finish).toBeTypeOf('function'))
+  const previousSaves = vi.mocked(saveImageRecord).mock.calls.length
   act(() => useAuthStore.getState().auth.reset())
   await act(async () =>
-    finish({
-      ok: true,
-      blob: async () => new Blob(['image'], { type: 'image/png' }),
-    })
+    finish({ data: new Blob(['image'], { type: 'image/png' }) })
   )
-  expect(saveImageRecord).not.toHaveBeenCalled()
+  expect(saveImageRecord).toHaveBeenCalledTimes(previousSaves)
   expect(useImagePlaygroundStore.getState().records).toEqual([])
 })
-
 it('accepts a second generation while the first is pending and keeps each result', async () => {
-  const completions: ((images: (typeof image)[]) => void)[] = []
-  vi.mocked(generateImages).mockImplementation(
-    () => new Promise((resolve) => completions.push(resolve))
-  )
+  acceptPendingTasks()
   showStudio()
   await ready()
-  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
-    target: { value: 'First creation' },
-  })
-  await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
-  )
-  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(completions).toHaveLength(1))
-  expect(screen.getByRole('textbox', { name: 'Image prompt' })).toBeEnabled()
-  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
-    target: { value: 'Second creation' },
-  })
-  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(completions).toHaveLength(2))
-  await act(async () => completions[1]([{ ...image, id: 'second' }]))
-  await act(async () => completions[0]([{ ...image, id: 'first' }]))
+  for (const prompt of ['First creation', 'Second creation']) {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+      target: { value: prompt },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+    await waitFor(() =>
+      expect(
+        serverTasks.some((task) => task.metadata.parameters.prompt === prompt)
+      ).toBe(true)
+    )
+  }
+  await act(async () => updateTask(1, { status: 'ready' }))
+  await act(async () => updateTask(0, { status: 'ready' }))
   await waitFor(() =>
     expect(useImagePlaygroundStore.getState().records).toHaveLength(2)
   )
@@ -1367,56 +1385,68 @@ it('accepts a second generation while the first is pending and keeps each result
       .sort()
   ).toEqual(['First creation', 'Second creation'])
 })
-
 it('keeps the remaining job running when one of two parallel requests fails', async () => {
-  const pending: {
-    resolve: (images: (typeof image)[]) => void
-    reject: (error: Error) => void
-  }[] = []
-  vi.mocked(generateImages).mockImplementation(
-    () => new Promise((resolve, reject) => pending.push({ resolve, reject }))
-  )
+  acceptPendingTasks()
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'First' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(pending).toHaveLength(1))
+  await waitFor(() => expect(serverTasks).toHaveLength(1))
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'high' },
   })
-  fireEvent.click(screen.getByRole('button', { name: '10K' }))
+  fireEvent.click(screen.getByRole('button', { name: '8K' }))
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'Second' },
   })
   fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-  await waitFor(() => expect(pending).toHaveLength(2))
-  await act(async () => pending[0].reject(new Error('First request failed')))
-  expect(screen.getByRole('alert')).toHaveTextContent('First request failed')
-  expect(screen.getAllByRole('button', { name: 'Stop waiting' })).toHaveLength(
-    1
+  await waitFor(() => expect(serverTasks).toHaveLength(2))
+  await act(async () =>
+    updateTask(0, { status: 'failed', error: 'First request failed' })
   )
-  await act(async () => pending[1].resolve([image]))
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    'First request failed'
+  )
+  expect(screen.getAllByText('Creating...')).toHaveLength(1)
+  await act(async () => updateTask(1, { status: 'ready' }))
   await waitFor(() =>
     expect(useImagePlaygroundStore.getState().records).toHaveLength(1)
   )
   expect(
     useImagePlaygroundStore.getState().records[0].parameters
-  ).toMatchObject({ group: 'high', size: '10240x10240', prompt: 'Second' })
-  expect(generateImages).toHaveBeenNthCalledWith(
+  ).toMatchObject({ group: 'high', size: '8192x8192', prompt: 'Second' })
+  expect(createStudioTask).toHaveBeenNthCalledWith(
     1,
+    expect.any(String),
     expect.objectContaining({ group: 'native', size: 'auto', prompt: 'First' }),
     [],
+    expect.any(Object),
     expect.any(AbortSignal)
   )
 })
+it('removes expired server tasks and allows another generation after synchronization', async () => {
+  acceptPendingTasks()
+  showStudio()
+  await ready()
+  fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+    target: { value: 'An expired creation' },
+  })
+  fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+  await screen.findByText('Creating...')
+  serverTasks = []
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['image-studio-tasks'] })
+  })
+  await waitFor(() =>
+    expect(screen.queryByText('Creating...')).not.toBeInTheDocument()
+  )
+  expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
+})
 
 it('limits active requests to four and permits another after one completes', async () => {
-  const pending: ((images: (typeof image)[]) => void)[] = []
-  vi.mocked(generateImages).mockImplementation(
-    () => new Promise((resolve) => pending.push(resolve))
-  )
+  acceptPendingTasks()
   showStudio()
   await ready()
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
@@ -1424,7 +1454,7 @@ it('limits active requests to four and permits another after one completes', asy
   })
   for (let index = 1; index <= 4; index++) {
     fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
-    await waitFor(() => expect(pending).toHaveLength(index))
+    await waitFor(() => expect(serverTasks).toHaveLength(index))
   }
   expect(screen.getByRole('button', { name: 'Generate image' })).toBeDisabled()
   expect(screen.getByRole('textbox', { name: 'Image prompt' })).toBeEnabled()
@@ -1432,16 +1462,12 @@ it('limits active requests to four and permits another after one completes', asy
     key: 'Enter',
     ctrlKey: true,
   })
-  expect(generateImages).toHaveBeenCalledTimes(4)
-  await act(async () => pending[0]([image]))
+  expect(createStudioTask).toHaveBeenCalledTimes(4)
+  await act(async () => updateTask(0, { status: 'ready' }))
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Generate image' })).toBeEnabled()
   )
-  for (const resolve of pending.slice(1)) {
-    await act(async () => resolve([image]))
-  }
 })
-
 it('preserves a newly edited draft when prompt refinement finishes', async () => {
   let resolve!: (prompt: string) => void
   vi.mocked(refinePrompt).mockImplementation(

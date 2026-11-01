@@ -155,6 +155,9 @@ func main() {
 	// (DB-lease dedup across masters + run history), then start the runner that
 	// schedules and executes them. Master-only execution and the UpdateTask
 	// switch are enforced inside the runner and each handler's Enabled().
+	if err := controller.StartImageStudioTasks(); err != nil {
+		log.Print("failed to initialize image studio task storage: ", err)
+	}
 	controller.RegisterScheduledSystemTasks()
 	service.StartSystemTaskRunner()
 

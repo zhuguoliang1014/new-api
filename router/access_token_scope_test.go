@@ -203,3 +203,18 @@ func TestAccessTokenVerificationScopesAreAllListed(t *testing.T) {
 		assert.True(t, listed, "verification scope %s has no access token rule", scope)
 	}
 }
+
+func TestImageStudioTaskRoutesRequireDashboardSession(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	count := 0
+	for _, route := range engine.Routes() {
+		if !strings.HasPrefix(route.Path, "/api/image-playground/tasks") {
+			continue
+		}
+		rule, ok := middleware.AccessTokenRouteRule(route.Method + " " + route.Path)
+		require.True(t, ok, route.Path)
+		require.Equal(t, "session", rule.Kind(), route.Path)
+		count++
+	}
+	require.Equal(t, 6, count)
+}

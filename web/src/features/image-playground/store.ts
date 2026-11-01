@@ -43,6 +43,7 @@ type ImagePlaygroundStore = {
   jobs: ImageJob[]
   error: string | null
   storageUnavailable: boolean
+  taskSyncError: boolean
   historyLoaded: boolean
   setScope: (scope: string | null) => void
   setParameters: (values: Partial<ImageParameters>) => void
@@ -63,6 +64,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
     jobs: [],
     error: null,
     storageUnavailable: false,
+    taskSyncError: false,
     historyLoaded: false,
     setScope: (scope) => {
       if (scope === get().scope) return
@@ -80,6 +82,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         jobs: [],
         error: null,
         storageUnavailable: false,
+        taskSyncError: false,
         historyLoaded: false,
       })
     },
@@ -155,8 +158,8 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
   })
 )
 
-// Jobs survive route changes, but are cancelled and forgotten on logout/session
-// changes. No revealed credential is stored in Zustand, Query or browser storage.
+// Local polling and drafts are cleared when the account changes. Server tasks
+// continue and are recovered after the owner signs in again.
 useAuthStore.subscribe((state) => {
   const auth = state.auth
   const scope =
@@ -164,19 +167,13 @@ useAuthStore.subscribe((state) => {
   useImagePlaygroundStore.getState().setScope(scope)
 })
 
+// Only an upload that has not yet been accepted can be lost on refresh.
 function warnBeforeReload(event: BeforeUnloadEvent): void {
   event.preventDefault()
   event.returnValue = ''
 }
-
-useImagePlaygroundStore.subscribe((state, previous) => {
-  const pending =
-    state.jobs.some((job) => !job.error) ||
-    state.records.some((record) => record.localSaveStatus === 'saving')
-  const wasPending =
-    previous.jobs.some((job) => !job.error) ||
-    previous.records.some((record) => record.localSaveStatus === 'saving')
-  if (pending === wasPending) return
-  if (pending) window.addEventListener('beforeunload', warnBeforeReload)
-  else window.removeEventListener('beforeunload', warnBeforeReload)
+useImagePlaygroundStore.subscribe((state) => {
+  if (state.jobs.some((job) => !job.serverTask && !job.error)) {
+    window.addEventListener('beforeunload', warnBeforeReload)
+  } else window.removeEventListener('beforeunload', warnBeforeReload)
 })

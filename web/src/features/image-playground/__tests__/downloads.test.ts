@@ -42,11 +42,11 @@ beforeEach(() => {
       revokeObjectURL: vi.fn(),
     })
   )
-  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
-    function (this: HTMLAnchorElement) {
-      filename = this.download
-    }
-  )
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+    this: HTMLAnchorElement
+  ) {
+    filename = this.download
+  })
   vi.stubGlobal(
     'fetch',
     vi.fn(

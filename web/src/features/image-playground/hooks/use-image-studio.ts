@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { t } from 'i18next'
 import { nanoid } from 'nanoid'
 import { useEffect, useRef } from 'react'
@@ -24,9 +24,15 @@ import { useEffect, useRef } from 'react'
 import { getServerErrorMessage } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { generateImages, getImageAuthScope, refinePrompt } from '../api'
+import {
+  createStudioTask,
+  listStudioTasks,
+  getImageAuthScope,
+  refinePrompt,
+  type StudioTask,
+} from '../api'
 import { readImageHistory, saveImageRecord } from '../lib/history'
-import { cacheImageRecord } from '../lib/images'
+import { cacheImageRecord, getImageBlob } from '../lib/images'
 import {
   applyStyleTemplate,
   restoreLegacyStyleRecord,
@@ -40,14 +46,24 @@ import {
 } from '../types'
 
 // Both new creations and legacy URL records use the same local-save path.
-async function persistStudioRecord(
+export async function persistStudioRecord(
   record: ImageRecord,
   scope: string,
   signal: AbortSignal,
   existingOnly = false
 ): Promise<void> {
+  let cached: ImageRecord | undefined
   try {
-    const cached = await cacheImageRecord(record, signal)
+    cached = await cacheImageRecord(record, signal, (loaded, total) => {
+      if (signal.aborted || scope !== getImageAuthScope()) return
+      useImagePlaygroundStore.setState((state) => ({
+        records: state.records.map((item) =>
+          item.id === record.id
+            ? { ...item, cacheProgress: { loaded, total } }
+            : item
+        ),
+      }))
+    })
     if (
       signal.aborted ||
       scope !== getImageAuthScope() ||
@@ -60,9 +76,11 @@ async function persistStudioRecord(
     if (existingOnly) await saveImageRecord(cached, true)
     else await saveImageRecord(cached)
     if (signal.aborted || scope !== getImageAuthScope()) return
+    const savedRecord = cached
     useImagePlaygroundStore.setState((state) => ({
+      storageUnavailable: false,
       records: state.records.map((item) =>
-        item.id === record.id ? cached : item
+        item.id === record.id ? savedRecord : item
       ),
     }))
   } catch {
@@ -71,7 +89,7 @@ async function persistStudioRecord(
       storageUnavailable: true,
       records: state.records.map((item) =>
         item.id === record.id
-          ? { ...item, localSaveStatus: 'failed' as const }
+          ? { ...(cached ?? item), localSaveStatus: 'failed' as const }
           : item
       ),
     }))
@@ -79,6 +97,7 @@ async function persistStudioRecord(
 }
 
 export function useImageStudio() {
+  const queryClient = useQueryClient()
   const refineControllerRef = useRef<AbortController | null>(null)
   const scope = useAuthStore((state) =>
     state.auth.user && state.auth.session
@@ -177,6 +196,155 @@ export function useImageStudio() {
     }
   }, [scope, historyLoaded])
 
+  const tasks = useQuery({
+    queryKey: ['image-studio-tasks', scope],
+    queryFn: ({ signal }) => listStudioTasks(signal),
+    enabled: Boolean(scope && ownerId && historyLoaded),
+    refetchInterval: 2000,
+    retry: 1,
+    meta: { errorToast: false },
+  })
+  const taskCache = useRef({
+    scope,
+    controller: new AbortController(),
+    attempted: new Set<string>(),
+    queue: Promise.resolve(),
+    downloads: Promise.resolve(),
+  })
+  useEffect(() => {
+    const state = {
+      scope,
+      controller: new AbortController(),
+      attempted: new Set<string>(),
+      queue: Promise.resolve(),
+      downloads: Promise.resolve(),
+    }
+    taskCache.current = state
+    return () => state.controller.abort()
+  }, [scope])
+  useEffect(() => {
+    useImagePlaygroundStore.setState({ taskSyncError: tasks.isError })
+  }, [tasks.isError])
+  useEffect(() => {
+    if (
+      !scope ||
+      !ownerId ||
+      !tasks.data ||
+      taskCache.current.scope !== scope
+    ) {
+      return
+    }
+    const { controller, attempted } = taskCache.current
+    const cacheTask = async (task: StudioTask) => {
+      if (controller.signal.aborted || scope !== getImageAuthScope()) return
+      const existing = useImagePlaygroundStore
+        .getState()
+        .records.find((item) => item.id === task.id)
+      if (existing?.localSaveStatus === 'saved') return
+      const images = await Promise.all(
+        task.images.map(async (image) => {
+          const src = `/api/image-playground/tasks/${task.id}/images/${image.index}`
+          let previewSrc: string | undefined
+          try {
+            const blob = await getImageBlob(
+              `${src}?thumbnail=1`,
+              controller.signal
+            )
+            previewSrc = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader()
+              reader.addEventListener(
+                'load',
+                () => resolve(String(reader.result)),
+                { once: true }
+              )
+              reader.addEventListener('error', () => reject(reader.error), {
+                once: true,
+              })
+              reader.readAsDataURL(blob)
+            })
+          } catch {
+            /* Original caching can still succeed if the preview failed. */
+          }
+          return {
+            id: `${task.id}-${image.index}`,
+            src,
+            previewSrc,
+            width: image.width,
+            height: image.height,
+            bytes: image.bytes,
+          }
+        })
+      )
+      if (controller.signal.aborted || scope !== getImageAuthScope()) return
+      const record: ImageRecord = {
+        id: task.id,
+        ownerId,
+        createdAt: task.created_at,
+        parameters: task.metadata.parameters,
+        styleId: task.metadata.styleId,
+        referenceCount: task.metadata.referenceCount,
+        images,
+        serverTask: true,
+        expiresAt: task.expires_at * 1000,
+        localSaveStatus: 'saving',
+      }
+      useImagePlaygroundStore.setState((state) => ({
+        jobs: state.jobs.filter((item) => item.id !== task.id),
+        records: [
+          record,
+          ...state.records.filter((item) => item.id !== task.id),
+        ]
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, 30),
+      }))
+      // Save server references first so failed browser caching remains recoverable.
+      try {
+        await saveImageRecord(record)
+      } catch {
+        /* Reported by the final save. */
+      }
+      taskCache.current.downloads = taskCache.current.downloads
+        .then(async () => {
+          if (controller.signal.aborted || scope !== getImageAuthScope()) return
+          await persistStudioRecord(record, scope, controller.signal)
+        })
+        .catch(() => undefined)
+    }
+    useImagePlaygroundStore.setState((state) => ({
+      jobs: [
+        ...tasks.data
+          .filter((task) => task.status !== 'ready')
+          .map((task) => ({
+            id: task.id,
+            startedAt: task.created_at,
+            controller,
+            parameters: task.metadata.parameters,
+            referenceCount: task.metadata.referenceCount,
+            serverTask: true,
+            status:
+              task.status === 'failed' || task.status === 'ready'
+                ? undefined
+                : task.status,
+            downloadImageIndex: task.download_image_index,
+            downloadedBytes: task.downloaded_bytes,
+            totalBytes: task.total_bytes,
+            error: task.error ? t(task.error) : undefined,
+          })),
+        ...state.jobs.filter(
+          (job) =>
+            !job.serverTask && !tasks.data.some((task) => task.id === job.id)
+        ),
+      ],
+    }))
+    for (const task of tasks.data.filter((item) => item.status === 'ready')) {
+      if (attempted.has(task.id)) continue
+      attempted.add(task.id)
+      taskCache.current.queue = taskCache.current.queue
+        .then(() => cacheTask(task))
+        .catch(() => undefined)
+    }
+  }, [tasks.data, scope, ownerId])
+
   const refineMutation = useMutation({
     retry: false,
     meta: { errorToast: false },
@@ -216,6 +384,8 @@ export function useImageStudio() {
         controller,
         parameters: creationParameters,
         referenceCount: store.references.length,
+        serverTask: false,
+        status: 'submitting' as const,
       }
       const references = store.references.map((reference) => reference.file)
       useImagePlaygroundStore.setState((state) => ({
@@ -223,47 +393,28 @@ export function useImageStudio() {
         error: null,
       }))
       try {
-        const images = await generateImages(
+        await createStudioTask(
+          job.id,
           agentParameters,
           references,
+          {
+            parameters: creationParameters,
+            styleId: preset?.id ?? null,
+            referenceCount: references.length,
+          },
           controller.signal
         )
-        if (controller.signal.aborted) {
-          throw new DOMException('Aborted', 'AbortError')
-        }
-        if (
-          scope !== getImageAuthScope() ||
-          !useImagePlaygroundStore
-            .getState()
-            .jobs.some((item) => item.id === job.id)
-        ) {
-          return
-        }
-        const record: ImageRecord = {
-          id: job.id,
-          ownerId,
-          createdAt: Date.now(),
-          parameters: creationParameters,
-          styleId: preset?.id ?? null,
-          images,
-          referenceCount: references.length,
-          localSaveStatus: 'saving',
-        }
+        if (scope !== getImageAuthScope()) return
         useImagePlaygroundStore.setState((state) => ({
-          records: [record, ...state.records].slice(0, 30),
-          selectedRecordId: state.selectedRecordId ?? record.id,
+          jobs: state.jobs.map((item) =>
+            item.id === job.id
+              ? { ...item, serverTask: true, status: 'queued' as const }
+              : item
+          ),
         }))
-        await persistStudioRecord(record, scope, controller.signal)
-        if (
-          scope === getImageAuthScope() &&
-          useImagePlaygroundStore
-            .getState()
-            .jobs.some((item) => item.id === job.id)
-        ) {
-          useImagePlaygroundStore.setState((state) => ({
-            jobs: state.jobs.filter((item) => item.id !== job.id),
-          }))
-        }
+        await queryClient.invalidateQueries({
+          queryKey: ['image-studio-tasks', scope],
+        })
       } catch (error) {
         if (
           scope !== getImageAuthScope() ||

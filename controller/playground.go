@@ -488,7 +488,7 @@ func BootstrapImageStudio(c *gin.Context) {
 			models = slices.DeleteFunc(slices.Clone(models), func(name string) bool { return !token.GetModelLimitsMap()[name] })
 		}
 		available := !token.DeletedAt.Valid && token.Group == profile.Group && token.Status == common.TokenStatusEnabled && (token.ExpiredTime == -1 || token.ExpiredTime > common.GetTimestamp()) && (token.UnlimitedQuota || token.RemainQuota > 0) && len(models) > 0
-		result = append(result, gin.H{"id": profile.Group, "name": profile.Name, "description": usable[profile.Group], "ratio": service.GetUserGroupRatio(userGroup, profile.Group), "models": models, "max_resolution": profile.MaxResolution, "size_mode": profile.SizeMode, "available": available})
+		result = append(result, gin.H{"id": profile.Group, "name": profile.Name, "description": usable[profile.Group], "ratio": service.GetUserGroupRatio(userGroup, profile.Group), "models": models, "max_resolution": profile.MaxResolution, "max_edge": profile.MaxEdge, "max_pixels": profile.MaxPixels, "size_mode": profile.SizeMode, "available": available})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": result})
 }

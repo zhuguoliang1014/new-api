@@ -43,7 +43,15 @@ export const imageParametersSchema = z.object({
 
 export type ImageParameters = z.infer<typeof imageParametersSchema>
 export type ImageReference = { id: string; file: File; preview: string }
-export type ImageOutput = { id: string; src: string; revisedPrompt?: string }
+export type ImageOutput = {
+  id: string
+  src: string
+  revisedPrompt?: string
+  previewSrc?: string
+  width?: number
+  height?: number
+  bytes?: number
+}
 export type ImageRecord = {
   id: string
   ownerId: number
@@ -54,6 +62,9 @@ export type ImageRecord = {
   styleId?: string | null
   images: ImageOutput[]
   referenceCount: number
+  serverTask?: boolean
+  expiresAt?: number
+  cacheProgress?: { loaded: number; total: number }
   localSaveStatus?: 'saving' | 'saved' | 'failed'
 }
 export type ImageJob = {
@@ -63,6 +74,16 @@ export type ImageJob = {
   parameters: ImageParameters
   referenceCount: number
   error?: string
+  serverTask?: boolean
+  status?:
+    | 'submitting'
+    | 'queued'
+    | 'generating'
+    | 'downloading'
+    | 'download_failed'
+  downloadImageIndex?: number
+  downloadedBytes?: number
+  totalBytes?: number
 }
 
 /** The image provider is an Agent implementation detail, not a user choice. */

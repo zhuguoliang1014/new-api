@@ -255,7 +255,11 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
             }}
           >
             <img
-              src={props.image.src}
+              src={
+                props.image.src.startsWith('/api/image-playground/tasks/')
+                  ? props.image.previewSrc
+                  : props.image.src
+              }
               alt={t('Image Preview')}
               width={dimensions?.width}
               height={dimensions?.height}
@@ -279,7 +283,11 @@ function ZoomableImage(props: { image: ImageOutput; requestedSize?: string }) {
         </TransformWrapper>
       )}
       <ImageSizeDetails
-        dimensions={dimensions}
+        dimensions={
+          props.image.width && props.image.height
+            ? { width: props.image.width, height: props.image.height }
+            : dimensions
+        }
         requestedSize={props.requestedSize}
       />
       <p className='studio-viewer-help' id='studio-viewer-help'>

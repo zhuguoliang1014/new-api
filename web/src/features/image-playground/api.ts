@@ -16,13 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { isAxiosError } from 'axios'
 import { t } from 'i18next'
-import { nanoid } from 'nanoid'
 import { z } from 'zod'
 
 import { api } from '@/lib/api'
 import {
-  createServerError,
   getServerErrorMessage,
   requireServerSuccess,
 } from '@/lib/server-error-message'
@@ -34,7 +33,6 @@ import {
   getImageRequestFields,
   imageParametersSchema,
   normalizeImageParameters,
-  type ImageOutput,
   type ImageParameters,
 } from './types'
 
@@ -92,19 +90,6 @@ export function getImageAuthScope(): string | null {
     ? `${auth.user.id}:${auth.session.sid}`
     : null
 }
-
-const imageResponseSchema = z.object({
-  data: z
-    .array(
-      z.object({
-        b64_json: z.string().optional(),
-        url: z.string().optional(),
-        revised_prompt: z.string().optional(),
-      })
-    )
-    .min(1),
-  output_format: z.enum(['png', 'jpeg', 'webp']).optional(),
-})
 
 const refineResponseSchema = z.object({ prompt: z.string().trim().min(1) })
 
@@ -193,121 +178,6 @@ export async function refinePrompt(
   }
 }
 
-function getImageOutput(
-  item: z.infer<typeof imageResponseSchema>['data'][number],
-  outputFormat: 'png' | 'jpeg' | 'webp'
-): ImageOutput {
-  let src = item.url ?? ''
-  if (item.b64_json) {
-    let mime = outputFormat
-    // Several compatible providers return PNG even when JPEG is requested.
-    const base64 = item.b64_json.split(/\s/).join('')
-    if (base64.startsWith('iVBORw0KGgo')) mime = 'png'
-    if (base64.startsWith('/9j/')) mime = 'jpeg'
-    if (base64.startsWith('UklGR')) mime = 'webp'
-    src = `data:image/${mime};base64,${base64}`
-  }
-  if (
-    !/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=\s]+$/i.test(src) &&
-    !/^https?:\/\//i.test(src)
-  ) {
-    throw new Error(t('The API did not return any usable images.'))
-  }
-  return { id: nanoid(), src, revisedPrompt: item.revised_prompt }
-}
-
-/**
- * Generate images through the session-scoped playground route.
- *
- * The backend resolves the selected API key and model. The model remains in
- * the local draft so parameter capabilities and history stay accurate.
- */
-export async function generateImages(
-  input: ImageParameters,
-  references: File[],
-  signal: AbortSignal
-): Promise<ImageOutput[]>
-/** @deprecated Kept as a source-compatible shim for integrations that passed a key id. */
-export async function generateImages(
-  _ignoredKeyId: number,
-  input: ImageParameters,
-  references: File[],
-  signal: AbortSignal
-): Promise<ImageOutput[]>
-export async function generateImages(
-  first: ImageParameters | number,
-  second: ImageParameters | File[],
-  third: File[] | AbortSignal,
-  fourth?: AbortSignal
-): Promise<ImageOutput[]> {
-  const input = typeof first === 'number' ? (second as ImageParameters) : first
-  const references = (typeof first === 'number' ? third : second) as File[]
-  const signal = (typeof first === 'number' ? fourth : third) as AbortSignal
-
-  const parsed = imageParametersSchema.parse(input)
-  const options = getImageModelOptions(parsed.model)
-  // Never silently downgrade an explicit resolution before a billable request.
-  if (!options.sizes.includes(parsed.size)) {
-    throw new Error(t('This model does not support the selected image size.'))
-  }
-  const parameters = normalizeImageParameters(parsed)
-  validateReferenceFiles(references)
-  if (references.length && !options.supportsReferences) {
-    throw new Error(t('Choose a model that supports reference images.'))
-  }
-  const scope = getImageAuthScope()
-  if (!scope || signal.aborted) throw new DOMException('Aborted', 'AbortError')
-
-  const fields = getImageRequestFields(parameters)
-
-  let body: FormData | typeof fields = fields
-  if (references.length) {
-    body = new FormData()
-    for (const [name, value] of Object.entries(fields)) {
-      body.append(name, String(value))
-    }
-    for (const file of references) body.append('image[]', file, file.name)
-  }
-  try {
-    const response = await imageRelayClient.post(
-      references.length ? '/pg/images/edits' : '/pg/images/generations',
-      body,
-      {
-        ...requestConfig(signal),
-        headers: parameters.group
-          ? {
-              'X-Studio-Group': encodeURIComponent(parameters.group),
-              'X-Studio-Model': parameters.model,
-            }
-          : undefined,
-      }
-    )
-    if (scope !== getImageAuthScope() || signal.aborted) {
-      throw new DOMException('Aborted', 'AbortError')
-    }
-    if (response.data?.error || response.data?.success === false) {
-      throw createServerError(response.data)
-    }
-    const payload = imageResponseSchema.safeParse(response.data)
-    if (!payload.success) {
-      throw new Error(t('The API did not return any usable images.'))
-    }
-    return payload.data.data.map((item) =>
-      getImageOutput(item, payload.data.output_format ?? parameters.format)
-    )
-  } catch (error) {
-    if (signal.aborted || scope !== getImageAuthScope()) {
-      throw new DOMException('Aborted', 'AbortError')
-    }
-    throw new Error(
-      getServerErrorMessage(error, t('Image generation failed.')),
-      {
-        cause: error,
-      }
-    )
-  }
-}
-
 export type StudioGroup = {
   id: string
   name: string
@@ -315,6 +185,8 @@ export type StudioGroup = {
   ratio: number
   models: string[]
   max_resolution: number
+  max_edge?: number
+  max_pixels?: number
   size_mode: 'native' | 'upscale'
   available: boolean
 }
@@ -326,4 +198,119 @@ export async function getStudioGroups(): Promise<StudioGroup[]> {
   )
   const payload = requireServerSuccess(response.data) as { data: StudioGroup[] }
   return payload.data
+}
+
+const studioTaskSchema = z.object({
+  id: z.string().regex(/^[a-zA-Z0-9_-]{20,64}$/),
+  status: z.enum([
+    'queued',
+    'generating',
+    'downloading',
+    'ready',
+    'download_failed',
+    'failed',
+  ]),
+  created_at: z.number(),
+  expires_at: z.number(),
+  metadata: z.object({
+    parameters: imageParametersSchema,
+    styleId: z.string().nullable(),
+    referenceCount: z.number().int().min(0).max(4),
+  }),
+  images: z
+    .array(
+      z.object({
+        index: z.number().int().min(0).max(3),
+        width: z.number().positive(),
+        height: z.number().positive(),
+        bytes: z.number().nonnegative(),
+        content_type: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+      })
+    )
+    .max(4),
+  download_image_index: z.number().int().nonnegative().optional(),
+  downloaded_bytes: z.number().nonnegative(),
+  total_bytes: z.number().nonnegative(),
+  error: z.string().optional(),
+})
+export type StudioTask = z.infer<typeof studioTaskSchema>
+
+export async function createStudioTask(
+  id: string,
+  parameters: ImageParameters,
+  references: File[],
+  metadata: StudioTask['metadata'],
+  signal: AbortSignal
+): Promise<StudioTask> {
+  const parsed = imageParametersSchema.parse(parameters)
+  const options = getImageModelOptions(parsed.model)
+  if (!options.sizes.includes(parsed.size)) {
+    throw new Error(t('This model does not support the selected image size.'))
+  }
+  validateReferenceFiles(references)
+  if (references.length && !options.supportsReferences) {
+    throw new Error(t('Choose a model that supports reference images.'))
+  }
+  const scope = getImageAuthScope()
+  if (!scope || signal.aborted) throw new DOMException('Aborted', 'AbortError')
+  parameters = normalizeImageParameters(parsed)
+  const fields = {
+    ...getImageRequestFields(parameters),
+    response_format: 'url',
+  }
+  let body: FormData | Record<string, unknown> = {
+    ...fields,
+    studio_metadata: metadata,
+  }
+  if (references.length) {
+    const form = new FormData()
+    for (const [key, value] of Object.entries(fields)) {
+      form.append(key, String(value))
+    }
+    form.append('studio_metadata', JSON.stringify(metadata))
+    for (const file of references) form.append('image[]', file, file.name)
+    body = form
+  }
+  const response = await api.post(
+    `/api/image-playground/tasks/create/${references.length ? 'edits' : 'generations'}`,
+    body,
+    {
+      signal,
+      skipAuthRefresh: true,
+      headers: {
+        'X-Studio-Task-ID': id,
+        'X-Studio-Group': encodeURIComponent(parameters.group ?? ''),
+        'X-Studio-Model': parameters.model,
+      },
+    }
+  )
+  if (signal.aborted || scope !== getImageAuthScope()) {
+    throw new DOMException('Aborted', 'AbortError')
+  }
+  return studioTaskSchema.parse(
+    (requireServerSuccess(response.data) as { data: unknown }).data
+  )
+}
+
+export async function listStudioTasks(
+  signal: AbortSignal
+): Promise<StudioTask[]> {
+  const response = await api.get('/api/image-playground/tasks', { signal })
+  return z
+    .array(studioTaskSchema)
+    .parse((requireServerSuccess(response.data) as { data: unknown }).data)
+}
+
+export async function retryStudioDownload(id: string): Promise<void> {
+  await api.post(
+    `/api/image-playground/tasks/${encodeURIComponent(id)}/retry-download`
+  )
+}
+
+export async function deleteStudioTask(id: string): Promise<void> {
+  try {
+    await api.delete(`/api/image-playground/tasks/${encodeURIComponent(id)}`)
+  } catch (error) {
+    if (!isAxiosError(error) || error.response?.status !== 404) throw error
+  }
 }

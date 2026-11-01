@@ -2,6 +2,8 @@ package controller
 
 import (
 	"bytes"
+	"context"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -282,6 +284,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Studio-Group", url.QueryEscape(group))
 		req.Header.Set("X-Studio-Model", modelName)
+		req.Header.Set("X-Studio-Task-ID", "studio-task-controller-0001")
 		if pat {
 			req.Header.Set("X-Test-PAT", "true")
 		}
@@ -343,7 +346,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 			group, body string
 			status      int
 		}{
-			{high, `{"size":"10240x10240","n":4,"quality":"high"}`, 200},
+			{high, `{"size":"8192x8192","n":4,"quality":"high"}`, 200},
 			{basic, `{"size":"10240x10240"}`, 400},
 			{native, `{"size":"4096x4096"}`, 400},
 			{native, `{"size":"3840x3840"}`, 400},
@@ -364,7 +367,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		for _, tc := range []struct {
 			size, n string
 			status  int
-		}{{"10240x5760", "2", 200}, {"10256x5760", "2", 400}, {"1024x1024", "-1", 400}} {
+		}{{"8192x4608", "2", 200}, {"10256x5760", "2", 400}, {"1024x1024", "-1", 400}} {
 			var body bytes.Buffer
 			writer := multipart.NewWriter(&body)
 			require.NoError(t, writer.WriteField("size", tc.size))
@@ -378,6 +381,47 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 			router.ServeHTTP(rec, req)
 			assert.Equal(t, tc.status, rec.Code, rec.Body.String())
 		}
+	})
+	t.Run("durable task submission validates metadata and rechecks a revoked key before dispatch", func(t *testing.T) {
+		previous := imageStudioTasks
+		store, err := service.NewStudioTaskStore(t.TempDir(), nil)
+		require.NoError(t, err)
+		imageStudioTasks = store
+		t.Cleanup(func() { imageStudioTasks = previous })
+		router.POST("/tasks/:kind", ImageStudioTasksAvailable, middleware.PlaygroundAgent(middleware.PlaygroundAgentImage), CreateImageStudioTask)
+		metadata := map[string]any{"parameters": map[string]any{"prompt": "original draft", "model": "gpt-image-2", "group": high, "size": "8192x8192", "quality": "high", "format": "png", "background": "auto", "count": 1}, "referenceCount": 0, "styleId": nil}
+		payload := map[string]any{"prompt": "expanded prompt", "size": "8192x8192", "quality": "high", "output_format": "png", "n": 1, "studio_metadata": metadata}
+		body, err := common.Marshal(payload)
+		require.NoError(t, err)
+		assert.Equal(t, 403, request("/tasks/generations", high, "gpt-image-2", string(body), true).Code)
+		for range 2 {
+			response := request("/tasks/generations", high, "gpt-image-2", string(body), false)
+			require.Equal(t, 202, response.Code, response.Body.String())
+			assert.NotContains(t, response.Body.String(), "owner_id")
+			assert.NotContains(t, response.Body.String(), "ClientIP")
+		}
+		require.Len(t, store.List(user.Id), 1)
+		task, err := store.Get(user.Id, "studio-task-controller-0001")
+		require.NoError(t, err)
+		assert.Equal(t, "queued", task.Status)
+		_, err = store.Get(user.Id+1, task.ID)
+		assert.ErrorIs(t, err, service.ErrStudioTaskNotFound)
+		for _, changes := range []map[string]any{{"n": 5}, {"stream": true}, {"studio_metadata": map[string]any{}}, {"size": "10240x5760"}} {
+			invalid := maps.Clone(payload)
+			maps.Copy(invalid, changes)
+			encoded, err := common.Marshal(invalid)
+			require.NoError(t, err)
+			response := request("/tasks/generations", high, "gpt-image-2", string(encoded), false)
+			assert.Equal(t, 400, response.Code, response.Body.String())
+		}
+		token, err := model.GetImageStudioToken(user.Id, high)
+		require.NoError(t, err)
+		require.NoError(t, db.Model(token).Update("status", common.TokenStatusDisabled).Error)
+		response := httptest.NewRecorder()
+		err = relayStudioTask(context.Background(), service.StudioTaskRequest{OwnerID: user.Id, ClientIP: "127.0.0.1", Group: high, Model: "gpt-image-2", ContentType: "application/json"}, strings.NewReader(string(body)), response)
+		require.NoError(t, err)
+		assert.Equal(t, 403, response.Code, response.Body.String())
+		require.NoError(t, db.Model(token).Update("status", common.TokenStatusEnabled).Error)
 	})
 	t.Run("disabled and deleted keys stay revoked when reopening the studio", func(t *testing.T) {
 		token, err := model.GetImageStudioToken(user.Id, basic)

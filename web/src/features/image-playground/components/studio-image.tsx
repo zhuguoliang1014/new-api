@@ -48,6 +48,17 @@ export function ImageArtwork(props: {
   const { t } = useTranslation()
   const [failedSrc, setFailedSrc] = useState<string | null>(null)
   const [dimensions, setDimensions] = useState<ImageDimensions | null>(null)
+  if (
+    !props.image.previewSrc &&
+    props.image.src.startsWith('/api/image-playground/tasks/')
+  ) {
+    return (
+      <div className='studio-image-error' role='status'>
+        <Loader2 className='animate-spin' aria-hidden='true' />
+        {t('Saving images locally...')}
+      </div>
+    )
+  }
   if (failedSrc === props.image.src) {
     return (
       <ErrorState
@@ -79,7 +90,7 @@ export function ImageArtwork(props: {
         onClick={props.onPreview}
       >
         <img
-          src={props.image.src}
+          src={props.image.previewSrc ?? props.image.src}
           alt={t('Generated image')}
           loading='lazy'
           referrerPolicy='no-referrer'
@@ -99,7 +110,11 @@ export function ImageArtwork(props: {
         </span>
       </Button>
       <ImageSizeDetails
-        dimensions={dimensions}
+        dimensions={
+          props.image.width && props.image.height
+            ? { width: props.image.width, height: props.image.height }
+            : dimensions
+        }
         requestedSize={props.requestedSize}
       />
     </>

@@ -26,6 +26,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toIntlLocale } from '@/i18n/languages'
 
+import { getImageAuthScope } from '../api'
+import { persistStudioRecord } from '../hooks/use-image-studio'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageRecord } from '../types'
 import { GenerationProgress } from './generation-progress'
@@ -41,6 +43,7 @@ const StudioPreview = lazy(() =>
 
 export function StudioGallery() {
   const { t, i18n } = useTranslation()
+  const taskSyncError = useImagePlaygroundStore((state) => state.taskSyncError)
   const records = useImagePlaygroundStore((state) => state.records)
   const jobs = useImagePlaygroundStore((state) => state.jobs)
   const storageUnavailable = useImagePlaygroundStore(
@@ -116,6 +119,11 @@ export function StudioGallery() {
         </div>
       </div>
       <div className='studio-canvas'>
+        {taskSyncError && (
+          <p className='studio-storage-warning' role='status'>
+            {t('Connection interrupted. Tasks continue on the server.')}
+          </p>
+        )}
         {storageUnavailable && (
           <p className='studio-storage-warning' role='status'>
             {t(
@@ -179,6 +187,8 @@ export function StudioGallery() {
                 {record.localSaveStatus === 'saving' && (
                   <p className='studio-field-hint' role='status'>
                     {t('Saving images locally...')}
+                    {record.cacheProgress &&
+                      ` ${(record.cacheProgress.loaded / 1048576).toFixed(1)} MB${record.cacheProgress.total ? ` / ${(record.cacheProgress.total / 1048576).toFixed(1)} MB · ${Math.min(100, Math.floor((record.cacheProgress.loaded * 100) / record.cacheProgress.total))}%` : ''}`}
                   </p>
                 )}
                 {record.localSaveStatus === 'failed' && (
@@ -187,6 +197,42 @@ export function StudioGallery() {
                       'Some images could not be saved locally. Download them before their links expire.'
                     )}
                   </p>
+                )}
+                {record.serverTask &&
+                  record.localSaveStatus !== 'saved' &&
+                  record.expiresAt && (
+                    <p className='studio-field-hint'>
+                      {t('Server copy expires at {{time}}', {
+                        time: new Date(record.expiresAt).toLocaleTimeString(
+                          locale,
+                          { hour: '2-digit', minute: '2-digit' }
+                        ),
+                      })}
+                    </p>
+                  )}
+                {record.localSaveStatus === 'failed' && (
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      const scope = getImageAuthScope()
+                      if (!scope) return
+                      useImagePlaygroundStore.setState((state) => ({
+                        records: state.records.map((item) =>
+                          item.id === record.id
+                            ? { ...item, localSaveStatus: 'saving' }
+                            : item
+                        ),
+                      }))
+                      void persistStudioRecord(
+                        record,
+                        scope,
+                        new AbortController().signal
+                      )
+                    }}
+                  >
+                    {t('Retry download')}
+                  </Button>
                 )}
                 <StudioCreationActions record={record} />
               </div>

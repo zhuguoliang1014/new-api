@@ -23,7 +23,9 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
 
+import { deleteStudioTask, retryStudioDownload } from '../api'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageJob } from '../types'
 
@@ -37,27 +39,49 @@ export function GenerationProgress(props: { job: ImageJob }) {
     return () => window.clearInterval(timer)
   }, [job.error])
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  let statusLabel = t('Creating...')
+  if (job.error) {
+    statusLabel = t('Creation interrupted')
+  } else if (job.status === 'submitting') {
+    statusLabel = t('Submitting task...')
+  } else if (job.status === 'queued') {
+    statusLabel = t('Queued')
+  } else if (job.status === 'downloading') {
+    statusLabel = t('Receiving image on server...')
+  }
   return (
     <article
       className={`studio-job-card${job.error ? ' studio-job-failed' : ''}`}
     >
       <div className='studio-job-top'>
-        <span>{job.error ? t('Creation interrupted') : t('Creating...')}</span>
-        <Button
-          type='button'
-          variant='ghost'
-          size='icon'
-          aria-label={job.error ? t('Dismiss') : t('Stop waiting')}
-          onClick={() => {
-            if (job.error) {
-              useImagePlaygroundStore.setState((state) => ({
-                jobs: state.jobs.filter((item) => item.id !== job.id),
-              }))
-            } else job.controller.abort()
-          }}
-        >
-          <X size={15} />
-        </Button>
+        <span>{statusLabel}</span>
+        {(!job.serverTask || job.error) && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon'
+            aria-label={job.error ? t('Dismiss') : t('Stop waiting')}
+            onClick={() => {
+              if (job.serverTask) {
+                void deleteStudioTask(job.id)
+                  .then(() =>
+                    useImagePlaygroundStore.setState((state) => ({
+                      jobs: state.jobs.filter((item) => item.id !== job.id),
+                    }))
+                  )
+                  .catch(handleServerError)
+                return
+              }
+              if (job.error) {
+                useImagePlaygroundStore.setState((state) => ({
+                  jobs: state.jobs.filter((item) => item.id !== job.id),
+                }))
+              } else job.controller.abort()
+            }}
+          >
+            <X size={15} />
+          </Button>
+        )}
       </div>
       <div className='studio-job-visual' aria-hidden='true'>
         {job.error ? (
@@ -78,11 +102,48 @@ export function GenerationProgress(props: { job: ImageJob }) {
             : job.parameters.size.replace('x', ' × ')}
         </span>
       </div>
+      {job.serverTask && (
+        <p className='studio-field-hint'>
+          {t('Task ID')}: <code className='break-all'>{job.id}</code>
+        </p>
+      )}
+      {job.status === 'downloading' && (job.downloadImageIndex ?? 0) > 0 && (
+        <p className='studio-field-hint'>
+          {job.downloadImageIndex} / {job.parameters.count}
+        </p>
+      )}
+      {job.status === 'downloading' && (
+        <p className='studio-field-hint' role='status'>
+          {t('Downloaded {{loaded}} MB{{total}}', {
+            loaded: ((job.downloadedBytes ?? 0) / 1048576).toFixed(1),
+            total: job.totalBytes
+              ? ` / ${(job.totalBytes / 1048576).toFixed(1)} MB · ${Math.min(100, Math.floor(((job.downloadedBytes ?? 0) * 100) / job.totalBytes))}%`
+              : '',
+          })}
+        </p>
+      )}
+      {job.serverTask && !job.error && (
+        <p className='studio-field-hint'>
+          {t('Safe to refresh. Images stay on the server for 10 hours.')}
+        </p>
+      )}
       {job.error ? (
         <>
           <p className='studio-field-error' role='alert'>
             {job.error}
           </p>
+          {job.status === 'download_failed' && (
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() =>
+                void retryStudioDownload(job.id).catch(handleServerError)
+              }
+            >
+              {t('Retry download')}
+            </Button>
+          )}
           <Button
             type='button'
             variant='outline'
