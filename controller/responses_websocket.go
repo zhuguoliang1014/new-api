@@ -16,7 +16,9 @@ import (
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
+	"github.com/gorilla/websocket"
 )
 
 type responsesWSRequestContextKey struct{}
@@ -114,6 +116,23 @@ func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner 
 
 func ResponsesWebSocket(c *gin.Context) {
 	requestID := c.GetString(common.RequestIdKey)
+	lease, acquired, err := service.AcquireResponsesWSConnection(c.Request.Context(), c.GetInt("id"))
+	if err != nil || !acquired {
+		code := "websocket_connection_limit"
+		if err != nil {
+			code = "websocket_transport_unavailable"
+		}
+		// Codex treats an unavailable WebSocket upgrade as a reason to use
+		// its normal HTTPS Responses transport. Do not return 429 or upgrade
+		// first: no create event has been submitted and fallback is safe here.
+		c.Header("Cache-Control", "no-store")
+		c.JSON(http.StatusUpgradeRequired, gin.H{"error": gin.H{
+			"type": "invalid_request_error", "code": code,
+			"message": "WebSocket transport unavailable; use HTTPS. Each user may keep up to 3 WebSocket connections, including separate agent connections.",
+		}})
+		return
+	}
+	defer lease.Release()
 	runner := newResponsesWSRequestRunner(c)
 	responsesUpgrader := upgrader
 	// CLI clients send no Origin. Browser clients must use the same host;
@@ -124,6 +143,22 @@ func ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 	defer ws.Close()
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
+	watchDone := make(chan struct{})
+	watchExited := make(chan struct{})
+	go func() {
+		defer close(watchExited)
+		select {
+		case <-lease.Lost():
+			cancel()
+			_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseTryAgainLater, "connection lease expired; reconnect required"), time.Now().Add(time.Second))
+			_ = ws.Close()
+		case <-watchDone:
+		}
+	}()
+	defer func() { close(watchDone); <-watchExited }()
 
 	if apiError := relay.ResponsesHTTPWebSocketHelper(c, ws, runner); apiError != nil {
 		logger.LogError(c, common.LogText("responses websocket relay error: %s", common.LocalLogPreview(apiError.Error())))

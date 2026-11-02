@@ -16,6 +16,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func TestResponsesHTTPWebSocketCodexProviderFlag(t *testing.T) {
 	if binary == "" {
 		t.Skip("set TEST_CODEX_BINARY to run local Codex transport interoperability")
 	}
-	for _, mode := range []string{"websocket", "http", "fallback"} {
+	for _, mode := range []string{"websocket", "http", "fallback", "connection-cap"} {
 		t.Run(mode, func(t *testing.T) {
 			f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0))`)
 			var calls atomic.Int32
@@ -42,6 +43,16 @@ func TestResponsesHTTPWebSocketCodexProviderFlag(t *testing.T) {
 				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.completed", "response": map[string]any{"id": "resp_cli", "object": "response", "status": "completed", "model": "gpt-4o", "output": []any{item}, "usage": map[string]any{"input_tokens": 1000, "output_tokens": 10, "total_tokens": 1010}}})
 			}
 			baseURL := f.gatewayURL
+			if mode == "connection-cap" {
+				// The fixture is already holding one socket. Simulate the
+				// main conversation and a child agent taking the other two;
+				// the real CLI must fall back on its fourth handshake.
+				for range 2 {
+					held, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(baseURL, "http")+"/v1/responses", http.Header{"Authorization": []string{"Bearer sk-" + f.token.Key}})
+					require.NoError(t, err)
+					defer held.Close()
+				}
+			}
 			var rejected atomic.Int32
 			if mode == "fallback" {
 				target, err := url.Parse(baseURL)

@@ -574,6 +574,10 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 			return types.NewErrorWithStatusCode(errors.New("the channel no longer supports native HTTP Responses; reconnect required"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
 		}
 	}
+	// Per-turn middleware creates a fresh context. Rebuild affinity metadata
+	// from this turn's canonical body so configured cache/session headers and
+	// request-level overrides survive the connection's channel pin.
+	service.GetPreferredChannelByAffinity(c, model, s.lockedGroup)
 	keyEnabled := channel.Key == s.lockedKey
 	if channel.ChannelInfo.IsMultiKey {
 		keys := channel.GetKeys()
@@ -624,7 +628,11 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	}
 	common.SetContextKey(c, appconstant.ContextKeyChannelSetting, channel.GetSetting())
 	common.SetContextKey(c, appconstant.ContextKeyChannelOtherSetting, channel.GetOtherSettings())
-	common.SetContextKey(c, appconstant.ContextKeyChannelParamOverride, channel.GetParamOverride())
+	paramOverride := channel.GetParamOverride()
+	if merged, applied := service.ApplyChannelAffinityOverrideTemplate(c, paramOverride); applied {
+		paramOverride = merged
+	}
+	common.SetContextKey(c, appconstant.ContextKeyChannelParamOverride, paramOverride)
 	common.SetContextKey(c, appconstant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, appconstant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
 	policy := service.RequestPolicy(c)

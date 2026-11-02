@@ -23,6 +23,7 @@ type ResponsesUsageAccumulator struct {
 	imageCommitted bool
 	started        bool
 	finished       bool
+	upstreamUsage  bool
 }
 
 func NewResponsesUsageAccumulator(info *relaycommon.RelayInfo) *ResponsesUsageAccumulator {
@@ -37,13 +38,24 @@ func (a *ResponsesUsageAccumulator) Observe(event *dto.ResponsesStreamResponse, 
 	}
 	if event.Response != nil {
 		a.info.ObserveResponseModel(event.Response.Model)
+		if event.Response.Usage != nil {
+			// Some compatible providers report a cumulative snapshot before
+			// the terminal. Preserve those facts if the stream later breaks.
+			a.upstreamUsage = true
+			switch event.Type {
+			case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+				// A final explicit zero supersedes an earlier nonzero cache
+				// count; merging only nonzero fields would retain a stale hit.
+				*a.usage = dto.Usage{}
+			}
+			ApplyResponsesUsage(a.usage, event.Response.Usage)
+		}
 	}
 	a.started = true
 	ObserveResponsesOutcome(a.info, event)
 	switch event.Type {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
 		if event.Response != nil {
-			ApplyResponsesUsage(a.usage, event.Response.Usage)
 			if a.outputText.Len() == 0 {
 				// Some upstreams carry the output only on the terminal event.
 				a.outputText.WriteString(relayconvert.ExtractOutputTextFromResponses(event.Response))
@@ -85,6 +97,9 @@ func (a *ResponsesUsageAccumulator) Observe(event *dto.ResponsesStreamResponse, 
 	}
 }
 
+// HasUpstreamUsage distinguishes real input/cache facts from a local fallback.
+func (a *ResponsesUsageAccumulator) HasUpstreamUsage() bool { return a.upstreamUsage }
+
 func (a *ResponsesUsageAccumulator) Finish() *dto.Usage {
 	if a.finished {
 		return a.usage
@@ -105,7 +120,7 @@ func (a *ResponsesUsageAccumulator) Finish() *dto.Usage {
 	// that produced any event but no usage still owes its input tokens unless
 	// upstream reported an explicit failure.
 	billsPrompt := a.usage.CompletionTokens != 0 || (a.started && !a.info.StreamStatus.ResponseFailed())
-	if a.usage.PromptTokens == 0 && billsPrompt {
+	if a.usage.PromptTokens == 0 && billsPrompt && !a.upstreamUsage {
 		a.usage.PromptTokens = a.info.GetEstimatePromptTokens()
 	}
 	a.usage.TotalTokens = a.usage.PromptTokens + a.usage.CompletionTokens

@@ -102,7 +102,23 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	common.SetContextKey(c, constant.ContextKeyResponseStreamStatus, info.StreamStatus)
 	info.StreamStatus.RequireTerminal()
-	return accumulator.Finish(), nil
+	usage := accumulator.Finish()
+	if c.GetString("responses_upstream_transport") == "http" {
+		if info.StreamStatus.ResponseOutcome() == "" {
+			info.StreamStatus.RecordError("Responses stream ended without a terminal event")
+		}
+		if !accumulator.HasUpstreamUsage() {
+			// A long cached conversation may be almost entirely discounted.
+			// Losing its usage on disconnect is not evidence of zero cache:
+			// do not turn the reconstructed input into a full-price estimate.
+			// Delivered output/tool facts still settle through the usual path.
+			usage.PromptTokens = 0
+			usage.TotalTokens = usage.CompletionTokens
+			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
+			c.Set("responses_input_usage_unavailable", true)
+		}
+	}
+	return usage, nil
 }
 
 func rewriteSGLangResponsesCreatedAt(info *relaycommon.RelayInfo, payload []byte, path string, createdAt dto.IntValue) []byte {

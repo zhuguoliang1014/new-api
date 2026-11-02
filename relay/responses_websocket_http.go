@@ -244,6 +244,12 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 	c.Request.Body = io.NopCloser(bytes.NewReader(create.Body))
 	c.Request.ContentLength = int64(len(create.Body))
 	c.Request.Method = http.MethodPost
+	// generate:false is local preparation, not an upstream session. Binding
+	// here would choose a route before the real request supplies its cache key
+	// and would skip the corresponding session-header override template.
+	if !generate {
+		return s.warmHTTPContext(state, create, items)
+	}
 	common.SetContextKey(c, appconstant.ContextKeyOriginalModel, model)
 	constraints := service.GetChannelConstraints(c)
 	constraints.AddFilter(appdto.ChannelFilter{Kind: appdto.FilterRequestPath, RequestPath: c.Request.URL.Path})
@@ -267,9 +273,6 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 	info.InitChannelMeta(c)
 	if channel != nil {
 		s.rememberConnectionContext(c, channel, info, model)
-	}
-	if !generate {
-		return s.warmHTTPContext(state, create, items)
 	}
 	c.Set("responses_downstream_transport", "websocket")
 	c.Set("responses_upstream_transport", "http")
@@ -330,11 +333,12 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 		}
 		return types.WithOpenAIError(types.OpenAIError{Type: "server_error", Code: code, Message: message}, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
-	if writer.completed && writer.responseID != "" && writer.output != nil {
+	if writer.completed && info.StreamStatus != nil && !info.StreamStatus.HasErrors() && info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) && writer.responseID != "" && writer.output != nil {
 		history := make([]common.RawMessage, 0, len(items)+len(writer.output))
 		history = append(history, items...)
 		history = append(history, writer.output...)
 		cache.remember(writer.responseID, create.StreamID, model, history)
+		service.RecordChannelAffinity(c, info.ChannelId)
 	}
 	return nil
 }

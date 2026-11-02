@@ -426,6 +426,16 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 			tieredUsedVars = billingexpr.UsedVarsByHash(snap.ExprString, snap.ExprHash)
 		}
 		tieredTokens = BuildTieredTokenParams(billingUsage, summary.IsClaudeUsageSemantic, tieredUsedVars)
+		if ctx.GetBool("responses_input_usage_unavailable") {
+			// Unknown cache/input billing quantities are excluded above, but
+			// the known request size still determines the tier for delivered
+			// output. Do not silently turn a long-context request into a short
+			// one merely because its final input usage was lost.
+			if estimatedLength := relayInfo.GetEstimatePromptTokens(); estimatedLength > 0 {
+				tieredTokens.Len = float64(estimatedLength)
+				ctx.Set("responses_context_length_estimate", estimatedLength)
+			}
+		}
 		tieredOk, tieredQuota, tieredRes := TryTieredSettle(relayInfo, tieredTokens)
 		if tieredOk {
 			tieredBillingApplied = true

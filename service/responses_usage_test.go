@@ -340,3 +340,33 @@ func TestResponsesUsageAccumulatorMissingUsageEstimation(t *testing.T) {
 		})
 	}
 }
+
+func TestResponsesUsageAccumulatorRetainsReportedCacheBeforeDisconnect(t *testing.T) {
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-4o", ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "gpt-4o"}, StreamStatus: relaycommon.NewStreamStatus()}
+	info.SetEstimatePromptTokens(580000)
+	accumulator := NewResponsesUsageAccumulator(info)
+	upstream := &dto.Usage{InputTokens: 580000, OutputTokens: 1, TotalTokens: 580001, InputTokensDetails: &dto.InputTokenDetails{CachedTokens: 579000}}
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.in_progress", Response: &dto.OpenAIResponsesResponse{Usage: upstream}}, nil)
+	usage := accumulator.Finish()
+	assert.Equal(t, 580000, usage.PromptTokens)
+	assert.Equal(t, 579000, usage.PromptTokensDetails.CachedTokens, "reported usage must survive even if a final event never arrives")
+}
+
+func TestResponsesUsageAccumulatorFinalZeroCacheReplacesProgressSnapshot(t *testing.T) {
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-4o", StreamStatus: relaycommon.NewStreamStatus()}
+	accumulator := NewResponsesUsageAccumulator(info)
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.in_progress", Response: &dto.OpenAIResponsesResponse{Usage: &dto.Usage{InputTokens: 1000, InputTokensDetails: &dto.InputTokenDetails{CachedTokens: 900}}}}, nil)
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.completed", Response: &dto.OpenAIResponsesResponse{Usage: &dto.Usage{InputTokens: 1000, OutputTokens: 10, InputTokensDetails: &dto.InputTokenDetails{CachedTokens: 0}}}}, nil)
+	usage := accumulator.Finish()
+	assert.Equal(t, 1000, usage.PromptTokens)
+	assert.Zero(t, usage.PromptTokensDetails.CachedTokens, "the terminal snapshot is authoritative, including explicit zero cache")
+}
+
+func TestResponsesUsageAccumulatorReportedZeroInputIsNotEstimated(t *testing.T) {
+	info := &relaycommon.RelayInfo{OriginModelName: "gpt-4o", StreamStatus: relaycommon.NewStreamStatus()}
+	info.SetEstimatePromptTokens(580000)
+	accumulator := NewResponsesUsageAccumulator(info)
+	accumulator.Observe(&dto.ResponsesStreamResponse{Type: "response.completed", Response: &dto.OpenAIResponsesResponse{Usage: &dto.Usage{InputTokens: 0, OutputTokens: 1}}}, nil)
+	usage := accumulator.Finish()
+	assert.Zero(t, usage.PromptTokens, "a reported zero is not evidence of missing usage")
+}
