@@ -43,26 +43,25 @@ export type SectionRegistryConfig<
   urlStyle?: 'query' | 'path'
 }
 
-/**
- * Create a section registry with helper functions
- */
-export function createSectionRegistry<
-  TSectionId extends string,
-  TSettings,
-  TExtraArgs extends unknown[] = [],
->(config: SectionRegistryConfig<TSectionId, TSettings, TExtraArgs>) {
+/** Navigation metadata can be imported by route guards without loading page builders. */
+export function createSectionNavigation<
+  const TSectionId extends string,
+>(config: {
+  sections: readonly {
+    id: TSectionId
+    titleKey: string
+    descriptionKey?: string
+  }[]
+  defaultSection: TSectionId
+  basePath: string
+  urlStyle?: 'query' | 'path'
+}) {
   const { sections, defaultSection, basePath, urlStyle = 'query' } = config
-
-  type SectionId = TSectionId
-
   const sectionIds = sections.map((section) => section.id) as [
-    SectionId,
-    ...SectionId[],
+    TSectionId,
+    ...TSectionId[],
   ]
 
-  /**
-   * Get navigation items for sidebar
-   */
   function getSectionNavItems(t: TFunction) {
     return sections.map((section) => ({
       title: t(section.titleKey),
@@ -73,28 +72,41 @@ export function createSectionRegistry<
     }))
   }
 
-  /**
-   * Get section content by section ID
-   */
+  function getSectionMeta(sectionId: TSectionId) {
+    return sections.find((section) => section.id === sectionId) ?? sections[0]
+  }
+
+  return { sectionIds, defaultSection, getSectionNavItems, getSectionMeta }
+}
+
+/** Create the content registry only inside the corresponding lazy page. */
+export function createSectionRegistry<
+  TSectionId extends string,
+  TSettings,
+  TExtraArgs extends unknown[] = [],
+>(config: SectionRegistryConfig<TSectionId, TSettings, TExtraArgs>) {
+  const navigation = createSectionNavigation({
+    ...config,
+    sections: config.sections as readonly (SectionDefinition<
+      TSettings,
+      TExtraArgs
+    > & { id: TSectionId })[],
+  })
+
+  function getSectionMeta(sectionId: TSectionId) {
+    return (
+      config.sections.find((section) => section.id === sectionId) ??
+      config.sections[0]
+    )
+  }
+
   function getSectionContent(
-    sectionId: SectionId,
+    sectionId: TSectionId,
     settings: TSettings,
     ...extraArgs: TExtraArgs
   ) {
     return getSectionMeta(sectionId).build(settings, ...extraArgs)
   }
 
-  function getSectionMeta(sectionId: SectionId) {
-    const section =
-      sections.find((item) => item.id === sectionId) ?? sections[0]
-    return section
-  }
-
-  return {
-    sectionIds,
-    defaultSection,
-    getSectionNavItems,
-    getSectionContent,
-    getSectionMeta,
-  }
+  return { ...navigation, getSectionContent, getSectionMeta }
 }

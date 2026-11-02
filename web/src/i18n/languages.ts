@@ -19,60 +19,27 @@ For commercial licensing, please contact support@quantumnous.com
 export const INTERFACE_LANGUAGE_OPTIONS = [
   { code: 'zhCN', label: '简体中文' },
   { code: 'en', label: 'English' },
-  { code: 'fr', label: 'Français' },
-  { code: 'ru', label: 'Русский' },
-  { code: 'ja', label: '日本語' },
-  { code: 'vi', label: 'Tiếng Việt' },
-  { code: 'zhTW', label: '繁體中文' },
 ] as const
 
 export type InterfaceLanguageCode =
   (typeof INTERFACE_LANGUAGE_OPTIONS)[number]['code']
 
-export function normalizeInterfaceLanguage(value?: string | null): string {
-  if (!value) return 'en'
-
-  let normalized = value.trim().replaceAll('_', '-').toLowerCase()
-  if (
-    value === 'zh-TW' ||
-    value === 'zh-HK' ||
-    value === 'zh-MO' ||
-    value === 'zhTW'
-  ) {
-    normalized = 'zhTW'
-  }
-  if (value === 'zh-CN' || value === 'zh-Hans' || value === 'zhCN') {
-    normalized = 'zhCN'
-  }
-
-  return INTERFACE_LANGUAGE_OPTIONS.some((lang) => lang.code === normalized)
-    ? normalized
-    : 'en'
+export function normalizeInterfaceLanguage(
+  value?: string | null
+): InterfaceLanguageCode {
+  const normalized = value?.trim().replaceAll('_', '-').toLowerCase() ?? ''
+  // Preserve existing Chinese preferences after retiring the other language packs.
+  if (/^zh(?:$|-|cn$|tw$)/.test(normalized)) return 'zhCN'
+  return 'en'
 }
 
 /**
- * Map a browser-detected locale onto the interface language codes this project
- * uses with i18next (`zhCN` / `zhTW`).
- *
- * Browsers report standard BCP-47 tags (`zh-CN`, `zh-TW`, `zh-Hant`, `zh`, ...),
- * but `supportedLngs`/resources use the non-standard camelCase codes, so without
- * this mapping a Chinese browser would never match and fall back to English.
- * Non-Chinese codes are returned unchanged so i18next's own `supportedLngs`
- * matching still applies (e.g. `fr-FR` -> `fr`, `ja` -> `ja`).
+ * Use the same two-language policy for browser detection and saved preferences.
+ * Legacy Traditional Chinese preferences use Simplified Chinese; removed
+ * non-Chinese languages use English.
  */
-export function convertDetectedLanguage(value: string): string {
-  const lower = value.trim().replaceAll('_', '-').toLowerCase()
-  if (!lower.startsWith('zh')) return value
-  if (
-    lower === 'zhtw' ||
-    lower === 'zh-tw' ||
-    lower === 'zh-hk' ||
-    lower === 'zh-mo' ||
-    lower.startsWith('zh-hant')
-  ) {
-    return 'zhTW'
-  }
-  return 'zhCN'
+export function convertDetectedLanguage(value: string): InterfaceLanguageCode {
+  return normalizeInterfaceLanguage(value)
 }
 
 /**

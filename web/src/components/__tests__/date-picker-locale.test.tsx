@@ -48,27 +48,40 @@ afterEach(async () => {
   await act(() => i18next.changeLanguage('en'))
 })
 
-test('uses Chinese calendar locales for zhCN and zhTW in both date pickers', async () => {
+test.each(['zhCN', 'zhTW', 'zh-TW'])(
+  'uses the Simplified Chinese calendar for current or legacy preference %s',
+  async (language) => {
+    await setInterfaceLanguage(language)
+    const datePicker = render(
+      <DatePicker selected={selected} onSelect={() => undefined} />
+    )
+    expect(await openCalendar()).toHaveTextContent('zh-CN')
+    datePicker.unmount()
+
+    render(<DateTimePicker value={selected} onChange={() => undefined} />)
+    expect(await openCalendar()).toHaveTextContent('zh-CN')
+  }
+)
+
+test.each(['en', 'fr', 'ja', 'ru', 'vi'])(
+  'uses the English calendar for current or removed preference %s',
+  async (language) => {
+    await setInterfaceLanguage(language)
+    const datePicker = render(
+      <DatePicker selected={selected} onSelect={() => undefined} />
+    )
+    expect(await openCalendar()).toHaveTextContent('en-US')
+    datePicker.unmount()
+
+    render(<DateTimePicker value={selected} onChange={() => undefined} />)
+    expect(await openCalendar()).toHaveTextContent('en-US')
+  }
+)
+
+test('updates the open calendar when the interface language changes', async () => {
   await setInterfaceLanguage('zhCN')
-  const datePicker = render(
-    <DatePicker selected={selected} onSelect={() => undefined} />
-  )
-  expect(await openCalendar()).toHaveTextContent('zh-CN')
-  datePicker.unmount()
-
-  const dateTimePicker = render(
-    <DateTimePicker value={selected} onChange={() => undefined} />
-  )
-  expect(await openCalendar()).toHaveTextContent('zh-CN')
-  dateTimePicker.unmount()
-
-  await setInterfaceLanguage('zhTW')
   render(<DatePicker selected={selected} onSelect={() => undefined} />)
-  expect(await openCalendar()).toHaveTextContent('zh-TW')
-})
-
-test('keeps French on the French calendar locale', async () => {
-  await setInterfaceLanguage('fr')
-  render(<DatePicker selected={selected} onSelect={() => undefined} />)
-  expect(await openCalendar()).toHaveTextContent('fr')
+  expect(await openCalendar()).toHaveTextContent('zh-CN')
+  await setInterfaceLanguage('en')
+  expect(screen.getByTestId('calendar-locale')).toHaveTextContent('en-US')
 })

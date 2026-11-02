@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { billingNavigation } from '@/features/system-settings/section-navigation'
 import { parseCurrencyDisplayType } from '@/lib/currency'
 
 import { CheckinSettingsSection } from '../general/checkin-settings-section'
@@ -55,8 +56,7 @@ const getGroupDefaults = (settings: BillingSettings) => ({
 
 const BILLING_SECTIONS = [
   {
-    id: 'quota',
-    titleKey: 'Quota Settings',
+    ...billingNavigation.getSectionMeta('quota'),
     build: (settings: BillingSettings) => (
       <QuotaSettingsSection
         defaultValues={{
@@ -80,8 +80,7 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'currency',
-    titleKey: 'Currency & Display',
+    ...billingNavigation.getSectionMeta('currency'),
     build: (settings: BillingSettings) => (
       <PricingSection
         defaultValues={{
@@ -103,8 +102,7 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'model-pricing',
-    titleKey: 'Model Pricing',
+    ...billingNavigation.getSectionMeta('model-pricing'),
     build: (settings: BillingSettings) => (
       <RatioSettingsCard
         titleKey='Model Pricing'
@@ -116,8 +114,7 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'group-pricing',
-    titleKey: 'Group Pricing',
+    ...billingNavigation.getSectionMeta('group-pricing'),
     build: (settings: BillingSettings) => (
       <RatioSettingsCard
         titleKey='Group Pricing'
@@ -129,8 +126,7 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'payment',
-    titleKey: 'Payment Gateway',
+    ...billingNavigation.getSectionMeta('payment'),
     build: (settings: BillingSettings) => (
       <PaymentSettingsSection
         defaultValues={{
@@ -189,8 +185,7 @@ const BILLING_SECTIONS = [
     ),
   },
   {
-    id: 'checkin',
-    titleKey: 'Check-in Rewards',
+    ...billingNavigation.getSectionMeta('checkin'),
     build: (settings: BillingSettings) => (
       <CheckinSettingsSection
         defaultValues={{
@@ -203,20 +198,20 @@ const BILLING_SECTIONS = [
   },
 ] as const
 
-export type BillingSectionId = (typeof BILLING_SECTIONS)[number]['id']
+export type BillingSectionId = (typeof billingNavigation.sectionIds)[number]
 
 const billingRegistry = createSectionRegistry<
   BillingSectionId,
   BillingSettings
 >({
   sections: BILLING_SECTIONS,
-  defaultSection: 'quota',
+  defaultSection: billingNavigation.defaultSection,
   basePath: '/system-settings/billing',
   urlStyle: 'path',
 })
 
-export const BILLING_SECTION_IDS = billingRegistry.sectionIds
-export const BILLING_DEFAULT_SECTION = billingRegistry.defaultSection
-export const getBillingSectionNavItems = billingRegistry.getSectionNavItems
+export const BILLING_SECTION_IDS = billingNavigation.sectionIds
+export const BILLING_DEFAULT_SECTION = billingNavigation.defaultSection
+export const getBillingSectionNavItems = billingNavigation.getSectionNavItems
 export const getBillingSectionContent = billingRegistry.getSectionContent
 export const getBillingSectionMeta = billingRegistry.getSectionMeta

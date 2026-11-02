@@ -39,15 +39,30 @@ export default defineConfig(({ envMode }) => {
         'vendor-ui-primitives': {
           test: /node_modules[\\/](@base-ui|@radix-ui)[\\/]/,
           name: 'vendor-ui-primitives',
-          chunks: 'all',
+          // Keep controls used only by lazy pages out of the startup chunk.
+          chunks: 'initial',
           priority: 0,
           enforce: true,
         },
         'vendor-tanstack': {
           test: /node_modules[\\/]@tanstack[\\/]/,
           name: 'vendor-tanstack',
-          chunks: 'all',
+          chunks: 'initial',
           priority: 0,
+          enforce: true,
+        },
+        'locale-en': {
+          test: /[\\/]i18n[\\/]locales[\\/](?:local-)?en\.json$/,
+          name: 'locale-en',
+          chunks: 'all',
+          priority: 20,
+          enforce: true,
+        },
+        'locale-zh': {
+          test: /[\\/]i18n[\\/]locales[\\/](?:local-)?zh\.json$/,
+          name: 'locale-zh',
+          chunks: 'all',
+          priority: 20,
           enforce: true,
         },
       },

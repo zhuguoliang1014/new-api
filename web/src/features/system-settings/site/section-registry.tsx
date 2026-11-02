@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { siteNavigation } from '@/features/system-settings/section-navigation'
+
 import { SystemInfoSection } from '../general/system-info-section'
 import {
   parseHeaderNavModules,
@@ -31,8 +33,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 
 const SITE_SECTIONS = [
   {
-    id: 'system-info',
-    titleKey: 'System Information',
+    ...siteNavigation.getSectionMeta('system-info'),
     build: (settings: SiteSettings) => (
       <SystemInfoSection
         defaultValues={{
@@ -55,15 +56,13 @@ const SITE_SECTIONS = [
     ),
   },
   {
-    id: 'notice',
-    titleKey: 'System Notice',
+    ...siteNavigation.getSectionMeta('notice'),
     build: (settings: SiteSettings) => (
       <NoticeSection defaultValue={settings.Notice ?? ''} />
     ),
   },
   {
-    id: 'header-navigation',
-    titleKey: 'Header navigation',
+    ...siteNavigation.getSectionMeta('header-navigation'),
     build: (settings: SiteSettings) => {
       const headerNavConfig = parseHeaderNavModules(settings.HeaderNavModules)
       const headerNavSerialized = serializeHeaderNavModules(headerNavConfig)
@@ -76,8 +75,7 @@ const SITE_SECTIONS = [
     },
   },
   {
-    id: 'sidebar-modules',
-    titleKey: 'Sidebar modules',
+    ...siteNavigation.getSectionMeta('sidebar-modules'),
     build: (settings: SiteSettings) => {
       const sidebarConfig = parseSidebarModulesAdmin(
         settings.SidebarModulesAdmin
@@ -93,17 +91,17 @@ const SITE_SECTIONS = [
   },
 ] as const
 
-export type SiteSectionId = (typeof SITE_SECTIONS)[number]['id']
+export type SiteSectionId = (typeof siteNavigation.sectionIds)[number]
 
 const siteRegistry = createSectionRegistry<SiteSectionId, SiteSettings>({
   sections: SITE_SECTIONS,
-  defaultSection: 'system-info',
+  defaultSection: siteNavigation.defaultSection,
   basePath: '/system-settings/site',
   urlStyle: 'path',
 })
 
-export const SITE_SECTION_IDS = siteRegistry.sectionIds
-export const SITE_DEFAULT_SECTION = siteRegistry.defaultSection
-export const getSiteSectionNavItems = siteRegistry.getSectionNavItems
+export const SITE_SECTION_IDS = siteNavigation.sectionIds
+export const SITE_DEFAULT_SECTION = siteNavigation.defaultSection
+export const getSiteSectionNavItems = siteNavigation.getSectionNavItems
 export const getSiteSectionContent = siteRegistry.getSectionContent
 export const getSiteSectionMeta = siteRegistry.getSectionMeta

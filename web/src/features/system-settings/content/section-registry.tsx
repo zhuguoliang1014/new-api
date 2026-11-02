@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { contentNavigation } from '@/features/system-settings/section-navigation'
+
 import type { ContentSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { AnnouncementsSection } from './announcements-section'
@@ -39,8 +41,7 @@ function validateDataExportDefaultTime(value: string): 'week' | 'hour' | 'day' {
 
 const CONTENT_SECTIONS = [
   {
-    id: 'dashboard',
-    titleKey: 'Data Dashboard',
+    ...contentNavigation.getSectionMeta('dashboard'),
     build: (settings: ContentSettings) => (
       <DashboardSection
         defaultValues={{
@@ -54,8 +55,7 @@ const CONTENT_SECTIONS = [
     ),
   },
   {
-    id: 'announcements',
-    titleKey: 'Announcements',
+    ...contentNavigation.getSectionMeta('announcements'),
     build: (settings: ContentSettings) => (
       <AnnouncementsSection
         enabled={settings['console_setting.announcements_enabled']}
@@ -64,8 +64,7 @@ const CONTENT_SECTIONS = [
     ),
   },
   {
-    id: 'api-info',
-    titleKey: 'API Addresses',
+    ...contentNavigation.getSectionMeta('api-info'),
     build: (settings: ContentSettings) => (
       <ApiInfoSection
         enabled={settings['console_setting.api_info_enabled']}
@@ -74,8 +73,7 @@ const CONTENT_SECTIONS = [
     ),
   },
   {
-    id: 'faq',
-    titleKey: 'FAQ',
+    ...contentNavigation.getSectionMeta('faq'),
     build: (settings: ContentSettings) => (
       <FAQSection
         enabled={settings['console_setting.faq_enabled']}
@@ -84,8 +82,7 @@ const CONTENT_SECTIONS = [
     ),
   },
   {
-    id: 'uptime-kuma',
-    titleKey: 'Uptime Kuma',
+    ...contentNavigation.getSectionMeta('uptime-kuma'),
     build: (settings: ContentSettings) => (
       <UptimeKumaSection
         enabled={settings['console_setting.uptime_kuma_enabled']}
@@ -94,15 +91,13 @@ const CONTENT_SECTIONS = [
     ),
   },
   {
-    id: 'chat',
-    titleKey: 'Chat Presets',
+    ...contentNavigation.getSectionMeta('chat'),
     build: (settings: ContentSettings) => (
       <ChatSettingsSection defaultValue={settings.Chats} />
     ),
   },
   {
-    id: 'drawing',
-    titleKey: 'Drawing',
+    ...contentNavigation.getSectionMeta('drawing'),
     build: (settings: ContentSettings) => (
       <DrawingSettingsSection
         defaultValues={{
@@ -118,20 +113,20 @@ const CONTENT_SECTIONS = [
   },
 ] as const
 
-export type ContentSectionId = (typeof CONTENT_SECTIONS)[number]['id']
+export type ContentSectionId = (typeof contentNavigation.sectionIds)[number]
 
 const contentRegistry = createSectionRegistry<
   ContentSectionId,
   ContentSettings
 >({
   sections: CONTENT_SECTIONS,
-  defaultSection: 'dashboard',
+  defaultSection: contentNavigation.defaultSection,
   basePath: '/system-settings/content',
   urlStyle: 'path',
 })
 
-export const CONTENT_SECTION_IDS = contentRegistry.sectionIds
-export const CONTENT_DEFAULT_SECTION = contentRegistry.defaultSection
-export const getContentSectionNavItems = contentRegistry.getSectionNavItems
+export const CONTENT_SECTION_IDS = contentNavigation.sectionIds
+export const CONTENT_DEFAULT_SECTION = contentNavigation.defaultSection
+export const getContentSectionNavItems = contentNavigation.getSectionNavItems
 export const getContentSectionContent = contentRegistry.getSectionContent
 export const getContentSectionMeta = contentRegistry.getSectionMeta

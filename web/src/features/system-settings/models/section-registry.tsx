@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { modelsNavigation } from '@/features/system-settings/section-navigation'
+
 import { IoNetDeploymentSettingsSection } from '../integrations/ionet-deployment-settings-section'
 import type { ModelSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
@@ -36,8 +38,7 @@ function formatJsonForEditor(value: string, fallback: string) {
 
 const MODELS_SECTIONS = [
   {
-    id: 'global',
-    titleKey: 'Global Model Configuration',
+    ...modelsNavigation.getSectionMeta('global'),
     build: (settings: ModelSettings) => (
       <GlobalSettingsCard
         defaultValues={{
@@ -65,8 +66,7 @@ const MODELS_SECTIONS = [
   },
 
   {
-    id: 'gemini',
-    titleKey: 'Gemini',
+    ...modelsNavigation.getSectionMeta('gemini'),
     build: (settings: ModelSettings) => (
       <GeminiSettingsCard
         defaultValues={{
@@ -89,8 +89,7 @@ const MODELS_SECTIONS = [
     ),
   },
   {
-    id: 'claude',
-    titleKey: 'Claude',
+    ...modelsNavigation.getSectionMeta('claude'),
     build: (settings: ModelSettings) => (
       <ClaudeSettingsCard
         defaultValues={{
@@ -107,8 +106,7 @@ const MODELS_SECTIONS = [
     ),
   },
   {
-    id: 'grok',
-    titleKey: 'Grok',
+    ...modelsNavigation.getSectionMeta('grok'),
     build: (settings: ModelSettings) => (
       <GrokSettingsCard
         defaultValues={{
@@ -122,8 +120,7 @@ const MODELS_SECTIONS = [
   },
 
   {
-    id: 'model-deployment',
-    titleKey: 'Model Deployment',
+    ...modelsNavigation.getSectionMeta('model-deployment'),
     build: (settings: ModelSettings) => (
       <IoNetDeploymentSettingsSection
         defaultValues={{
@@ -135,17 +132,17 @@ const MODELS_SECTIONS = [
   },
 ] as const
 
-export type ModelSectionId = (typeof MODELS_SECTIONS)[number]['id']
+export type ModelSectionId = (typeof modelsNavigation.sectionIds)[number]
 
 const modelsRegistry = createSectionRegistry<ModelSectionId, ModelSettings>({
   sections: MODELS_SECTIONS,
-  defaultSection: 'global',
+  defaultSection: modelsNavigation.defaultSection,
   basePath: '/system-settings/models',
   urlStyle: 'path',
 })
 
-export const MODELS_SECTION_IDS = modelsRegistry.sectionIds
-export const MODELS_DEFAULT_SECTION = modelsRegistry.defaultSection
-export const getModelsSectionNavItems = modelsRegistry.getSectionNavItems
+export const MODELS_SECTION_IDS = modelsNavigation.sectionIds
+export const MODELS_DEFAULT_SECTION = modelsNavigation.defaultSection
+export const getModelsSectionNavItems = modelsNavigation.getSectionNavItems
 export const getModelsSectionContent = modelsRegistry.getSectionContent
 export const getModelsSectionMeta = modelsRegistry.getSectionMeta

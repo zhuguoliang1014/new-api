@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { CUSTOM_INTEGRATIONS_DEFAULT_SECTION } from '@/features/custom-integrations/section-registry.tsx'
+
+import { CUSTOM_INTEGRATIONS_DEFAULT_SECTION } from '@/features/system-settings/section-navigation'
 
 export const Route = createFileRoute(
   '/_authenticated/system-settings/custom-integrations/'

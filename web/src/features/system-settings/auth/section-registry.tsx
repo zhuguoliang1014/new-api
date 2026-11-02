@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { authNavigation } from '@/features/system-settings/section-navigation'
+
 import type { AuthSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
 import { BasicAuthSection } from './basic-auth-section'
@@ -26,8 +28,7 @@ import { PasskeySection } from './passkey-section'
 
 const AUTH_SECTIONS = [
   {
-    id: 'basic-auth',
-    titleKey: 'Basic Authentication',
+    ...authNavigation.getSectionMeta('basic-auth'),
     build: (settings: AuthSettings) => (
       <BasicAuthSection
         defaultValues={{
@@ -43,8 +44,7 @@ const AUTH_SECTIONS = [
     ),
   },
   {
-    id: 'oauth',
-    titleKey: 'OAuth Integrations',
+    ...authNavigation.getSectionMeta('oauth'),
     build: (settings: AuthSettings) => (
       <OAuthSection
         serverAddress={settings.ServerAddress}
@@ -80,8 +80,7 @@ const AUTH_SECTIONS = [
     ),
   },
   {
-    id: 'passkey',
-    titleKey: 'Passkey Authentication',
+    ...authNavigation.getSectionMeta('passkey'),
     build: (settings: AuthSettings) => (
       <PasskeySection
         defaultValues={{
@@ -103,8 +102,7 @@ const AUTH_SECTIONS = [
     ),
   },
   {
-    id: 'bot-protection',
-    titleKey: 'Bot Protection',
+    ...authNavigation.getSectionMeta('bot-protection'),
     build: (settings: AuthSettings) => (
       <BotProtectionSection
         defaultValues={{
@@ -116,25 +114,24 @@ const AUTH_SECTIONS = [
     ),
   },
   {
-    id: 'custom-oauth',
-    titleKey: 'Custom OAuth',
+    ...authNavigation.getSectionMeta('custom-oauth'),
     build: (settings: AuthSettings) => (
       <CustomOAuthSection serverAddress={settings.ServerAddress} />
     ),
   },
 ] as const
 
-export type AuthSectionId = (typeof AUTH_SECTIONS)[number]['id']
+export type AuthSectionId = (typeof authNavigation.sectionIds)[number]
 
 const authRegistry = createSectionRegistry<AuthSectionId, AuthSettings>({
   sections: AUTH_SECTIONS,
-  defaultSection: 'basic-auth',
+  defaultSection: authNavigation.defaultSection,
   basePath: '/system-settings/auth',
   urlStyle: 'path',
 })
 
-export const AUTH_SECTION_IDS = authRegistry.sectionIds
-export const AUTH_DEFAULT_SECTION = authRegistry.defaultSection
-export const getAuthSectionNavItems = authRegistry.getSectionNavItems
+export const AUTH_SECTION_IDS = authNavigation.sectionIds
+export const AUTH_DEFAULT_SECTION = authNavigation.defaultSection
+export const getAuthSectionNavItems = authNavigation.getSectionNavItems
 export const getAuthSectionContent = authRegistry.getSectionContent
 export const getAuthSectionMeta = authRegistry.getSectionMeta

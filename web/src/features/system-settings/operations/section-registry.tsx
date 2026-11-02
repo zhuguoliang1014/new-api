@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { operationsNavigation } from '@/features/system-settings/section-navigation'
+
 import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
@@ -28,8 +30,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 
 const OPERATIONS_SECTIONS = [
   {
-    id: 'behavior',
-    titleKey: 'System Behavior',
+    ...operationsNavigation.getSectionMeta('behavior'),
     build: (settings: OperationsSettings) => (
       <SystemBehaviorSection
         defaultValues={{
@@ -41,8 +42,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'alerts',
-    titleKey: 'Model performance metrics',
+    ...operationsNavigation.getSectionMeta('alerts'),
     build: (settings: OperationsSettings) => (
       <MonitoringSettingsSection
         defaultValues={{
@@ -59,8 +59,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'email',
-    titleKey: 'Email & Notifications',
+    ...operationsNavigation.getSectionMeta('email'),
     build: (settings: OperationsSettings) => (
       <EmailSettingsSection
         defaultValues={{
@@ -84,8 +83,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'worker',
-    titleKey: 'Worker Proxy',
+    ...operationsNavigation.getSectionMeta('worker'),
     build: (settings: OperationsSettings) => (
       <WorkerSettingsSection
         defaultValues={{
@@ -98,8 +96,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'logs',
-    titleKey: 'Log Maintenance',
+    ...operationsNavigation.getSectionMeta('logs'),
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultValues={{
@@ -113,8 +110,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'performance',
-    titleKey: 'Performance',
+    ...operationsNavigation.getSectionMeta('performance'),
     build: (settings: OperationsSettings) => (
       <PerformanceSection
         defaultValues={{
@@ -139,8 +135,7 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
-    id: 'update-checker',
-    titleKey: 'System maintenance',
+    ...operationsNavigation.getSectionMeta('update-checker'),
     build: (
       _settings: OperationsSettings,
       currentVersion?: string | null,
@@ -154,7 +149,8 @@ const OPERATIONS_SECTIONS = [
   },
 ] as const
 
-export type OperationsSectionId = (typeof OPERATIONS_SECTIONS)[number]['id']
+export type OperationsSectionId =
+  (typeof operationsNavigation.sectionIds)[number]
 
 const operationsRegistry = createSectionRegistry<
   OperationsSectionId,
@@ -162,14 +158,14 @@ const operationsRegistry = createSectionRegistry<
   [string | null | undefined, number | null | undefined]
 >({
   sections: OPERATIONS_SECTIONS,
-  defaultSection: 'behavior',
+  defaultSection: operationsNavigation.defaultSection,
   basePath: '/system-settings/operations',
   urlStyle: 'path',
 })
 
-export const OPERATIONS_SECTION_IDS = operationsRegistry.sectionIds
-export const OPERATIONS_DEFAULT_SECTION = operationsRegistry.defaultSection
+export const OPERATIONS_SECTION_IDS = operationsNavigation.sectionIds
+export const OPERATIONS_DEFAULT_SECTION = operationsNavigation.defaultSection
 export const getOperationsSectionNavItems =
-  operationsRegistry.getSectionNavItems
+  operationsNavigation.getSectionNavItems
 export const getOperationsSectionContent = operationsRegistry.getSectionContent
 export const getOperationsSectionMeta = operationsRegistry.getSectionMeta

@@ -1,6 +1,7 @@
-/* eslint-disable react-refresh/only-export-components */
 import type { TFunction } from 'i18next'
 
+/* eslint-disable react-refresh/only-export-components */
+import { customIntegrationsNavigation } from '@/features/system-settings/section-navigation'
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 
 import { HupijiaoSettingsSection } from './hupijiao-settings-section'
@@ -26,9 +27,7 @@ function resolveAddonDefaults(
 
 const CUSTOM_INTEGRATIONS_SECTIONS = [
   {
-    id: 'hupijiao',
-    titleKey: 'Hupijiao Gateway',
-    descriptionKey: 'Configuration for Alipay payments through Hupijiao',
+    ...customIntegrationsNavigation.getSectionMeta('hupijiao'),
     build: (settings: CustomIntegrationSettings) => (
       <HupijiaoSettingsSection defaultValues={resolveAddonDefaults(settings)} />
     ),
@@ -36,21 +35,23 @@ const CUSTOM_INTEGRATIONS_SECTIONS = [
 ] as const
 
 export type CustomIntegrationSectionId =
-  (typeof CUSTOM_INTEGRATIONS_SECTIONS)[number]['id']
+  (typeof customIntegrationsNavigation.sectionIds)[number]
 
 const registry = createSectionRegistry<
   CustomIntegrationSectionId,
   CustomIntegrationSettings
 >({
   sections: CUSTOM_INTEGRATIONS_SECTIONS,
-  defaultSection: 'hupijiao',
+  defaultSection: customIntegrationsNavigation.defaultSection,
   basePath: '/system-settings/custom-integrations',
   urlStyle: 'path',
 })
 
-export const CUSTOM_INTEGRATIONS_SECTION_IDS = registry.sectionIds
-export const CUSTOM_INTEGRATIONS_DEFAULT_SECTION = registry.defaultSection
+export const CUSTOM_INTEGRATIONS_SECTION_IDS =
+  customIntegrationsNavigation.sectionIds
+export const CUSTOM_INTEGRATIONS_DEFAULT_SECTION =
+  customIntegrationsNavigation.defaultSection
 export const getCustomIntegrationsSectionNavItems = (t: TFunction) =>
-  registry.getSectionNavItems(t)
+  customIntegrationsNavigation.getSectionNavItems(t)
 export const getCustomIntegrationsSectionContent = registry.getSectionContent
 export const getCustomIntegrationsSectionMeta = registry.getSectionMeta

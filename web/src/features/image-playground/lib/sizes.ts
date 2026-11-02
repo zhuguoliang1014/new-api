@@ -158,9 +158,13 @@ export function getStudioDefaultSize(
   group: { max_resolution: number; size_mode: 'native' | 'upscale' | 'ratio' },
   ratio = '1:1'
 ): string {
-  const resolution =
-    studioResolutions.findLast(
-      (value) => Number.parseInt(value) <= group.max_resolution
-    ) ?? '1K'
+  let resolution: StudioResolution = '1K'
+  for (let index = studioResolutions.length - 1; index >= 0; index -= 1) {
+    const candidate = studioResolutions[index]
+    if (Number.parseInt(candidate) <= group.max_resolution) {
+      resolution = candidate
+      break
+    }
+  }
   return getStudioSize(ratio, resolution, group.size_mode)
 }

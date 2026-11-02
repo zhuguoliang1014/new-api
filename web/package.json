@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "rsbuild dev",
-    "build": "rsbuild build",
+    "build": "rsbuild build && node scripts/check-bundle-budget.mjs",
     "build:check": "bun check -b && rsbuild build",
     "typecheck": "bun check -b",
     "lint": "oxlint -c .oxlintrc.json .",

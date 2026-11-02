@@ -56,6 +56,8 @@
 
 ### 3.1 国际化
 
+- **界面语言约定（2026-11-02 用户要求）**：界面仅提供简体中文 `zhCN` 和英文 `en`。其他语言源文件仅保留用于上游同步和历史数据测试，不得引入运行时构建。旧繁体偏好统一简体，其他已移除语言回退英文；语言菜单、个人偏好和日历遵循同一规则。
+
 - **页面文本**：所有面向用户的文案均需支持 i18n，使用 `useTranslation()` 的 `t()` 进行翻译。
 - **使用场景**
   - **React 组件**：必须使用 `const { t } = useTranslation()`，以保证语言切换时组件会重新渲染。
@@ -208,6 +210,7 @@
 ### 3.16 构建与部署
 
 - 使用 Rsbuild，配置见 `rsbuild.config.ts`；脚本以 `package.json` 为准（如 `bun run dev`、`bun run build`、`bun check -b`、`bun run lint`、`bun run format`），包管理见 [3.15 依赖管理](#315-依赖管理)。
+- **首屏体积预算**：`bun run build` 在构建后运行 `scripts/check-bundle-budget.mjs`，检查 HTML 直接引用的全部 JS/CSS，gzip 总计不得超过 650 KiB。设置页的路由校验和侧栏只能引用 `features/system-settings/section-navigation.ts` 中的轻量元数据，不能从包含页面组件的 `section-registry.tsx` 引入导航常量。
 - 代码分割与懒加载策略见 [3.4 性能](#34-性能)；资源使用合适格式与压缩，环境变量用 `.env` 且以 `VITE_` 前缀，不在代码中硬编码。
 - **发布前**：执行 typecheck、lint、format 检查，完成生产构建并检查产物体积与环境变量配置。
 

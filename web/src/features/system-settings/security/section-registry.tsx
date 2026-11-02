@@ -16,6 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { securityNavigation } from '@/features/system-settings/section-navigation'
+
 import { RateLimitSection } from '../request-limits/rate-limit-section'
 import { SSRFSection } from '../request-limits/ssrf-section'
 import { TokenLimitSection } from '../request-limits/token-limit-section'
@@ -24,8 +26,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 
 const SECURITY_SECTIONS = [
   {
-    id: 'rate-limit',
-    titleKey: 'Rate Limiting',
+    ...securityNavigation.getSectionMeta('rate-limit'),
     build: (settings: SecuritySettings) => (
       <RateLimitSection
         defaultValues={{
@@ -42,8 +43,7 @@ const SECURITY_SECTIONS = [
   },
 
   {
-    id: 'ssrf',
-    titleKey: 'SSRF Protection',
+    ...securityNavigation.getSectionMeta('ssrf'),
     build: (settings: SecuritySettings) => (
       <SSRFSection
         defaultValues={{
@@ -66,8 +66,7 @@ const SECURITY_SECTIONS = [
     ),
   },
   {
-    id: 'token-limits',
-    titleKey: 'Token Limits',
+    ...securityNavigation.getSectionMeta('token-limits'),
     build: (settings: SecuritySettings) => (
       <TokenLimitSection
         defaultValues={{
@@ -79,20 +78,20 @@ const SECURITY_SECTIONS = [
   },
 ] as const
 
-export type SecuritySectionId = (typeof SECURITY_SECTIONS)[number]['id']
+export type SecuritySectionId = (typeof securityNavigation.sectionIds)[number]
 
 const securityRegistry = createSectionRegistry<
   SecuritySectionId,
   SecuritySettings
 >({
   sections: SECURITY_SECTIONS,
-  defaultSection: 'rate-limit',
+  defaultSection: securityNavigation.defaultSection,
   basePath: '/system-settings/security',
   urlStyle: 'path',
 })
 
-export const SECURITY_SECTION_IDS = securityRegistry.sectionIds
-export const SECURITY_DEFAULT_SECTION = securityRegistry.defaultSection
-export const getSecuritySectionNavItems = securityRegistry.getSectionNavItems
+export const SECURITY_SECTION_IDS = securityNavigation.sectionIds
+export const SECURITY_DEFAULT_SECTION = securityNavigation.defaultSection
+export const getSecuritySectionNavItems = securityNavigation.getSectionNavItems
 export const getSecuritySectionContent = securityRegistry.getSectionContent
 export const getSecuritySectionMeta = securityRegistry.getSectionMeta
