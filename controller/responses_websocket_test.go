@@ -40,6 +40,7 @@ var responsesWSTestUserSequence atomic.Int64
 
 func setupResponsesWSRequestTest(t *testing.T) (*model.User, *model.Token) {
 	t.Helper()
+	require.NoError(t, i18n.Init())
 	previousDB := model.DB
 	previousLogDB := model.LOG_DB
 	previousType := common.MainDatabaseType()
@@ -329,6 +330,11 @@ func waitPerfCounters(t *testing.T, wantRequests int64) (requests, successes int
 
 func newResponsesWSBillingTest(t *testing.T, expression string, handle func(*websocket.Conn, *http.Request), httpEvents ...string) *responsesWSBillingTest {
 	t.Helper()
+	return newResponsesWSTransportTest(t, false, expression, handle, httpEvents...)
+}
+
+func newResponsesWSTransportTest(t *testing.T, httpBridge bool, expression string, handle func(*websocket.Conn, *http.Request), httpEvents ...string) *responsesWSBillingTest {
+	t.Helper()
 	user, token := setupResponsesWSRequestTest(t)
 	previousTimeout := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
@@ -404,10 +410,23 @@ func newResponsesWSBillingTest(t *testing.T, expression string, handle func(*web
 		require.NoError(t, model.DB.Delete(channel).Error)
 	})
 	engine := gin.New()
+	var gatewayClosed sync.Once
 	engine.GET("/v1/responses", middleware.TokenAuth(), func(c *gin.Context) {
-		defer close(fixture.done)
+		defer gatewayClosed.Do(func() { close(fixture.done) })
 		c.Set(common.RequestIdKey, "responses-ws-billing")
-		ResponsesWebSocket(c)
+		if httpBridge {
+			c.Set(common.RequestIdKey, common.NewRequestId())
+			ResponsesWebSocket(c)
+			return
+		}
+		// Native-upstream regression fixtures explicitly exercise the legacy
+		// relay. The public controller now bridges to HTTP instead.
+		client, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		if !assert.NoError(t, err) {
+			return
+		}
+		defer client.Close()
+		assert.Nil(t, relay.ResponsesWebSocketHelper(c, client, newResponsesWSRequestRunner(c)))
 	})
 	engine.POST("/v1/responses", middleware.TokenAuth(), middleware.ModelRequestRateLimit(), middleware.Distribute(), func(c *gin.Context) {
 		defer func() { fixture.httpDone <- struct{}{} }()

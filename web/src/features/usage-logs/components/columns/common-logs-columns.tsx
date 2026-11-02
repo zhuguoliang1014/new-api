@@ -62,6 +62,7 @@ import {
   getTieredBillingSummary,
   hasAnyCacheTokens,
   parseLogOther,
+  getLogClientTransport,
   isViolationFeeLog,
   logTokenName,
   renderAuditContent,
@@ -738,6 +739,7 @@ export function useCommonLogsColumns(
 
           return (
             <StreamTpsCell
+              clientTransport={getLogClientTransport(other)}
               isStream={log.is_stream}
               isTask={other?.is_task === true}
               isSyncTask={other?.task_sync === true}

@@ -40,6 +40,7 @@ var responsesWSRequestEngine = sync.OnceValue(func() *gin.Engine {
 		c.Next()
 	}, middleware.BodyStorageCleanup(), middleware.TokenAuth(), middleware.ModelRequestRateLimit(), func(c *gin.Context) {
 		state := c.Request.Context().Value(responsesWSRequestContextKey{}).(*responsesWSRequestState)
+		c.Set("responses_downstream_transport", "websocket")
 		state.apiError = state.handle(c)
 		if state.apiError != nil {
 			status := state.apiError.StatusCode
@@ -114,13 +115,17 @@ func newResponsesWSRequestRunner(c *gin.Context) relay.ResponsesWSRequestRunner 
 func ResponsesWebSocket(c *gin.Context) {
 	requestID := c.GetString(common.RequestIdKey)
 	runner := newResponsesWSRequestRunner(c)
-	ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+	responsesUpgrader := upgrader
+	// CLI clients send no Origin. Browser clients must use the same host;
+	// API-token authentication alone must not silently allow arbitrary origins.
+	responsesUpgrader.CheckOrigin = nil
+	ws, err := responsesUpgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return
 	}
 	defer ws.Close()
 
-	if apiError := relay.ResponsesWebSocketHelper(c, ws, runner); apiError != nil {
+	if apiError := relay.ResponsesHTTPWebSocketHelper(c, ws, runner); apiError != nil {
 		logger.LogError(c, common.LogText("responses websocket relay error: %s", common.LocalLogPreview(apiError.Error())))
 		apiError.SetMessage(common.MessageWithRequestId(apiError.Error(), requestID))
 		helper.WssError(c, ws, apiError.ToOpenAIError(common.UpstreamAddresses(c)...))

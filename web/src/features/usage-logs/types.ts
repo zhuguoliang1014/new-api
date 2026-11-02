@@ -115,7 +115,10 @@ export interface ToolSurchargeItem {
 }
 
 export interface LogOtherData {
+  downstream_transport?: 'websocket' | 'http'
   admin_info?: {
+    downstream_transport?: 'websocket' | 'http'
+    upstream_transport?: 'websocket' | 'http'
     request_policy?: PolicyEvent[]
     is_multi_key?: boolean
     multi_key_index?: number

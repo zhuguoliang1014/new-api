@@ -216,3 +216,25 @@ func TestChannelSatisfiesFilters(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, dto.FilterRequestPath, kind)
 }
+
+func TestHTTPResponsesFilterDoesNotRequireUpstreamWebSocket(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind int
+		want bool
+	}{
+		{name: "openai", kind: constant.ChannelTypeOpenAI, want: true},
+		{name: "codex", kind: constant.ChannelTypeCodex, want: true},
+		{name: "sub2api", kind: constant.ChannelTypeSub2API, want: true},
+		{name: "new-api", kind: constant.ChannelTypeNewAPI, want: true},
+		{name: "anthropic-conversion", kind: constant.ChannelTypeAnthropic, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			channel := &Channel{Type: tc.kind, Status: common.ChannelStatusEnabled}
+			matched, _ := ChannelSatisfiesFilters(channel, "gpt-4o", []dto.ChannelFilter{{Kind: dto.FilterResponsesHTTP}})
+			assert.Equal(t, tc.want, matched)
+			native, _ := ChannelSatisfiesFilters(channel, "gpt-4o", []dto.ChannelFilter{{Kind: dto.FilterResponsesWebSocket}})
+			assert.False(t, native, "native upstream WebSocket must still require explicit opt-in")
+		})
+	}
+}

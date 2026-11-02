@@ -82,3 +82,12 @@ func TestLogOtherJSONStringDoesNotMutateReceiver(t *testing.T) {
 	require.Equal(t, before, after)
 	require.Equal(t, first, second)
 }
+
+func TestUserLogProjectionRetainsClientTransportOnly(t *testing.T) {
+	other := NewLogOther()
+	other.SetPublic("downstream_transport", "websocket")
+	other.SetAdmin("upstream_transport", "http")
+	logs := []*Log{{Other: other.JSONString()}}
+	formatUserLogs(logs, 0)
+	assert.JSONEq(t, `{"downstream_transport":"websocket"}`, logs[0].Other)
+}

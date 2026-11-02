@@ -278,3 +278,21 @@ func TestRequestPolicyEventsReachLogAdminInfo(t *testing.T) {
 	AppendRelayLogAdminInfo(untouched, nil, other)
 	assert.NotContains(t, other.Snapshot()["admin_info"], "request_policy", "requests without decisions do not carry an empty record")
 }
+
+func TestRelayLogTransportMarksClientWithoutExposingUpstream(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Set("responses_downstream_transport", "websocket")
+	c.Set("responses_upstream_transport", "http")
+	other := model.NewLogOther()
+	AppendRelayLogAdminInfo(c, nil, other)
+	snapshot := other.Snapshot()
+	assert.Equal(t, "websocket", snapshot["downstream_transport"])
+	assert.NotContains(t, snapshot, "upstream_transport")
+	assert.NotContains(t, snapshot, "ws", "Responses transport must not activate Realtime audio fields")
+	admin := snapshot["admin_info"].(map[string]any)
+	assert.Equal(t, "http", admin["upstream_transport"])
+	untouched, _ := gin.CreateTestContext(httptest.NewRecorder())
+	unmarked := model.NewLogOther()
+	AppendRelayLogAdminInfo(untouched, nil, unmarked)
+	assert.NotContains(t, unmarked.Snapshot(), "downstream_transport", "do not guess protocols on requests without evidence")
+}

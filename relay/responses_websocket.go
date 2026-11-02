@@ -120,12 +120,23 @@ type responsesWSSession struct {
 	lockedKeyIndex  int
 	lockedContext   map[appconstant.ContextKey]any
 	lockedRoute     dto.AdvancedCustomRoute
+	httpBridge      *responsesWSHTTPState
 }
 
 func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner) *types.NewAPIError {
+	return responsesWebSocketHelper(c, client, runner, nil)
+}
+
+// ResponsesHTTPWebSocketHelper keeps downstream Responses sessions on WebSocket
+// while sending reconstructed, independent HTTPS requests to the upstream.
+func ResponsesHTTPWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner) *types.NewAPIError {
+	return responsesWebSocketHelper(c, client, runner, &responsesWSHTTPState{})
+}
+
+func responsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner, bridge *responsesWSHTTPState) *types.NewAPIError {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	s := &responsesWSSession{ctx: ctx, cancel: cancel, client: client, runner: runner,
-		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey)}
+		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey), httpBridge: bridge}
 	if s.requestID == "" {
 		s.requestID = common.NewRequestId()
 	}
@@ -139,7 +150,14 @@ func ResponsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner Res
 		// Gorilla already answered a client close frame, so this tells the upstream.
 		s.shutdown(websocket.CloseNormalClosure, "")
 		s.workers.Wait()
+		if bridge != nil {
+			bridge.clear()
+		}
 	}()
+	if bridge != nil {
+		deadline := time.AfterFunc(time.Hour, func() { s.shutdown(websocket.CloseNormalClosure, "session expired; reconnect required") })
+		defer deadline.Stop()
+	}
 
 	for {
 		_, message, err := client.ReadMessage()
@@ -219,8 +237,15 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 		s.clientWriteMu.Unlock()
 	}()
 	request := s.request.Clone(s.ctx)
-	request.Body = io.NopCloser(bytes.NewReader(message))
-	request.ContentLength = int64(len(message))
+	requestBody := message
+	if s.httpBridge != nil && parseErr == nil {
+		// Run ordinary middleware against the canonical model/body too. A
+		// wrapped event or duplicate JSON keys must not give the limiter a
+		// different model from the request that will actually be submitted.
+		requestBody = create.Body
+	}
+	request.Body = io.NopCloser(bytes.NewReader(requestBody))
+	request.ContentLength = int64(len(requestBody))
 	request.Header.Set("Content-Type", "application/json")
 	apiErr = s.runner(request, requestID, func(c *gin.Context) *types.NewAPIError {
 		if parseErr != nil {
@@ -228,7 +253,12 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 		}
 		c.Request.Body = io.NopCloser(bytes.NewReader(create.Body))
 		c.Request.ContentLength = int64(len(create.Body))
-		callErr := s.runCall(c, state, create)
+		var callErr *types.NewAPIError
+		if s.httpBridge != nil {
+			callErr = s.runHTTPCall(c, state, create)
+		} else {
+			callErr = s.runCall(c, state, create)
+		}
 		upstreamURLs = common.UpstreamAddresses(c)
 		return callErr
 	})
@@ -238,6 +268,7 @@ func (s *responsesWSSession) runRequest(state *responsesWSCallState, message []b
 }
 
 func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState, create responsesWSCreateRequest) (apiErr *types.NewAPIError) {
+	c.Set("responses_upstream_transport", "websocket")
 	policy := service.RequestPolicy(c)
 	modelName := create.Request.Model
 	started := time.Now()
@@ -344,23 +375,7 @@ func (s *responsesWSSession) runCall(c *gin.Context, state *responsesWSCallState
 				state.closeCode = websocket.CloseInternalServerErr
 				return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
 			}
-			s.lockedModel, s.lockedChannelID, s.lockedGroup = modelName, channel.Id, info.UsingGroup
-			s.lockedKey, s.lockedKeyIndex = info.ApiKey, info.ChannelMultiKeyIndex
-			s.lockedRoute, _ = channel.GetOtherSettings().AdvancedCustom.MatchPathForModel(c.Request.URL.Path, modelName)
-			s.lockedContext = make(map[appconstant.ContextKey]any)
-			for _, key := range []appconstant.ContextKey{
-				appconstant.ContextKeyChannelId, appconstant.ContextKeyChannelName, appconstant.ContextKeyChannelType,
-				appconstant.ContextKeyChannelCreateTime, appconstant.ContextKeyChannelSetting, appconstant.ContextKeyChannelOtherSetting,
-				appconstant.ContextKeyChannelParamOverride, appconstant.ContextKeyChannelHeaderOverride, appconstant.ContextKeyChannelOrganization,
-				appconstant.ContextKeyChannelAutoBan, appconstant.ContextKeyChannelModelMapping, appconstant.ContextKeyChannelStatusCodeMapping,
-				appconstant.ContextKeyChannelIsMultiKey, appconstant.ContextKeyChannelMultiKeyIndex, appconstant.ContextKeyChannelKey, appconstant.ContextKeyChannelBaseUrl,
-				appconstant.ContextKeyUpstreamRequestOrigin,
-			} {
-				if value, ok := c.Get(string(key)); ok {
-					s.lockedContext[key] = value
-				}
-			}
-			s.registerChannelClose(channel.Id)
+			s.rememberConnectionContext(c, channel, info, modelName)
 			s.startTargetReader(target)
 			apiErr = nil
 			break
@@ -548,11 +563,16 @@ func responsesWSErrorEndsRequest(event responsesWSErrorEvent, streamID, response
 }
 
 func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model string) *types.NewAPIError {
-	// The channel type is not rechecked: a locked channel keeps its type, and
-	// the FilterResponsesWebSocket rules were applied when it was selected.
+	// Native sockets keep their handshake's channel type. The HTTP bridge
+	// rechecks native Responses support because it makes a fresh HTTP request.
 	channel, err := appmodel.CacheGetChannel(s.lockedChannelID)
-	if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled || !channel.GetSetting().ResponsesWebSocketEnabled {
+	if err != nil || channel == nil || channel.Status != common.ChannelStatusEnabled || (s.httpBridge == nil && !channel.GetSetting().ResponsesWebSocketEnabled) {
 		return types.NewErrorWithStatusCode(errors.New("Responses WebSocket is disabled for this channel"), types.ErrorCode(appdto.FilterResponsesWebSocket), http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	}
+	if s.httpBridge != nil {
+		if matched, _ := appmodel.ChannelSatisfiesFilters(channel, model, []appdto.ChannelFilter{{Kind: appdto.FilterResponsesHTTP}}); !matched {
+			return types.NewErrorWithStatusCode(errors.New("the channel no longer supports native HTTP Responses; reconnect required"), types.ErrorCodeAccessDenied, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+		}
 	}
 	keyEnabled := channel.Key == s.lockedKey
 	if channel.ChannelInfo.IsMultiKey {
@@ -931,11 +951,15 @@ func checkResponsesWSModelAccess(c *gin.Context, modelName string) *types.NewAPI
 // speak the Responses WebSocket protocol and renders its outcome as a
 // non-retryable NewAPIError.
 func selectResponsesWSChannel(c *gin.Context, modelName string, retryParam *service.RetryParam) (*appmodel.Channel, *types.NewAPIError) {
+	return selectResponsesTransportChannel(c, modelName, retryParam, appdto.FilterResponsesWebSocket)
+}
+
+func selectResponsesTransportChannel(c *gin.Context, modelName string, retryParam *service.RetryParam, kind appdto.ChannelFilterKind) (*appmodel.Channel, *types.NewAPIError) {
 	constraints := service.GetChannelConstraints(c)
 	if !slices.ContainsFunc(constraints.Filters, func(filter appdto.ChannelFilter) bool {
-		return filter.Kind == appdto.FilterResponsesWebSocket
+		return filter.Kind == kind
 	}) {
-		constraints.AddFilter(appdto.ChannelFilter{Kind: appdto.FilterResponsesWebSocket})
+		constraints.AddFilter(appdto.ChannelFilter{Kind: kind})
 	}
 	channel, _, selectErr := service.SelectChannelForRequest(c, modelName, retryParam)
 	if selectErr != nil {

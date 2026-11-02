@@ -20,6 +20,7 @@ import { CircleAlert } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  StatusBadge,
   dotColorMap,
   textColorMap,
   type StatusVariant,
@@ -157,6 +158,7 @@ export function TimingMetricsCell(props: TimingMetricsCellProps) {
 }
 
 interface StreamTpsCellProps {
+  clientTransport?: 'websocket' | 'http'
   isStream: boolean
   compact?: boolean
   /** Task logs are asynchronous jobs; stream vs non-stream does not apply. */
@@ -196,6 +198,18 @@ export function StreamTpsCell(props: StreamTpsCellProps) {
         )}
       >
         {streamLabel}
+        {props.clientTransport === 'websocket' && !props.isTask && (
+          <StatusBadge
+            label='WS'
+            variant='purple'
+            type='badge'
+            size='sm'
+            copyable={false}
+            title={t('Connected via WebSocket')}
+            aria-label={t('Connected via WebSocket')}
+            className='bg-chart-4/10 h-4 px-1 text-[10px] leading-none'
+          />
+        )}
         {showStreamError && (
           <TooltipProvider>
             <Tooltip>

@@ -159,6 +159,19 @@ export function hasToolSurcharge(other: LogOtherData | null): boolean {
 /**
  * Parse the 'other' field from JSON string to object
  */
+/** Only recorded transport evidence identifies WS; streaming alone does not. */
+export function getLogClientTransport(
+  other: LogOtherData | null
+): 'websocket' | 'http' | undefined {
+  const transport =
+    other?.downstream_transport ?? other?.admin_info?.downstream_transport
+  if (transport === 'websocket' || transport === 'http') return transport
+  // The legacy ws flag belongs to the Realtime WebSocket relay. Responses
+  // uses its own field so it never acquires Realtime audio-token semantics.
+  if (other?.ws === true) return 'websocket'
+  return undefined
+}
+
 export function parseLogOther(other: string): LogOtherData | null {
   if (!other) return null
   try {

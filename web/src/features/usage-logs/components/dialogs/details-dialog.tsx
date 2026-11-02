@@ -72,6 +72,7 @@ import type { UsageLog } from '../../data/schema'
 import { getBillingRatio } from '../../lib/billing-source'
 import {
   parseLogOther,
+  getLogClientTransport,
   getParamOverrideActionLabel,
   parseAuditLine,
   decodeBillingExprB64,
@@ -526,6 +527,8 @@ export function DetailsDialog(props: DetailsDialogProps) {
   const { t } = useTranslation()
   const { copiedText, copyToClipboard } = useCopyToClipboard({ notify: false })
   const other = parseLogOther(props.log.other)
+  const clientTransport = getLogClientTransport(other)
+  const upstreamTransport = other?.admin_info?.upstream_transport
   const typeConfig = getLogTypeConfig(props.log.type)
 
   const isViolation = isViolationFeeLog(other)
@@ -702,6 +705,21 @@ export function DetailsDialog(props: DetailsDialogProps) {
       <div className='w-full max-w-full min-w-0 space-y-2.5 overflow-x-hidden py-1 sm:space-y-3'>
         {/* Overview section - key identifiers */}
         <div className='min-w-0 space-y-1'>
+          {showTiming && clientTransport && (
+            <DetailRow
+              label={t('Client transport')}
+              value={clientTransport === 'websocket' ? 'WebSocket' : 'HTTP'}
+            />
+          )}
+          {showTiming &&
+            props.isAdmin &&
+            (upstreamTransport === 'http' ||
+              upstreamTransport === 'websocket') && (
+              <DetailRow
+                label={t('Upstream transport')}
+                value={upstreamTransport === 'websocket' ? 'WebSocket' : 'HTTP'}
+              />
+            )}
           {props.log.request_id && (
             <DetailRow
               label={t('Request ID')}

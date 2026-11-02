@@ -12,6 +12,7 @@ var filterEvalOrder = []dto.ChannelFilterKind{
 	dto.FilterTaskPluginEndpoint,
 	dto.FilterTaskPluginIdentity,
 	dto.FilterResponsesWebSocket,
+	dto.FilterResponsesHTTP,
 }
 
 // ChannelSatisfiesFilters reports whether ch passes every filter.
@@ -122,15 +123,15 @@ func channelMatchesFilter(ch *Channel, modelName string, filter dto.ChannelFilte
 		// group, priority, weight, affinity, and pin rules. Unrelated type-61
 		// plugins cannot execute this endpoint.
 		return ch.Type != constant.ChannelTypeTaskPlugin || pluginChannel
-	case dto.FilterResponsesWebSocket:
-		if !ch.GetSetting().ResponsesWebSocketEnabled {
+	case dto.FilterResponsesWebSocket, dto.FilterResponsesHTTP:
+		if filter.Kind == dto.FilterResponsesWebSocket && !ch.GetSetting().ResponsesWebSocketEnabled {
 			return false
 		}
 		switch ch.Type {
 		case constant.ChannelTypeOpenAI, constant.ChannelTypeCodex, constant.ChannelTypeSub2API, constant.ChannelTypeNewAPI:
 			return true
 		case constant.ChannelTypeAdvancedCustom:
-			// The session forwards native Responses events without protocol
+			// These transports forward native Responses events without protocol
 			// conversion, so only a converter-free /v1/responses route qualifies.
 			route, ok := ch.GetOtherSettings().AdvancedCustom.MatchPathForModel("/v1/responses", modelName)
 			return ok && route.IsNative()

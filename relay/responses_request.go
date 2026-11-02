@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/sjson"
 )
 
 // PrepareResponsesRequest applies the same model, conversion and channel rules
@@ -75,6 +76,17 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
 			return nil, nil, nil, newAPIErrorFromParamOverride(err)
+		}
+	}
+	if c.GetString("responses_upstream_transport") == "http" {
+		// This bridge owns continuation state. Even a channel override must
+		// not reconnect the fully reconstructed input to an upstream session.
+		jsonData, err = sjson.DeleteBytes(jsonData, "previous_response_id")
+		if err == nil {
+			jsonData, err = sjson.SetBytes(jsonData, "stream", true)
+		}
+		if err != nil {
+			return nil, nil, nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 		}
 	}
 

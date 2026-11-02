@@ -33,7 +33,12 @@ import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
 import { getBillingRatio } from '../lib/billing-source'
-import { formatModelName, logTokenName, parseLogOther } from '../lib/format'
+import {
+  formatModelName,
+  getLogClientTransport,
+  logTokenName,
+  parseLogOther,
+} from '../lib/format'
 import {
   getLogTypeConfig,
   isDisplayableLogType,
@@ -189,6 +194,7 @@ export function CommonLogMobileCard<TData>(props: {
             <div className='col-start-2 flex min-w-0 flex-col items-end gap-1 [overflow-wrap:anywhere]'>
               {props.cells.has('is_stream') && (
                 <StreamTpsCell
+                  clientTransport={getLogClientTransport(other)}
                   compact
                   className='min-h-5 max-w-full min-w-0 justify-end'
                   isStream={log.is_stream}

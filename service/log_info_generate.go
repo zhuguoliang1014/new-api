@@ -72,6 +72,11 @@ func AppendRelayLogAdminInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo,
 		return
 	}
 	other.SetAdmin("use_channel", ctx.GetStringSlice("use_channel"))
+	if ctx.GetString("responses_downstream_transport") == "websocket" {
+		other.SetPublic("downstream_transport", "websocket")
+		other.SetAdmin("downstream_transport", "websocket")
+		other.SetAdmin("upstream_transport", ctx.GetString("responses_upstream_transport"))
+	}
 	if relayInfo != nil {
 		if billingModel := relayInfo.GetBillingModelName(); billingModel != "" && billingModel != relayInfo.OriginModelName {
 			other.SetAdmin("billing_model", billingModel)
