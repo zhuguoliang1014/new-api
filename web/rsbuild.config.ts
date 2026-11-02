@@ -28,6 +28,9 @@ export default defineConfig(({ envMode }) => {
     // Rsbuild 2: replaces deprecated `performance.chunkSplit` (RSPack 2 aligned)
     splitChunks: {
       preset: 'default',
+      // Avoid a fan-out of tiny shared chunks on the first route over slow links.
+      minSize: 80_000,
+      maxAsyncRequests: 6,
       cacheGroups: {
         'vendor-react': {
           test: /node_modules[\\/](react|react-dom)[\\/]/,

@@ -19,31 +19,16 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useCallback } from 'react'
 
+import { getBrandingImage } from '@/lib/branding-images'
 import { DEFAULT_LOGO } from '@/lib/constants'
 import { applyFaviconToDom } from '@/lib/dom-utils'
+import { preloadImage } from '@/lib/image-preload'
 import { ensureStatus } from '@/lib/status-query'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 interface UseSystemConfigOptions {
   /** Automatically fetch config from backend (use only in root component) */
   autoLoad?: boolean
-}
-
-/** Preload an image, returning a cleanup that detaches the pending handlers. */
-function preloadImage(
-  src: string,
-  onLoad: () => void,
-  onError: () => void
-): () => void {
-  const img = new Image()
-  img.onload = onLoad
-  img.onerror = onError
-  img.src = src
-
-  return () => {
-    img.onload = null
-    img.onerror = null
-  }
 }
 
 /**
@@ -89,27 +74,31 @@ export function useSystemConfig(options: UseSystemConfigOptions = {}) {
     // Skip if logo is already loaded
     if (!logo || logo === loadedLogoUrl) return
 
-    // Preload new logo
-    return preloadImage(
-      logo,
+    let active = true
+    void preloadImage(getBrandingImage(logo)).then(
       () => {
+        if (!active) return
         setLoadedLogoUrl(logo)
         applyFaviconToDom(logo)
       },
       () => {
+        if (!active) return
         if (logo !== DEFAULT_LOGO) {
           // eslint-disable-next-line no-console
           console.error('Failed to load logo:', logo)
         }
-        // Mark as loaded even on error to prevent infinite retry
         setLoadedLogoUrl(logo)
       }
     )
+    return () => {
+      active = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config.logo, loadedLogoUrl, setLoadedLogoUrl])
 
   return {
     ...config,
+    logo: getBrandingImage(config.logo),
     loading,
     logoLoaded: config.logo === loadedLogoUrl && !!loadedLogoUrl,
   }
