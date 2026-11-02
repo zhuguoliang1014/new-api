@@ -32,7 +32,7 @@ func GetDailyUserTokenRanks(ctx context.Context, start, end int64) ([]UserTokenR
 		return nil, err
 	}
 	var users []User
-	if err := DB.WithContext(ctx).Model(&User{}).Select("id", "username").Where("role = ? AND status = ?", common.RoleCommonUser, common.UserStatusEnabled).Find(&users).Error; err != nil {
+	if err := DB.WithContext(ctx).Model(&User{}).Select("id", "username").Where("status = ?", common.UserStatusEnabled).Find(&users).Error; err != nil {
 		return nil, err
 	}
 	names := make(map[int]string, len(users))

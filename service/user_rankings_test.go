@@ -113,6 +113,7 @@ func TestDailyUserRankingsDatabaseMatrix(t *testing.T) {
 			users := []userFixture{
 				{Id: 1, Username: "alice", Role: 1, Status: 1}, {Id: 2, Username: "张三丰", Role: 1, Status: 1}, {Id: 3, Username: "ab", Role: 1, Status: 1},
 				{Id: 4, Username: "admin", Role: 10, Status: 1}, {Id: 5, Username: "banned", Role: 1, Status: 2}, {Id: 6, Username: "deleted", Role: 1, Status: 1, DeletedAt: gorm.DeletedAt{Time: time.Now(), Valid: true}},
+				{Id: 7, Username: "root", Role: 100, Status: 1},
 			}
 			require.NoError(t, mainDB.Table("daily_rank_main_users").Create(&users).Error)
 			day := time.Date(2026, 10, 29, 0, 0, 0, 0, userRankingLocation)
@@ -125,22 +126,36 @@ func TestDailyUserRankingsDatabaseMatrix(t *testing.T) {
 				{Id: 5, UserId: 1, Type: 2, CreatedAt: start - 1, PromptTokens: 99999},
 				{Id: 6, UserId: 1, Type: 2, CreatedAt: start + 86400, PromptTokens: 99999},
 				{Id: 7, UserId: 1, Type: model.LogTypeError, CreatedAt: start, PromptTokens: 99999},
+				{Id: 8, UserId: 4, Type: 2, CreatedAt: start, PromptTokens: 500, CompletionTokens: 100},
+				{Id: 9, UserId: 7, Type: 2, CreatedAt: start, PromptTokens: 600, CompletionTokens: 100},
 			}
-			for _, id := range []int{4, 5, 6, 999} {
+			for _, id := range []int{5, 6, 999} {
 				logs = append(logs, logFixture{Id: 10 + id, UserId: id, Type: 2, CreatedAt: start, PromptTokens: 99999})
 			}
 			require.NoError(t, logDB.Table("daily_rank_log_logs").Create(&logs).Error)
 			got, err := GetDailyUserRankings(context.Background(), day, 2)
 			require.NoError(t, err)
-			assert.Equal(t, int64(1100), got.TotalTokens)
-			assert.Equal(t, 3, got.Participants)
-			require.Len(t, got.Rows, 3)
-			assert.Equal(t, []string{"a***e", "张***丰", "***"}, []string{got.Rows[0].Name, got.Rows[1].Name, got.Rows[2].Name})
-			assert.Equal(t, int64(300), got.Rows[0].InputTokens)
-			assert.Equal(t, int64(200), got.Rows[0].OutputTokens)
+			assert.Equal(t, int64(2400), got.TotalTokens)
+			assert.Equal(t, 5, got.Participants)
+			require.Len(t, got.Rows, 5)
+			assert.Equal(t, []string{"r***t", "a***n", "a***e", "张***丰", "***"}, []string{got.Rows[0].Name, got.Rows[1].Name, got.Rows[2].Name, got.Rows[3].Name, got.Rows[4].Name})
+			assert.Equal(t, int64(300), got.Rows[2].InputTokens)
+			assert.Equal(t, int64(200), got.Rows[2].OutputTokens)
 			require.NotNil(t, got.Me)
-			assert.Equal(t, 2, got.Me.Rank)
-			assert.True(t, got.Rows[1].IsMe)
+			assert.Equal(t, 4, got.Me.Rank)
+			assert.True(t, got.Rows[3].IsMe)
+			for _, tc := range []struct {
+				userID int
+				rank   int
+				tokens int64
+			}{{4, 2, 600}, {7, 1, 700}} {
+				own, err := GetDailyUserRankings(context.Background(), day, tc.userID)
+				require.NoError(t, err)
+				require.NotNil(t, own.Me)
+				assert.Equal(t, tc.rank, own.Me.Rank)
+				assert.Equal(t, tc.tokens, own.Me.TotalTokens)
+				assert.True(t, own.Rows[tc.rank-1].IsMe)
+			}
 			anonymous, err := GetDailyUserRankings(context.Background(), day, 0)
 			require.NoError(t, err)
 			assert.Nil(t, anonymous.Me)
@@ -151,6 +166,8 @@ func TestDailyUserRankingsDatabaseMatrix(t *testing.T) {
 			require.NoError(t, err)
 			assert.NotContains(t, string(body), "user_id")
 			assert.NotContains(t, string(body), "alice")
+			assert.NotContains(t, string(body), "admin")
+			assert.NotContains(t, string(body), "root")
 			empty, err := GetDailyUserRankings(context.Background(), day.AddDate(0, 0, -2), 1)
 			require.NoError(t, err)
 			assert.Empty(t, empty.Rows)
