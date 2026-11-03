@@ -1759,8 +1759,17 @@ it('uses one image group and changes size limits and pricing controls with the m
   ).toBeTruthy()
   await userEvent.click(model)
   expect(screen.getByText('Banana')).toBeInTheDocument()
-  expect(screen.getByText('GPT Image · Upscaled')).toBeInTheDocument()
-  expect(screen.getByText('GPT Image · Native')).toBeInTheDocument()
+  expect(screen.getAllByText('GPT Image', { exact: true })).toHaveLength(1)
+  expect(screen.queryByText('GPT Image · Upscaled')).not.toBeInTheDocument()
+  expect(screen.queryByText('GPT Image · Native')).not.toBeInTheDocument()
+  const gptOptions = screen
+    .getAllByRole('option')
+    .filter((option) =>
+      option.getAttribute('data-value')?.startsWith('gpt-image-')
+    )
+  expect(gptOptions).toHaveLength(2)
+  expect(gptOptions[0]).toHaveTextContent('Upscaled · up to 4K')
+  expect(gptOptions[1]).toHaveTextContent('Native · up to 4K')
   expect(screen.getByText('Midjourney')).toBeInTheDocument()
   expect(
     within(screen.getByRole('option', { name: /Midjourney v8.2/ })).getByText(
@@ -1864,14 +1873,12 @@ it.each(['【生图】超分高质量1-10k', '画图'])(
         max_resolution: 4,
       },
     ])
-    useImagePlaygroundStore
-      .getState()
-      .setParameters({
-        group,
-        model: group === '画图' ? 'gpt-image-2-hq' : 'gpt-image-2',
-        prompt: 'Retain this draft',
-        size: '8192x4608',
-      })
+    useImagePlaygroundStore.getState().setParameters({
+      group,
+      model: group === '画图' ? 'gpt-image-2-hq' : 'gpt-image-2',
+      prompt: 'Retain this draft',
+      size: '8192x4608',
+    })
     showStudio()
     await waitFor(() =>
       expect(useImagePlaygroundStore.getState().parameters.group).toBe('画图')
