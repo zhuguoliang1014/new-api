@@ -378,13 +378,16 @@ ssh aliyun '/usr/local/sbin/backup-aiproxy-databases'
 - 本地数据库验证：真实 SQLite **3.50.4**、MySQL **8.4.11**、PostgreSQL **15.17**，独立主库/日志连接，覆盖跨日边界、多模型聚合、账号资格、并列排名、脱敏、负值/零用量、本人在前 100 名外、匿名与登录缓存隔离。执行 `TEST_MYSQL_DSN='root@unix(/tmp/rc47-mysql.sock)/user_rankings_test?charset=utf8mb4&parseTime=true' TEST_POSTGRES_DSN='postgres://zhuguoliang@localhost/user_rankings_test?sslmode=disable' go test ./service -run 'TestUserRankingDay|TestDailyUserRankingsDatabaseMatrix' -count=1 -v`，以及相同环境变量下 `go test ./service ./controller ./router -run 'Ranking' -count=1`，均通过。ClickHouse 未做本次运行验证，生产使用 PostgreSQL。
 - 前端两文件九项测试、类型检查、涉及文件 lint/format、七语言键检查和生产构建均通过；390px 窄屏无横向溢出，1280px 桌面领奖台及历史切换、查看更多验证通过。精确命令与结果保存在本机 `/tmp/new-api-user-rankings-preview/validation.txt`。
 
-### 妖火注册赠送下线发布（2026-11-03，已授权待核验）
+### 妖火注册赠送已下线（2026-11-03）
 
 - 移除自定义 OAuth 注册事务中的妖火专属5美元奖励发放及新奖励日志；妖火登录、注册与绑定继续运行。账号及绑定仍在同一事务创建，失败回滚；通用 `QuotaForNewUser` 行为保留。历史余额不追扣，`oauth_signup_rewards` 表/迁移及原日志七语言翻译保留。
 - 真实 SQLite **3.50.4**、MySQL **8.4.11**（`clientFoundRows=true`）、PostgreSQL **15.17** 验证：首次注册/重注册零专属奖励、既有余额和完整历史收据保留、一般注册额度及最大余额注册、非法绑定回滚；MySQL/PostgreSQL 使用隔离主库和日志库。命令：各库环境 `TEST_SECURITY_DIALECT=sqlite|mysql|postgres` 配合本地 `TEST_MYSQL_DSN` / `TEST_POSTGRES_DSN`，执行 `go test ./controller -run '^TestYaohuo' -count=1 -v`。
 - `go test -race ./controller -run 'Test(Yaohuo|GenerateOAuthCode|OAuthLogin|OAuthBind)' -count=1`、`go test ./oauth -count=1`、`go vet ./controller ./model ./oauth`、root `go build` 及 `git diff --check` 通过。
 - 安全依据：OWASP ASVS **5.0.0**（本次不声明全站合规），Authentication / Session Management / OAuth2 Cheat Sheets；保留服务端 state 的浏览器绑定、期限及单次消费、HTTPS Cookie 属性。回归覆盖缺失/过期/错误提供方 state、缺失/错误浏览器 Cookie、错误 code、关闭注册及回调重放。既有其他 OAuth 浏览器绑定/Turnstile 缺口未在本次变更范围内。
-- 用户已明确授权提交部署；发布前保存新的全库备份及镜像回滚，恢复目录 `/root/upgrade-recovery/new-api-yaohuo-disable-20261103/`。只更新应用，不修改生产余额或配置；发布后的实机结果记录在该目录 `verification.json`，完成后补记。
+- 已按用户授权提交push main：revision `d92539390faee68dbdb2eecaa9d746c0448f04fe`，Actions `41574535162` 构建及部署success。北京时间 **11:55:07** 新应用启动，**11:57** 核验OCI revision/版本一致、容器healthy；香港本机、主站、国内入口状态及定价200，匿名本人401、非法妖火state403，首页八项JS/CSS资源200。
+- 发布后只读观察到一位自然妖火新注册账号，账号和绑定均在新应用启动后创建，余额0、已用额度0、奖励收据0，确认真实注册已不发放专属奖励；未代注册或创建替代生产凭据。原68笔历史收据逐字段一致；备份后旧版本在 **11:52:53** 正常发放的一笔5美元奖励发生于切换前，保留原值。此观察材料是当时快照，用户后续充值/消费可正常变化。
+- 134项options、27套餐、44渠道配置（忽略正常用量/健康探测字段）、94项模型资料、原2230令牌配置（忽略正常用量）及原用户设置前后一致；期间3位正常新用户和3个新Key保留，OAuth provider配置一致，普通注册 `QuotaForNewUser=0`。未执行生产余额/配置修改或付费生成。
+- 恢复目录 `/root/upgrade-recovery/new-api-yaohuo-disable-20261103/`（目录700/文件600），完整PostgreSQL归档 **133,825,246字节**，SHA-256 `cdabcdb38951b0ac5a7409cb12cd9cf8bc45b987af88edfd9a1d39d083141640`、归档目录及完整内容读取验证通过。目录含配置快照、三库日志、自然注册观察、`verification.json`、`verify.sh`及`rollback.sh`；回滚镜像 `ghcr.io/zhuguoliang1014/new-api:rollback-yaohuo-disable-20261103` 对应上一revision `c9ffe4d78a339d728f972dae9b82ad23f2a8e0cb`，Compose回滚配置检查通过。回滚只切应用，不恢复整库，不追扣历史赠送；未实际回切。
 
 ### 妖火授权注册福利已上线（2026-10-29）
 
