@@ -103,7 +103,7 @@ export function StudioComposer(props: {
       const first = groups.data.find((item) => item.available) ?? groups.data[0]
       const legacySuffix: Record<string, string> = {
         '【生图】超分基础版1-4k': 'basic',
-        '【生图】超分高质量1-10k': 'hq',
+        '【生图】超分高质量1-10k': 'basic',
         '【生图】官逆原生1-4k': 'native',
       }
       const suffix = legacySuffix[parameters.group ?? '']
@@ -118,15 +118,24 @@ export function StudioComposer(props: {
           model === legacyModel
             ? parameters.size
             : getStudioDefaultSize(
-                getStudioModelProfile(first, model) ?? first
+                getStudioModelProfile(first, model) ?? first,
+                getStudioSizeSelection(parameters.size, first.size_mode).ratio
               ),
       })
     } else if (!selected.models.includes(parameters.model)) {
+      const compatibleModel = parameters.model.replace(/-hq$/, '-basic')
+      const hasCompatibleModel = selected.models.includes(compatibleModel)
+      const model = hasCompatibleModel
+        ? compatibleModel
+        : (selected.models[0] ?? '')
       setParameters({
-        model: selected.models[0] ?? '',
-        size: getStudioDefaultSize(
-          getStudioModelProfile(selected, selected.models[0] ?? '') ?? selected
-        ),
+        model,
+        size: hasCompatibleModel
+          ? parameters.size
+          : getStudioDefaultSize(
+              getStudioModelProfile(selected, model) ?? selected,
+              getStudioSizeSelection(parameters.size, selected.size_mode).ratio
+            ),
       })
     }
   }, [

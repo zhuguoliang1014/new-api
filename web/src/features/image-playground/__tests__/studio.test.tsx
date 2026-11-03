@@ -1827,7 +1827,7 @@ it('maps a reused legacy group to its matching model alias without changing the 
       description: '',
       ratio: 1,
       available: true,
-      models: ['gpt-image-2-basic', 'gpt-image-2-hq'],
+      models: ['gpt-image-2-basic'],
       size_mode: 'upscale',
       max_resolution: 8,
     },
@@ -1843,8 +1843,52 @@ it('maps a reused legacy group to its matching model alias without changing the 
     expect(useImagePlaygroundStore.getState().parameters.group).toBe('画图')
   )
   expect(useImagePlaygroundStore.getState().parameters).toMatchObject({
-    model: 'gpt-image-2-hq',
+    model: 'gpt-image-2-basic',
     prompt: 'An existing draft',
     size: '2048x2048',
   })
 })
+
+it.each(['【生图】超分高质量1-10k', '画图'])(
+  'reuses an 8K advanced draft from %s as upscaled 4K with its ratio intact',
+  async (group) => {
+    vi.mocked(getStudioGroups).mockResolvedValueOnce([
+      {
+        id: '画图',
+        name: 'Image generation',
+        description: '',
+        ratio: 1,
+        available: true,
+        models: ['gpt-image-2.5-basic', 'gpt-image-2-basic'],
+        size_mode: 'upscale',
+        max_resolution: 4,
+      },
+    ])
+    useImagePlaygroundStore
+      .getState()
+      .setParameters({
+        group,
+        model: group === '画图' ? 'gpt-image-2-hq' : 'gpt-image-2',
+        prompt: 'Retain this draft',
+        size: '8192x4608',
+      })
+    showStudio()
+    await waitFor(() =>
+      expect(useImagePlaygroundStore.getState().parameters.group).toBe('画图')
+    )
+    await waitFor(() =>
+      expect(useImagePlaygroundStore.getState().parameters.model).toBe(
+        'gpt-image-2-basic'
+      )
+    )
+    expect(useImagePlaygroundStore.getState().parameters.size).toBe('4096x2304')
+    expect(screen.getByRole('button', { name: '16:9' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  }
+)
