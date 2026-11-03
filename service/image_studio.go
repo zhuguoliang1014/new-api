@@ -7,8 +7,8 @@ const (
 	ImageStudioDefaultModel = "gpt-image-2.5-basic"
 )
 
-// Legacy routes retain their capabilities for existing keys. The unified
-// route resolves model-specific limits below; prices and models remain live.
+// Legacy aliases remain available, with studio generation capped at 4K.
+// Model-specific profiles retain native pixel limits; prices stay live.
 type ImageStudioProfile struct {
 	Group         string
 	Name          string
@@ -21,13 +21,13 @@ type ImageStudioProfile struct {
 
 var ImageStudioProfiles = []ImageStudioProfile{
 	{Group: "【生图】超分基础版1-4k", Name: "超分基础版", MaxResolution: 4, SizeMode: "upscale", MaxEdge: 4096, MaxPixels: 16777216},
-	{Group: "【生图】超分高质量1-10k", Name: "超分高质量", MaxResolution: 8, SizeMode: "upscale", MaxEdge: 8192, MaxPixels: 67108864},
+	{Group: "【生图】超分高质量1-10k", Name: "超分高质量", MaxResolution: 4, SizeMode: "upscale", MaxEdge: 4096, MaxPixels: 16777216},
 	{Group: "【生图】官逆原生1-4k", Name: "官逆原生", MaxResolution: 4, SizeMode: "native", MaxEdge: 3840, MaxPixels: 8294400},
 }
 
 func GetImageStudioProfile(group string) (ImageStudioProfile, bool) {
 	if group == ImageStudioGroup {
-		return ImageStudioProfile{Group: group, Name: "Image generation", MaxResolution: 8, SizeMode: "upscale", MaxEdge: 8192, MaxPixels: 67108864}, true
+		return ImageStudioProfile{Group: group, Name: "Image generation", MaxResolution: 4, SizeMode: "upscale", MaxEdge: 4096, MaxPixels: 16777216}, true
 	}
 	for _, profile := range ImageStudioProfiles {
 		if profile.Group == group {

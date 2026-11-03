@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
-import { imageAspectPresets, imageSizeValues, upscaleSizes } from './lib/sizes'
+import {
+  getImageAspectRatio,
+  getStudioSize,
+  imageAspectPresets,
+  imageSizeValues,
+  upscaleSizes,
+} from './lib/sizes'
 
 const mjReferenceSchema = z
   .string()
@@ -194,9 +200,18 @@ export function normalizeImageParameters(
   parameters: ImageParameters
 ): ImageParameters {
   const options = getImageModelOptions(parameters.model)
+  let size = options.sizes.includes(parameters.size) ? parameters.size : 'auto'
+  const dimensions = /^(\d+)x(\d+)$/.exec(parameters.size)
+  if (options.supportsFlexibleSizes && dimensions) {
+    const width = Number(dimensions[1])
+    const height = Number(dimensions[2])
+    if (width > 4096 || height > 4096) {
+      size = getStudioSize(getImageAspectRatio(width, height), '4K', 'upscale')
+    }
+  }
   return {
     ...parameters,
-    size: options.sizes.includes(parameters.size) ? parameters.size : 'auto',
+    size,
     mj: options.isMidjourney ? parameters.mj : undefined,
     quality: options.qualities.includes(parameters.quality)
       ? parameters.quality

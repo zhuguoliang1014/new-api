@@ -33,3 +33,19 @@ func TestStudioSupportsAllBananaModels(t *testing.T) {
 		}
 	}
 }
+
+func TestImageStudioGenerationProfilesCapAt4K(t *testing.T) {
+	for _, group := range []string{ImageStudioGroup, ImageStudioProfiles[1].Group} {
+		profile, ok := GetImageStudioProfile(group)
+		require.True(t, ok)
+		require.Equal(t, 4, profile.MaxResolution)
+		require.Equal(t, 4096, profile.MaxEdge)
+	}
+	for _, model := range []string{"gpt-image-2-basic", "gpt-image-2.5-basic", "gpt-image-2-hq", "gpt-image-2.5-hq", "gemini-3-pro-image-preview", "gemini-3.1-flash-image"} {
+		profile, ok := GetImageStudioModelProfile(ImageStudioGroup, model)
+		require.True(t, ok)
+		require.Equal(t, 4, profile.MaxResolution, model)
+		require.Equal(t, 4096, profile.MaxEdge, model)
+		require.Equal(t, 16777216, profile.MaxPixels, model)
+	}
+}

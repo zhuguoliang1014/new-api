@@ -114,7 +114,7 @@ export function getImageAspectRatio(width: number, height: number): string {
 }
 
 // Upscale routes accept an explicit long edge, independently of native image limits.
-export const studioResolutions = ['1K', '2K', '4K', '6K', '8K', '10K'] as const
+export const studioResolutions = ['1K', '2K', '4K'] as const
 export type StudioResolution = (typeof studioResolutions)[number]
 export function getStudioSize(
   ratio: string,

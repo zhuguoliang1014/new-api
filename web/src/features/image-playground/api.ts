@@ -209,7 +209,12 @@ export async function getStudioGroups(): Promise<StudioGroup[]> {
     { skipAuthRefresh: true }
   )
   const payload = requireServerSuccess(response.data) as { data: StudioGroup[] }
-  return payload.data
+  return payload.data.map((group) => ({
+    ...group,
+    models: group.models.filter(
+      (model) => !model.endsWith('-hq') && model !== 'gemini-2.5-flash-image'
+    ),
+  }))
 }
 
 const studioTaskSchema = z.object({

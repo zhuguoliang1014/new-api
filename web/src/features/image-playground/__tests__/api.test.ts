@@ -20,6 +20,7 @@ import { useAuthStore } from '@/stores/auth-store'
 
 import {
   createStudioTask,
+  getStudioGroups,
   imageRelayClient,
   listStudioTasks,
   refinePrompt,
@@ -92,7 +93,7 @@ it.each([false, true])(
           new File(['second'], 'second.webp', { type: 'image/webp' }),
         ]
       : []
-    const input = { ...parameters, size: '8192x4608', quality: 'high' as const }
+    const input = { ...parameters, size: '4096x2304', quality: 'high' as const }
     const result = await createStudioTask(
       taskID,
       input,
@@ -118,13 +119,13 @@ it.each([false, true])(
     if (withReferences) {
       expect(body).toBeInstanceOf(FormData)
       expect((body as FormData).getAll('image[]')).toEqual(files)
-      expect((body as FormData).get('size')).toBe('8192x4608')
+      expect((body as FormData).get('size')).toBe('4096x2304')
       expect(
         JSON.parse(String((body as FormData).get('studio_metadata')))
       ).toMatchObject({ referenceCount: 2 })
     } else {
       expect(body).toMatchObject({
-        size: '8192x4608',
+        size: '4096x2304',
         response_format: 'url',
         studio_metadata: { parameters: input },
       })
@@ -252,4 +253,33 @@ it('accepts Banana 4K dimensions and sends no GPT-only output settings', async (
   expect(body).toMatchObject({ size: '4096x2304', n: 1 })
   expect(body).not.toHaveProperty('quality')
   expect(body).not.toHaveProperty('output_format')
+})
+
+it('removes retired high-quality and 1K choices from a cached studio catalog', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValueOnce({
+    data: {
+      success: true,
+      data: [
+        {
+          id: '画图',
+          models: [
+            'gpt-image-2-basic',
+            'gpt-image-2-hq',
+            'gpt-image-2-native',
+            'gemini-2.5-flash-image',
+          ],
+          available: true,
+        },
+      ],
+    },
+  })
+  try {
+    const groups = await getStudioGroups()
+    expect(groups[0].models).toEqual([
+      'gpt-image-2-basic',
+      'gpt-image-2-native',
+    ])
+  } finally {
+    post.mockRestore()
+  }
 })

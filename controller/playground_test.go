@@ -346,7 +346,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 			group, body string
 			status      int
 		}{
-			{high, `{"size":"8192x8192","n":4,"quality":"high"}`, 200},
+			{high, `{"size":"4096x4096","n":4,"quality":"high"}`, 200},
 			{basic, `{"size":"10240x10240"}`, 400},
 			{native, `{"size":"4096x4096"}`, 400},
 			{native, `{"size":"3840x3840"}`, 400},
@@ -367,7 +367,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		for _, tc := range []struct {
 			size, n string
 			status  int
-		}{{"8192x4608", "2", 200}, {"10256x5760", "2", 400}, {"1024x1024", "-1", 400}} {
+		}{{"4096x2304", "2", 200}, {"10256x5760", "2", 400}, {"1024x1024", "-1", 400}} {
 			var body bytes.Buffer
 			writer := multipart.NewWriter(&body)
 			require.NoError(t, writer.WriteField("size", tc.size))
@@ -389,8 +389,8 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		imageStudioTasks = store
 		t.Cleanup(func() { imageStudioTasks = previous })
 		router.POST("/tasks/:kind", ImageStudioTasksAvailable, middleware.PlaygroundAgent(middleware.PlaygroundAgentImage), CreateImageStudioTask)
-		metadata := map[string]any{"parameters": map[string]any{"prompt": "original draft", "model": "gpt-image-2", "group": high, "size": "8192x8192", "quality": "high", "format": "png", "background": "auto", "count": 1}, "referenceCount": 0, "styleId": nil}
-		payload := map[string]any{"prompt": "expanded prompt", "size": "8192x8192", "quality": "high", "output_format": "png", "n": 1, "studio_metadata": metadata}
+		metadata := map[string]any{"parameters": map[string]any{"prompt": "original draft", "model": "gpt-image-2", "group": high, "size": "4096x4096", "quality": "high", "format": "png", "background": "auto", "count": 1}, "referenceCount": 0, "styleId": nil}
+		payload := map[string]any{"prompt": "expanded prompt", "size": "4096x4096", "quality": "high", "output_format": "png", "n": 1, "studio_metadata": metadata}
 		body, err := common.Marshal(payload)
 		require.NoError(t, err)
 		assert.Equal(t, 403, request("/tasks/generations", high, "gpt-image-2", string(body), true).Code)
@@ -406,7 +406,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		assert.Equal(t, "queued", task.Status)
 		_, err = store.Get(user.Id+1, task.ID)
 		assert.ErrorIs(t, err, service.ErrStudioTaskNotFound)
-		for _, changes := range []map[string]any{{"n": 5}, {"stream": true}, {"studio_metadata": map[string]any{}}, {"size": "10240x5760"}} {
+		for _, changes := range []map[string]any{{"n": 5}, {"stream": true}, {"studio_metadata": map[string]any{}}, {"size": "8192x4608"}, {"size": "10240x5760"}} {
 			invalid := maps.Clone(payload)
 			maps.Copy(invalid, changes)
 			encoded, err := common.Marshal(invalid)
@@ -445,7 +445,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		encoded, err = common.Marshal(usable)
 		require.NoError(t, err)
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(string(encoded)))
-		for _, name := range []string{"gpt-image-2-basic", service.ImageStudioDefaultModel, "gpt-image-2-hq", "gpt-image-2-native", "gemini-3-pro-image-preview", "mj-v8.2", "unapproved-text-model"} {
+		for _, name := range []string{"gpt-image-2-basic", service.ImageStudioDefaultModel, "gpt-image-2-hq", "gpt-image-2-native", "gemini-3-pro-image-preview", "gemini-2.5-flash-image", "mj-v8.2", "unapproved-text-model"} {
 			require.NoError(t, db.Create(&model.Ability{Group: service.ImageStudioGroup, Model: name, ChannelId: 2, Enabled: true}).Error)
 		}
 		response := request("/bootstrap", "", "", "{}", false)
@@ -463,16 +463,19 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 		require.Len(t, payload.Data, 1)
 		assert.Equal(t, service.ImageStudioGroup, payload.Data[0].ID)
-		require.Len(t, payload.Data[0].Models, 6)
+		require.Len(t, payload.Data[0].Models, 5)
 		assert.Equal(t, service.ImageStudioDefaultModel, payload.Data[0].Models[0])
-		assert.Equal(t, 8192, payload.Data[0].Profiles["gpt-image-2-hq"].Edge)
+		assert.NotContains(t, payload.Data[0].Models, "gemini-2.5-flash-image")
+		assert.NotContains(t, payload.Data[0].Models, "gpt-image-2-hq")
+		assert.NotContains(t, payload.Data[0].Profiles, "gpt-image-2-hq")
 		assert.Equal(t, 4096, payload.Data[0].Profiles["gpt-image-2-basic"].Edge)
 		assert.Equal(t, "ratio", payload.Data[0].Profiles["mj-v8.2"].Mode)
 		for _, tc := range []struct {
 			name, body string
 			status     int
 		}{
-			{"gpt-image-2-hq", `{"size":"8192x8192"}`, 200},
+			{"gpt-image-2-hq", `{"size":"4096x4096"}`, 403},
+			{"gpt-image-2-hq", `{"size":"8192x8192"}`, 400},
 			{"gpt-image-2-basic", `{"size":"8192x8192"}`, 400},
 			{"gpt-image-2-native", `{"size":"4096x4096"}`, 400},
 			{"gemini-3-pro-image-preview", `{"size":"4096x4096","n":1}`, 200},
@@ -496,7 +499,9 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.Equal(t, 200, response.Code)
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 		require.Len(t, payload.Data, 1)
-		assert.Equal(t, []string{"gpt-image-2-hq"}, payload.Data[0].Models)
+		assert.Empty(t, payload.Data[0].Models)
+		assert.Equal(t, 200, request("/image", service.ImageStudioGroup, "gpt-image-2-hq", `{}`, false).Code)
+		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, service.ImageStudioDefaultModel, `{}`, false).Code)
 		require.NoError(t, db.Model(token).Update("model_limits", originalLimits).Error)
 		require.NoError(t, db.Model(token).Update("status", common.TokenStatusDisabled).Error)
 		assert.Equal(t, 200, request("/bootstrap", "", "", "{}", false).Code)

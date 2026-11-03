@@ -160,3 +160,17 @@ it('accepts five MJ references and trims to four when switching to a Banana mode
     .setParameters({ model: 'gemini-3-pro-image-preview' })
   expect(useImagePlaygroundStore.getState().references).toHaveLength(4)
 })
+
+it('caps resolution choices at 4K even when a cached profile still advertises 8K', () => {
+  useImagePlaygroundStore.getState().setParameters({
+    model: 'gpt-image-2-hq',
+    size: '4096x4096',
+  })
+  render(<StudioParameters group={group} />)
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
+    'aria-pressed',
+    'true'
+  )
+  expect(screen.queryByRole('button', { name: '6K' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
+})

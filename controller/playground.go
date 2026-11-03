@@ -472,6 +472,11 @@ func BootstrapImageStudio(c *gin.Context) {
 			return
 		}
 		models = slices.DeleteFunc(models, func(name string) bool {
+			// Offer only current upscale/native choices. Legacy high-quality
+			// aliases and the 1K model remain compatible through API keys.
+			if profile.Group == service.ImageStudioGroup && (name == "gemini-2.5-flash-image" || strings.HasSuffix(name, "-hq")) {
+				return true
+			}
 			_, ok := service.GetImageStudioModelProfile(profile.Group, name)
 			return !ok
 		})

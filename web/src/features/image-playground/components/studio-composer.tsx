@@ -213,12 +213,8 @@ export function StudioComposer(props: {
                   let category = t('Other')
                   if (model.endsWith('-basic')) {
                     label = model.slice(0, -6)
-                    description = t('Basic · up to 4K')
-                    category = t('GPT Image · Basic')
-                  } else if (model.endsWith('-hq')) {
-                    label = model.slice(0, -3)
-                    description = t('High quality · up to 8K')
-                    category = t('GPT Image · High quality')
+                    description = t('Upscaled · up to 4K')
+                    category = t('GPT Image · Upscaled')
                   } else if (model.endsWith('-native')) {
                     label = model.slice(0, -7)
                     description = t('Native · up to 4K')

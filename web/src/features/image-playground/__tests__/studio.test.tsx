@@ -314,7 +314,7 @@ it('defaults to the highest group resolution while keeping explicit choices and 
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'high' },
   })
-  expect(screen.getByRole('button', { name: '8K' })).toHaveAttribute(
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
@@ -367,8 +367,8 @@ it('starts without a key setup dialog and exposes the selected group models', as
     screen.queryByRole('option', { name: 'gpt-image-2.5-flare' })
   ).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '10K' })).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: '8K' }))
-  expect(useImagePlaygroundStore.getState().parameters.size).toBe('8192x8192')
+  fireEvent.click(screen.getByRole('button', { name: '4K' }))
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('4096x4096')
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'basic' },
   })
@@ -1461,7 +1461,7 @@ it('keeps the remaining job running when one of two parallel requests fails', as
   fireEvent.change(screen.getByRole('combobox', { name: 'Generation group' }), {
     target: { value: 'high' },
   })
-  fireEvent.click(screen.getByRole('button', { name: '8K' }))
+  fireEvent.click(screen.getByRole('button', { name: '4K' }))
   fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
     target: { value: 'Second' },
   })
@@ -1480,7 +1480,7 @@ it('keeps the remaining job running when one of two parallel requests fails', as
   )
   expect(
     useImagePlaygroundStore.getState().records[0].parameters
-  ).toMatchObject({ group: 'high', size: '8192x8192', prompt: 'Second' })
+  ).toMatchObject({ group: 'high', size: '4096x4096', prompt: 'Second' })
   expect(createStudioTask).toHaveBeenNthCalledWith(
     1,
     expect.any(String),
@@ -1724,7 +1724,7 @@ it('uses one image group and changes size limits and pricing controls with the m
       available: true,
       models: [
         'gpt-image-2-basic',
-        'gpt-image-2-hq',
+        'gpt-image-2-native',
         'gemini-nano-banana-2.1',
         'gemini-3-pro-image',
         'gemini-3-pro-image-preview',
@@ -1737,7 +1737,7 @@ it('uses one image group and changes size limits and pricing controls with the m
       max_resolution: 8,
       model_profiles: {
         'gpt-image-2-basic': { size_mode: 'upscale', max_resolution: 4 },
-        'gpt-image-2-hq': { size_mode: 'upscale', max_resolution: 8 },
+        'gpt-image-2-native': { size_mode: 'native', max_resolution: 4 },
         'gemini-3-pro-image-preview': {
           size_mode: 'upscale',
           max_resolution: 4,
@@ -1759,8 +1759,8 @@ it('uses one image group and changes size limits and pricing controls with the m
   ).toBeTruthy()
   await userEvent.click(model)
   expect(screen.getByText('Banana')).toBeInTheDocument()
-  expect(screen.getByText('GPT Image · Basic')).toBeInTheDocument()
-  expect(screen.getByText('GPT Image · High quality')).toBeInTheDocument()
+  expect(screen.getByText('GPT Image · Upscaled')).toBeInTheDocument()
+  expect(screen.getByText('GPT Image · Native')).toBeInTheDocument()
   expect(screen.getByText('Midjourney')).toBeInTheDocument()
   expect(
     within(screen.getByRole('option', { name: /Midjourney v8.2/ })).getByText(
@@ -1791,12 +1791,12 @@ it('uses one image group and changes size limits and pricing controls with the m
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole('button', { name: '16:9' }))
-  await selectModel('gpt-image-2-hq')
-  expect(screen.getByRole('button', { name: '8K' })).toHaveAttribute(
+  await selectModel('gpt-image-2-native')
+  expect(screen.getByRole('button', { name: '4K' })).toHaveAttribute(
     'aria-pressed',
     'true'
   )
-  expect(useImagePlaygroundStore.getState().parameters.size).toBe('8192x4608')
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('3840x2160')
   await selectModel('gemini-3-pro-image-preview')
   expect(
     screen.queryByRole('combobox', { name: 'Quality' })

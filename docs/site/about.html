@@ -1,0 +1,142 @@
+<!-- Production options.About content. Rendered by the existing isolated HTML component. -->
+<style>
+  .ap-about {
+    --ap-background: #fff;
+    --ap-text: #182230;
+    --ap-body: #475467;
+    --ap-secondary: #667085;
+    --ap-border: #e4e7ec;
+    --ap-subtle: #f8f9fb;
+    --ap-blue: #175cd3;
+    margin: 0;
+    padding-top: 64px;
+    background: var(--ap-background);
+    color: var(--ap-text);
+    font-family: 'Public Sans Variable', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 15px;
+    line-height: 1.9;
+    -webkit-font-smoothing: antialiased;
+  }
+  .ap-about *, .ap-about *::before, .ap-about *::after { box-sizing: border-box; }
+  .ap-about h1, .ap-about h2, .ap-about h3, .ap-about p { margin: 0; }
+  .ap-about a { color: var(--ap-blue); text-decoration: none; }
+  .ap-about a:hover { text-decoration: underline; text-underline-offset: 4px; }
+  .ap-about a:focus-visible { outline: 2px solid var(--ap-blue); outline-offset: 5px; }
+  .ap-about .ap-container { width: 100%; max-width: 1160px; margin: 0 auto; padding: 0 40px; }
+  .ap-about .ap-hero { display: flex; align-items: center; justify-content: space-between; gap: 80px; padding-top: 72px; padding-bottom: 66px; }
+  .ap-about .ap-hero-copy { max-width: 690px; }
+  .ap-about .ap-category { margin-bottom: 16px; color: var(--ap-secondary); font-size: 14px; }
+  .ap-about h1 { margin-bottom: 22px; font-size: 42px; font-weight: 600; line-height: 1.35; letter-spacing: -1px; }
+  .ap-about .ap-lead { color: var(--ap-body); font-size: 17px; line-height: 1.9; }
+  .ap-about .ap-hero-links { display: flex; align-items: center; flex-wrap: wrap; gap: 28px; margin-top: 30px; font-size: 14px; }
+  .ap-about .ap-primary-link { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; padding: 7px 20px; border: 1px solid #175cd3; border-radius: 4px; background: #175cd3; color: #fff; font-weight: 500; }
+  .ap-about .ap-primary-link:hover { border-color: #1849a9; background: #1849a9; text-decoration: none; }
+  .ap-about .ap-brand { flex-shrink: 0; width: 190px; text-align: center; }
+  .ap-about .ap-brand img { display: block; width: 120px; height: 120px; margin: 0 auto 14px; border: 1px solid #eef0f3; border-radius: 24px; background: #fff; object-fit: cover; }
+  .ap-about .ap-brand-name { color: var(--ap-text); font-size: 27px; font-weight: 600; letter-spacing: -0.6px; line-height: 1.4; }
+  .ap-about .ap-brand-caption { margin-top: 5px; color: var(--ap-secondary); font-size: 12px; }
+  .ap-about .ap-section { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 48px; padding-top: 42px; padding-bottom: 42px; border-top: 1px solid var(--ap-border); }
+  .ap-about h2 { font-size: 22px; font-weight: 600; line-height: 1.6; }
+  .ap-about .ap-section-copy { color: var(--ap-body); }
+  .ap-about .ap-section-copy p + p { margin-top: 16px; }
+  .ap-about .ap-service-list { margin: 0; }
+  .ap-about .ap-service { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 28px; padding: 22px 0; border-top: 1px solid var(--ap-border); }
+  .ap-about .ap-service:first-child { padding-top: 4px; border-top: 0; }
+  .ap-about .ap-service:last-child { padding-bottom: 0; }
+  .ap-about .ap-service dt { color: var(--ap-text); font-weight: 500; }
+  .ap-about .ap-service dd { margin: 0; color: var(--ap-body); font-size: 14px; }
+  .ap-about .ap-resource-links { display: flex; flex-wrap: wrap; gap: 12px 28px; margin-top: 22px; font-size: 14px; }
+  .ap-about .ap-community-section { background: var(--ap-subtle); border-top: 1px solid var(--ap-border); }
+  .ap-about .ap-community-section .ap-section { border-top: 0; padding-top: 32px; padding-bottom: 32px; }
+  .ap-about .ap-community-section h2 { font-size: 18px; }
+  .ap-about .ap-community-section p { color: var(--ap-body); font-size: 14px; }
+  .ap-about .ap-footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-top: 24px; padding-bottom: 28px; color: var(--ap-secondary); font-size: 12px; }
+  .ap-about .ap-footer-links { display: flex; gap: 24px; }
+  .ap-about .ap-footer-links a { color: var(--ap-secondary); }
+  .dark .ap-about { --ap-background: #11151c; --ap-text: #f0f2f5; --ap-body: #bac2cf; --ap-secondary: #9ba6b6; --ap-border: #303845; --ap-subtle: #191f29; --ap-blue: #8cb8ff; }
+  @media (max-width: 800px) {
+    .ap-about .ap-container { padding-right: 28px; padding-left: 28px; }
+    .ap-about .ap-hero { gap: 36px; padding-top: 48px; padding-bottom: 44px; }
+    .ap-about h1 { font-size: 36px; }
+    .ap-about .ap-lead { font-size: 15px; }
+    .ap-about .ap-brand { width: 132px; }
+    .ap-about .ap-brand img { width: 96px; height: 96px; border-radius: 20px; }
+    .ap-about .ap-brand-name { font-size: 23px; }
+    .ap-about .ap-section { grid-template-columns: 150px minmax(0, 1fr); gap: 30px; padding-top: 32px; padding-bottom: 32px; }
+    .ap-about .ap-service { grid-template-columns: 1fr; gap: 6px; }
+  }
+  @media (max-width: 560px) {
+    .ap-about .ap-container { padding-right: 22px; padding-left: 22px; }
+    .ap-about .ap-hero { display: block; padding-top: 36px; padding-bottom: 36px; }
+    .ap-about .ap-category { margin-bottom: 12px; font-size: 13px; }
+    .ap-about h1 { margin-bottom: 18px; font-size: 32px; }
+    .ap-about .ap-brand { display: none; }
+    .ap-about .ap-hero-links { gap: 24px; margin-top: 24px; }
+    .ap-about .ap-section { grid-template-columns: 1fr; gap: 18px; padding-top: 28px; padding-bottom: 28px; }
+    .ap-about h2 { font-size: 20px; }
+    .ap-about .ap-section-copy { font-size: 14px; }
+    .ap-about .ap-service { grid-template-columns: 104px minmax(0, 1fr); gap: 16px; padding: 18px 0; }
+    .ap-about .ap-service dt { font-size: 14px; }
+    .ap-about .ap-community-section .ap-section { gap: 12px; padding-top: 26px; padding-bottom: 26px; }
+  }
+  @media (max-width: 360px) {
+    .ap-about .ap-service { grid-template-columns: 1fr; gap: 6px; }
+  }
+</style>
+<div class="ap-about" lang="zh-CN">
+  <div class="ap-container">
+    <header class="ap-hero">
+      <div class="ap-hero-copy">
+        <p class="ap-category">关于我们</p>
+        <h1>关于 AiProxy</h1>
+        <p class="ap-lead">面向开发者、团队与个人用户，提供多模型 API 接入、访问管理与用量查询服务。</p>
+        <div class="ap-hero-links">
+          <a class="ap-primary-link" href="/pricing">查看模型与价格</a>
+          <a href="/docs/">产品文档</a>
+        </div>
+      </div>
+      <div class="ap-brand" aria-hidden="true">
+        <img src="https://92ai.asia/static/uploads/images/20261029-aiproxy-brand-light-52157c6838a3.png" alt="" width="120" height="120">
+        <p class="ap-brand-name">AiProxy</p>
+        <p class="ap-brand-caption">AI 模型接入平台</p>
+      </div>
+    </header>
+
+    <section class="ap-section" aria-labelledby="ap-overview-title">
+      <h2 id="ap-overview-title">平台介绍</h2>
+      <div class="ap-section-copy">
+        <p>AiProxy 为不同模型提供统一的访问入口，支持对话、推理、代码辅助及图像生成等应用场景。开发者可以通过 API 将模型能力集成到产品中，也可以在兼容的开发工具和 AI 客户端中配置使用。</p>
+        <p>平台将模型选择、令牌管理、调用记录和账户用量集中在同一控制台，方便用户完成接入、调试与日常管理。</p>
+      </div>
+    </section>
+
+    <section class="ap-section" aria-labelledby="ap-services-title">
+      <h2 id="ap-services-title">服务内容</h2>
+      <dl class="ap-service-list">
+        <div class="ap-service"><dt>模型接入</dt><dd>提供多种模型及对应接口。模型广场展示当前可用模型、支持能力和计费信息，便于根据业务需要选择。</dd></div>
+        <div class="ap-service"><dt>访问管理</dt><dd>通过 API 令牌配置模型访问，为不同应用分别管理调用凭据与使用限制。</dd></div>
+        <div class="ap-service"><dt>用量查询</dt><dd>支持查看调用日志、Token 用量及消费记录，用于接口调试、使用核对与日常管理。</dd></div>
+      </dl>
+    </section>
+
+    <section class="ap-section" aria-labelledby="ap-usage-title">
+      <h2 id="ap-usage-title">接入与使用</h2>
+      <div class="ap-section-copy">
+        <p>接入前，请确认所选模型的接口协议、功能支持与价格，并按照产品文档配置接口地址和 API 令牌。建议先进行少量测试，再接入正式业务。</p>
+        <p>不同模型和客户端的兼容程度可能存在差异，实际能力与可用性以平台当前配置为准。API 令牌请妥善保管，不要公开或分享给他人。</p>
+        <div class="ap-resource-links"><a href="/docs/">查阅接入文档</a><a href="/keys">管理 API 令牌</a><a href="/usage-logs">查看调用日志</a></div>
+      </div>
+    </section>
+  </div>
+
+  <aside class="ap-community-section" aria-labelledby="ap-community-title">
+    <div class="ap-container"><div class="ap-section">
+      <h2 id="ap-community-title">交流与反馈</h2>
+      <p>如需加入社群，请通过网站顶部的「官方社群」入口。</p>
+    </div></div>
+  </aside>
+  <footer class="ap-container ap-footer">
+    <span>AiProxy · AI 模型接入平台</span>
+    <div class="ap-footer-links"><a href="/user-agreement">用户协议</a><a href="/privacy-policy">隐私政策</a></div>
+  </footer>
+</div>

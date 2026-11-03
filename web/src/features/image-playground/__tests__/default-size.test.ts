@@ -21,6 +21,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { expect, it } from 'vitest'
 
 import { getStudioDefaultSize, getStudioSize } from '../lib/sizes'
+import { defaultImageParameters, normalizeImageParameters } from '../types'
 
 it('selects the highest supported default on browsers without Array.findLast', () => {
   const descriptor = Object.getOwnPropertyDescriptor(
@@ -34,7 +35,7 @@ it('selects the highest supported default on browsers without Array.findLast', (
   try {
     expect(
       getStudioDefaultSize({ max_resolution: 8, size_mode: 'upscale' }, '16:9')
-    ).toBe(getStudioSize('16:9', '8K', 'upscale'))
+    ).toBe(getStudioSize('16:9', '4K', 'upscale'))
     expect(
       getStudioDefaultSize({ max_resolution: 0, size_mode: 'native' })
     ).toBe(getStudioSize('1:1', '1K', 'native'))
@@ -43,4 +44,14 @@ it('selects the highest supported default on browsers without Array.findLast', (
       Object.defineProperty(Array.prototype, 'findLast', descriptor)
     } else Reflect.deleteProperty(Array.prototype, 'findLast')
   }
+})
+
+it('reuses an old 8K draft at 4K with its aspect ratio preserved', () => {
+  expect(
+    normalizeImageParameters({
+      ...defaultImageParameters,
+      model: 'gpt-image-2.5-hq',
+      size: '8192x4608',
+    }).size
+  ).toBe('4096x2304')
 })
