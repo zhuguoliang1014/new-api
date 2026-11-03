@@ -1125,7 +1125,7 @@ func TestOAuthBindIgnoresLegacyGitHubUsernames(t *testing.T) {
 }
 
 // TEST_SECURITY_DIALECT plus TEST_MYSQL_DSN / TEST_POSTGRES_DSN exercise
-// registration and rewards on the real supported engines with separate logs.
+// registration after the promotion ended on real engines with separate logs.
 func startYaohuoOAuthLogin(t *testing.T, router *gin.Engine) (string, *http.Cookie) {
 	t.Helper()
 	response := httptest.NewRecorder()
@@ -1152,7 +1152,7 @@ func startYaohuoOAuthLogin(t *testing.T, router *gin.Engine) (string, *http.Cook
 	return result.Data.FlowToken, cookies[0]
 }
 
-func TestYaohuoSignupReward(t *testing.T) {
+func TestYaohuoSignupWithoutReward(t *testing.T) {
 	existing, _ := setupSecurityEnrollmentTest(t)
 	previousSecure := common.SessionCookieSecure
 	previousAddress := system_setting.ServerAddress
@@ -1227,6 +1227,11 @@ func TestYaohuoSignupReward(t *testing.T) {
 			require.NoError(t, model.DB.Model(&model.OAuthSignupReward{}).Count(&rewards).Error)
 			if scenario != "success" {
 				assert.Zero(t, rewards)
+				var users, bindings int64
+				require.NoError(t, model.DB.Model(&model.User{}).Count(&users).Error)
+				require.NoError(t, model.DB.Model(&model.UserOAuthBinding{}).Count(&bindings).Error)
+				assert.EqualValues(t, 1, users, "rejected registration must not create an account")
+				assert.Zero(t, bindings)
 				return
 			}
 			cleared := false
@@ -1238,15 +1243,13 @@ func TestYaohuoSignupReward(t *testing.T) {
 				}
 			}
 			assert.True(t, cleared, "the browser binding cookie must be cleared with the callback response")
-			assert.EqualValues(t, 1, rewards)
+			assert.Zero(t, rewards)
 			user, err := model.GetUserByOAuthBinding(42, "12345")
 			require.NoError(t, err)
-			assert.Equal(t, 2500000, user.Quota)
+			assert.Zero(t, user.Quota)
 			var logs []model.Log
 			require.NoError(t, model.LOG_DB.Where("user_id = ?", user.Id).Find(&logs).Error)
-			require.Len(t, logs, 1)
-			assert.Contains(t, logs[0].Content, "Yaohuo sign-up bonus")
-			assert.NotContains(t, logs[0].Content, "test-provider-token")
+			assert.Empty(t, logs, "registration must not record a sign-up bonus")
 			// Replaying the callback cannot log in or award again.
 			response = httptest.NewRecorder()
 			router.ServeHTTP(response, request.Clone(context.Background()))
@@ -1259,14 +1262,30 @@ func TestYaohuoSignupReward(t *testing.T) {
 	c.Request = httptest.NewRequest("GET", "/api/oauth/yaohuo", nil)
 	user, _, err := findOrCreateOAuthUser(c, provider, verifiedUser, nil, "")
 	require.NoError(t, err)
-	assert.Equal(t, 2500000, user.Quota, "repeat login must not award again")
+	assert.Zero(t, user.Quota, "repeat login must not award a bonus")
+
+	// Previously issued balances and receipts remain intact after the promotion.
+	require.NoError(t, model.DB.Model(user).Update("quota", 2500000).Error)
+	receipt := model.OAuthSignupReward{
+		IdentityHash: fmt.Sprintf("%x", sha256.Sum256([]byte("yaohuo\x00"+verifiedUser.ProviderUserID))), ClaimId: "historical-claim",
+		UserId: user.Id, Quota: 2500000, CreatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, model.DB.Create(&receipt).Error)
+	user, _, err = findOrCreateOAuthUser(c, provider, verifiedUser, nil, "")
+	require.NoError(t, err)
+	assert.Equal(t, 2500000, user.Quota, "login must preserve previously issued quota")
 	// Removing the binding (including account deletion) must not erase the receipt.
 	require.NoError(t, model.DeleteUserOAuthBinding(user.Id, 42))
 	require.NoError(t, model.DB.Delete(user).Error)
 	verifiedUser.Username = "yaohuo-re-registered"
 	replacement, _, err := findOrCreateOAuthUser(c, provider, verifiedUser, nil, "")
 	require.NoError(t, err)
-	assert.Zero(t, replacement.Quota, "the provider identity already claimed the reward")
+	assert.Zero(t, replacement.Quota, "re-registration must not award a bonus")
+	var receipts []model.OAuthSignupReward
+	require.NoError(t, model.DB.Find(&receipts).Error)
+	require.Len(t, receipts, 1)
+	receipts[0].CreatedAt = receipts[0].CreatedAt.UTC()
+	assert.Equal(t, []model.OAuthSignupReward{receipt}, receipts)
 	// Existing accounts that link Yaohuo receive no registration reward.
 	require.NoError(t, model.CreateUserOAuthBinding(&model.UserOAuthBinding{UserId: existing.Id, ProviderId: 42, ProviderUserId: "existing-subject"}))
 	linked, _, err := findOrCreateOAuthUser(c, provider, &oauth.OAuthUser{ProviderUserID: "existing-subject"}, nil, "")
@@ -1281,25 +1300,24 @@ func TestYaohuoSignupReward(t *testing.T) {
 	assert.Zero(t, otherUser.Quota)
 }
 
-func TestYaohuoSignupRewardRollback(t *testing.T) {
-	setupSecurityEnrollmentTest(t)
-	require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
-	require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
-	previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
-	common.RegisterEnabled = true
-	t.Cleanup(func() { common.RegisterEnabled, common.QuotaForNewUser = previousRegister, previousQuota })
-	provider := oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 42, Slug: "yaohuo", Name: "妖火网"})
+func TestYaohuoSignupWithoutRewardTransaction(t *testing.T) {
 	for _, test := range []struct {
 		name, subject string
-		initial, want int
+		initial       int
 		failure       bool
 	}{
-		{"overflow", "overflow-subject", common.MaxWalletQuota, 0, true},
-		{"invalid binding", "", 0, 0, true},
-		{"preserve general bonus", "valid-subject", 500000, 3000000, false},
+		{"maximum wallet", "maximum-subject", common.MaxWalletQuota, false},
+		{"invalid binding", "", 0, true},
+		{"preserve general bonus", "valid-subject", 500000, false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			common.QuotaForNewUser = test.initial
+			setupSecurityEnrollmentTest(t)
+			require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
+			require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+			previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
+			common.RegisterEnabled, common.QuotaForNewUser = true, test.initial
+			t.Cleanup(func() { common.RegisterEnabled, common.QuotaForNewUser = previousRegister, previousQuota })
+			provider := oauth.NewGenericOAuthProvider(&model.CustomOAuthProvider{Id: 42, Slug: "yaohuo", Name: "妖火网"})
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
 			c.Request = httptest.NewRequest("GET", "/api/oauth/yaohuo", nil)
 			var before int64
@@ -1307,7 +1325,13 @@ func TestYaohuoSignupRewardRollback(t *testing.T) {
 			user, _, err := findOrCreateOAuthUser(c, provider, &oauth.OAuthUser{ProviderUserID: test.subject, Username: "reward-test"}, nil, "")
 			if !test.failure {
 				require.NoError(t, err)
-				assert.Equal(t, test.want, user.Quota)
+				assert.Equal(t, test.initial, user.Quota)
+				stored, err := model.GetUserByOAuthBinding(42, test.subject)
+				require.NoError(t, err)
+				assert.Equal(t, test.initial, stored.Quota)
+				var rewards int64
+				require.NoError(t, model.DB.Model(&model.OAuthSignupReward{}).Count(&rewards).Error)
+				assert.Zero(t, rewards)
 				return
 			}
 			require.Error(t, err)
