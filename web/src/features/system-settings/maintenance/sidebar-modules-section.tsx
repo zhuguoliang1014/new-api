@@ -144,6 +144,10 @@ export function SidebarModulesSection({
       },
     },
     admin: {
+      announcements: {
+        title: t('Telegram Announcements'),
+        description: t('Write announcement'),
+      },
       channel: {
         title: t('Channels'),
         description: t('Configure upstream providers and routing.'),

@@ -160,6 +160,13 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 	"GET /api/option/homepage_models": accessTokenScopeRule("option:read"),
 	"PUT /api/option/homepage_models": accessTokenScopeRule("option:write"),
 
+	// Dedicated external announcement publisher; root browser sessions only.
+	"GET /api/telegram-announcements/":         accessTokenSessionRule,
+	"GET /api/telegram-announcements/config":   accessTokenSessionRule,
+	"PUT /api/telegram-announcements/template": accessTokenSessionRule,
+	"POST /api/telegram-announcements/preview": accessTokenSessionRule,
+	"POST /api/telegram-announcements/publish": accessTokenSessionRule,
+
 	// router/api-router.go: /api/option
 	"GET /api/option/":                                           accessTokenScopeRule("option:read"),
 	"GET /api/option/request_policy":                             accessTokenScopeRule("option:read"),

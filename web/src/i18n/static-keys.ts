@@ -19,6 +19,22 @@ For commercial licensing, please contact support@quantumnous.com
 // Static translation keys that don't get picked up by the t('...') regex.
 // These cover dynamic labels (e.g. constants, configs) that are passed into t at runtime.
 export const STATIC_I18N_KEYS = [
+  // Telegram announcement validation and server delivery results.
+  'No announcement channel is configured.',
+  'The bot cannot publish to the configured channel. Check the channel ID and administrator permissions.',
+  'Channel delivery is unconfirmed. Check the channel before publishing again.',
+  'Telegram rejected the channel announcement. Check bot permissions and message content.',
+
+  'Title is too long',
+  'Announcement is too long',
+  'Footer is too long',
+  'Button label is too long',
+  'Use an HTTPS link',
+  'Invalid announcement parameters',
+  'The announcement template changed. Preview again before publishing.',
+  'This publication ID belongs to a different announcement.',
+  'Unable to process the announcement.',
+
   'Paid',
   'Awaiting payment',
   'Canceled',

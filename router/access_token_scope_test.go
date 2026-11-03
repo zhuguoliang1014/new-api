@@ -218,3 +218,18 @@ func TestImageStudioTaskRoutesRequireDashboardSession(t *testing.T) {
 	}
 	require.Equal(t, 6, count)
 }
+
+func TestTelegramAnnouncementRoutesRequireDashboardSession(t *testing.T) {
+	engine := newAccessTokenScopeTestEngine(t)
+	count := 0
+	for _, route := range engine.Routes() {
+		if !strings.HasPrefix(route.Path, "/api/telegram-announcements") {
+			continue
+		}
+		rule, ok := middleware.AccessTokenRouteRule(route.Method + " " + route.Path)
+		require.True(t, ok, route.Path)
+		assert.Equal(t, "session", rule.Kind(), route.Path)
+		count++
+	}
+	assert.Equal(t, 5, count)
+}

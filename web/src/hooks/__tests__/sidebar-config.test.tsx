@@ -180,3 +180,26 @@ describe('audit log sidebar entry', () => {
     expect(titles).toContain('Audit Logs')
   })
 })
+
+describe('Telegram announcement sidebar entry', () => {
+  it('legacy admin settings show the announcement entry and its independent toggle can hide it', () => {
+    const config = parseSidebarModulesAdmin('{"admin":{"enabled":true}}')
+    expect(config.admin.announcements).toBe(true)
+    const visible = sidebarFor(config)
+    expect(
+      visible.result.current
+        .flatMap((group) => group.items)
+        .map((item) => item.title)
+    ).toContain('Telegram Announcements')
+    visible.unmount()
+    config.admin.announcements = false
+    const hidden = sidebarFor(
+      parseSidebarModulesAdmin(serializeSidebarModulesAdmin(config))
+    )
+    expect(
+      hidden.result.current
+        .flatMap((group) => group.items)
+        .map((item) => item.title)
+    ).not.toContain('Telegram Announcements')
+  })
+})

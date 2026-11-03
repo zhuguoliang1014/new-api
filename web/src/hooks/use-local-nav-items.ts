@@ -1,8 +1,9 @@
 import type { TFunction } from 'i18next'
-import { Receipt, ScrollText, Wallet } from 'lucide-react'
+import { Megaphone, Receipt, ScrollText, Wallet } from 'lucide-react'
 
 import type { NavItem, SidebarData } from '@/components/layout/types'
 import { LOCAL_CONFIG } from '@/lib/local-config'
+import { ROLE } from '@/lib/roles'
 
 // Local-only sidebar entries. Kept in a sibling hook so future merges only
 // have to keep the single injectLocalNavItems() call in use-sidebar-data.ts.
@@ -60,5 +61,18 @@ export function injectLocalNavItems(
   let next = injectInto(base, 'personal', personalItems, 0)
   // Admin: insert Order History after Channels (index 1).
   next = injectInto(next, 'admin', getLocalAdminItems(t), 1)
+  next = injectInto(
+    next,
+    'admin',
+    [
+      {
+        title: t('Telegram Announcements'),
+        url: '/telegram-announcements',
+        icon: Megaphone,
+        requiredRole: ROLE.SUPER_ADMIN,
+      },
+    ],
+    99
+  )
   return next
 }
