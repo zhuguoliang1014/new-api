@@ -31,9 +31,12 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { ErrorState } from '@/components/error-state'
+import { LoadingState } from '@/components/loading-state'
 import { PermissionMatrix } from '@/components/permission-matrix'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
+import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import {
   Form,
   FormControl,
@@ -86,6 +89,7 @@ import {
   getUser,
   getGroups,
   getPermissionCatalog,
+  getUserOAuthBindings,
 } from '../api'
 import { BINDING_FIELDS, ERROR_MESSAGES, SUCCESS_MESSAGES } from '../constants'
 import {
@@ -128,6 +132,14 @@ export function UsersMutateDrawer({
   })
 
   const groups = groupsData?.data || []
+
+  const oauthBindings = useQuery({
+    queryKey: ['users', currentRow?.id, 'oauth-bindings'],
+    queryFn: async () =>
+      requireServerSuccess(await getUserOAuthBindings(currentRow?.id ?? 0)),
+    enabled: open && isUpdate,
+    gcTime: 0,
+  })
 
   // Permission catalog is owned by the backend; fetched once and reused.
   const { data: permissionCatalog = EMPTY_PERMISSION_CATALOG } = useQuery({
@@ -576,6 +588,39 @@ export function UsersMutateDrawer({
                         />
                       </div>
                     ))}
+                    {oauthBindings.isLoading && (
+                      <LoadingState className='min-h-0 py-3' size='sm' />
+                    )}
+                    {oauthBindings.isError && (
+                      <ErrorState
+                        title={t('Failed to load')}
+                        className='min-h-0 py-3'
+                        onRetry={() => void oauthBindings.refetch()}
+                      />
+                    )}
+                    {!oauthBindings.isLoading && !oauthBindings.isError && (
+                      <FieldGroup className='gap-3'>
+                        {oauthBindings.data?.data?.map((binding) => {
+                          const id = `user-${currentRow?.id}-oauth-${binding.provider_id}`
+                          return (
+                            <Field key={binding.provider_id} data-disabled>
+                              <FieldLabel
+                                htmlFor={id}
+                                className='text-muted-foreground text-xs'
+                              >
+                                {binding.provider_name || binding.provider_slug}
+                              </FieldLabel>
+                              <Input
+                                id={id}
+                                value={binding.provider_user_id}
+                                title={binding.provider_user_id}
+                                disabled
+                              />
+                            </Field>
+                          )
+                        })}
+                      </FieldGroup>
+                    )}
                   </div>
                 </SideDrawerSection>
               )}

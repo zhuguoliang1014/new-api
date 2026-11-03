@@ -48,6 +48,9 @@ function renderPermissions(viewerRole: number, allowed?: boolean) {
     .getState()
     .auth.setUser({ id: 1, username: 'operator', role: viewerRole })
   const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    if (url === `/api/user/${target.id}/oauth/bindings`) {
+      return { data: { success: true, data: [] } }
+    }
     if (url === '/api/authz/catalog') {
       return {
         data: {
