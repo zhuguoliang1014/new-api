@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -12,7 +13,10 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -253,6 +257,192 @@ func TestResponsesHTTPWebSocketCancelsHTTPSAndDoesNotReplay(t *testing.T) {
 	require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Find(&logs).Error)
 	require.Len(t, logs, 1)
 	assert.Positive(t, logs[0].Quota, "delivered output remains billable exactly once")
+}
+
+func TestResponsesHTTPWebSocketInterruptDiscardsPartialItemsAndContinues(t *testing.T) {
+	for _, reportedUsage := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reported_usage=%v", reportedUsage), func(t *testing.T) {
+			f := newResponsesHTTPWSFixture(t, `tier("tokens", p * 2 + c * 2)`)
+			var calls atomic.Int32
+			cancelled := make(chan struct{})
+			reasoning := map[string]any{"id": "rs_complete", "type": "reasoning", "encrypted_content": "preserved", "summary": []any{}}
+			f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				if calls.Add(1) != 1 {
+					assert.Contains(t, string(body), "seed input")
+					assert.Contains(t, string(body), "preserved")
+					assert.NotContains(t, string(body), "fc_partial")
+					assert.NotContains(t, string(body), "previous_response_id")
+					writeResponsesHTTPWSCompletion(t, w, "continued", []any{})
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				response := map[string]any{"id": "active", "status": "in_progress"}
+				if reportedUsage {
+					response["usage"] = map[string]any{"input_tokens": 1000, "output_tokens": 10, "total_tokens": 1010}
+				}
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.created", "response": response})
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.output_item.done", "output_index": 0, "item": reasoning})
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.output_item.added", "output_index": 1, "item": map[string]any{"id": "fc_partial", "type": "function_call", "status": "in_progress"}})
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.function_call_arguments.delta", "delta": "partial"})
+				<-r.Context().Done()
+				close(cancelled)
+			}
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","stream_id":"main","model":"ws-billing","input":"seed input","generate":false}`)))
+			warmup := readResponsesHTTPWSTerminal(t, f.client)
+			parent := warmup["response"].(map[string]any)["id"]
+			create, err := common.Marshal(map[string]any{"type": "response.create", "stream_id": "main", "model": "ws-billing", "previous_response_id": parent, "input": "start"})
+			require.NoError(t, err)
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, create))
+			for _, kind := range []string{"response.created", "response.output_item.done", "response.output_item.added", "response.function_call_arguments.delta"} {
+				require.Equal(t, kind, readResponsesWSTestEvent(t, f.client)["type"])
+			}
+			other, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(f.gatewayURL, "http")+"/v1/responses", http.Header{"Authorization": []string{"Bearer sk-" + f.token.Key}})
+			require.NoError(t, err)
+			defer other.Close()
+			require.NoError(t, other.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","response_id":"active","mode":"discard_partial_items"}`)))
+			assert.Equal(t, "response.interrupt.failed", readResponsesWSTestEvent(t, other)["type"])
+			assert.Empty(t, cancelled, "another connection cannot interrupt this response")
+			for _, tc := range []struct{ payload, kind string }{
+				{`{"type":"response.interrupt","event_id":"invalid","response_id":"active","mode":"unknown"}`, "error"},
+				{`{"type":"response.interrupt","event_id":"invalid","mode":"discard_partial_items"}`, "error"},
+				{`{"type":"response.interrupt","event_id":"invalid","response_id":"other","mode":"discard_partial_items"}`, "response.interrupt.failed"},
+				{`{"type":"response.interrupt","event_id":"invalid","response_id":"active","stream_id":"other","mode":"discard_partial_items"}`, "response.interrupt.failed"},
+			} {
+				require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(tc.payload)))
+				event := readResponsesWSTestEvent(t, f.client)
+				assert.Equal(t, tc.kind, event["type"])
+				assert.Equal(t, "invalid", event["event_id"])
+				assert.Empty(t, cancelled, "invalid controls must leave the generation running")
+			}
+			interrupt := []byte(`{"type":"response.interrupt","event_id":"stop","response_id":"active","stream_id":"main","mode":"discard_partial_items"}`)
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, interrupt))
+			ack := readResponsesWSTestEvent(t, f.client)
+			assert.Equal(t, "response.interrupt.accepted", ack["type"])
+			assert.Equal(t, "active", ack["response_id"])
+			assert.Equal(t, "main", ack["stream_id"])
+			terminal := readResponsesHTTPWSTerminal(t, f.client)
+			require.Equal(t, "response.incomplete", terminal["type"])
+			response := terminal["response"].(map[string]any)
+			assert.Equal(t, "interrupted", response["incomplete_details"].(map[string]any)["reason"])
+			output, err := common.Marshal(response["output"])
+			require.NoError(t, err)
+			assert.JSONEq(t, `[{"id":"rs_complete","type":"reasoning","encrypted_content":"preserved","summary":[]}]`, string(output))
+			if reportedUsage {
+				assert.Equal(t, float64(1000), response["usage"].(map[string]any)["input_tokens"])
+			} else {
+				assert.Nil(t, response["usage"], "unknown upstream usage must not be fabricated")
+			}
+			select {
+			case <-cancelled:
+			case <-time.After(3 * time.Second):
+				t.Fatal("interrupt did not cancel the HTTP generation")
+			}
+			// Duplicate and completion-race controls are acknowledged without a
+			// second generation, settlement, or mutation of the next request.
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, interrupt))
+			assert.Equal(t, "response.interrupt.accepted", readResponsesWSTestEvent(t, f.client)["type"])
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","stream_id":"main","model":"ws-billing","previous_response_id":"active","input":"continue"}`)))
+			require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","response_id":"continued","mode":"discard_partial_items"}`)))
+			assert.Equal(t, "response.interrupt.accepted", readResponsesWSTestEvent(t, f.client)["type"])
+			assert.Equal(t, int32(2), calls.Load())
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Order("id").Find(&logs).Error)
+			require.Len(t, logs, 2)
+			if reportedUsage {
+				assert.Equal(t, 1010, logs[0].Quota)
+			} else {
+				assert.Zero(t, logs[0].PromptTokens)
+				assert.Positive(t, logs[0].Quota, "generated output is settled once")
+			}
+			assertResponsesWSAccounting(t, f, []int{logs[0].Quota, 1010})
+		})
+	}
+}
+
+func TestResponsesWebSocketForwardsInterruptHandshake(t *testing.T) {
+	interrupt := `{"type":"response.interrupt","event_id":"stop","response_id":"active","mode":"discard_partial_items"}`
+	f := newResponsesWSBillingTest(t, `tier("input", p * 2)`, func(ws *websocket.Conn, r *http.Request) {
+		_, _, err := ws.ReadMessage()
+		if !assert.NoError(t, err) {
+			return
+		}
+		if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.created","response":{"id":"active","status":"in_progress"}}`))) {
+			return
+		}
+		for _, terminal := range []bool{true, false} {
+			_, body, err := ws.ReadMessage()
+			if !assert.NoError(t, err) || !assert.JSONEq(t, interrupt, string(body)) {
+				return
+			}
+			if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt.accepted","response_id":"active"}`))) {
+				return
+			}
+			if terminal {
+				if !assert.NoError(t, ws.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.incomplete","response":{"id":"active","status":"incomplete","incomplete_details":{"reason":"interrupted"},"usage":{"input_tokens":1000,"output_tokens":10,"total_tokens":1010}}}`))) {
+					return
+				}
+			}
+		}
+		_, _, _ = ws.ReadMessage()
+	})
+	t.Cleanup(func() { f.closeAndWait(t) })
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"start"}`)))
+	require.Equal(t, "response.created", readResponsesWSTestEvent(t, f.client)["type"])
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(interrupt)))
+	assert.Equal(t, "response.interrupt.accepted", readResponsesWSTestEvent(t, f.client)["type"])
+	require.Equal(t, "response.incomplete", readResponsesHTTPWSTerminal(t, f.client)["type"])
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(interrupt)))
+	assert.Equal(t, "response.interrupt.accepted", readResponsesWSTestEvent(t, f.client)["type"])
+	assertResponsesWSAccounting(t, f, []int{1000})
+}
+
+func TestResponsesHTTPWebSocketInterruptRacingSettledCompletion(t *testing.T) {
+	f := newResponsesHTTPWSFixture(t, `tier("input", p * 2)`)
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+		writeResponsesHTTPWSCompletion(t, w, "finished", []any{})
+	}
+	settled, release := make(chan struct{}), make(chan struct{})
+	releaseRunner := sync.OnceFunc(func() { close(release) })
+	defer releaseRunner()
+	engine := gin.New()
+	engine.GET("/v1/responses", func(c *gin.Context) {
+		client, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		require.NoError(t, err)
+		defer client.Close()
+		runner := newResponsesWSRequestRunner(c)
+		apiErr := relay.ResponsesHTTPWebSocketHelper(c, client, func(request *http.Request, id string, handle func(*gin.Context) *types.NewAPIError) *types.NewAPIError {
+			apiErr := runner(request, id, handle)
+			close(settled)
+			<-release
+			return apiErr
+		})
+		assert.Nil(t, apiErr)
+	})
+	gateway := httptest.NewServer(engine)
+	defer func() { releaseRunner(); gateway.Close() }()
+	client, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(gateway.URL, "http")+"/v1/responses", http.Header{"Authorization": []string{"Bearer sk-" + f.token.Key}})
+	require.NoError(t, err)
+	defer client.Close()
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"start"}`)))
+	require.Equal(t, "response.created", readResponsesWSTestEvent(t, client)["type"])
+	select {
+	case <-settled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("request did not settle")
+	}
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.interrupt","response_id":"finished","mode":"discard_partial_items"}`)))
+	// The conflict confirms the earlier interrupt was enqueued after the HTTP
+	// watcher stopped, while the settled turn still owns admission.
+	require.NoError(t, client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"conflict"}`)))
+	conflict := readResponsesWSTestEvent(t, client)
+	require.Equal(t, float64(http.StatusConflict), conflict["status"])
+	releaseRunner()
+	assert.Equal(t, "response.interrupt.accepted", readResponsesWSTestEvent(t, client)["type"])
+	assert.Equal(t, "response.completed", readResponsesWSTestEvent(t, client)["type"])
+	assertResponsesWSAccounting(t, f, []int{1000})
 }
 
 func TestResponsesHTTPWebSocketUpstreamFailureRefundsAndAllowsHTTPS(t *testing.T) {

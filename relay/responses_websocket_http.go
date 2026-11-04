@@ -299,11 +299,14 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 		for {
 			select {
 			case control := <-state.controls:
-				if err := writer.validateCancel(control); err != nil {
+				shouldCancel, err := writer.applyControl(control)
+				if err != nil {
 					s.sendError(control.eventID, control.streamID, newResponsesWSInvalidRequestError(err))
 					continue
 				}
-				cancel()
+				if shouldCancel {
+					cancel()
+				}
 			case <-watchDone:
 				return
 			case <-s.ctx.Done():
@@ -312,10 +315,46 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 			}
 		}
 	}()
-	defer func() { close(watchDone); <-watchExited }()
+	stopWatch := sync.OnceFunc(func() { close(watchDone); <-watchExited })
+	defer stopWatch()
 	// One application-level attempt only: after submission a missing response
 	// is ambiguous, and switching transport could generate and charge twice.
 	apiErr = ResponsesHelper(c, info)
+	// The scanner and its writer have joined. Finish the control watcher before
+	// reading its interrupt flag or publishing a terminal and its history.
+	stopWatch()
+	state.responseID = writer.responseID
+	if writer.interrupted && writer.err == nil && apiErr == nil {
+		// This is a downstream protocol completion only. ResponsesHelper already
+		// settled the real upstream usage (or its ordinary missing-usage fallback).
+		// Never feed synthetic usage back into billing or resubmit the generation.
+		output := make([]common.RawMessage, 0, len(writer.completedItems))
+		indexes := make([]int, 0, len(writer.completedItems))
+		for index := range writer.completedItems {
+			indexes = append(indexes, index)
+		}
+		slices.Sort(indexes)
+		for _, index := range indexes {
+			output = append(output, writer.completedItems[index])
+		}
+		response := map[string]any{"id": writer.responseID, "object": "response", "created_at": time.Now().Unix(), "model": model,
+			"status": "incomplete", "output": output, "usage": writer.usage, "error": nil,
+			"incomplete_details": map[string]string{"reason": "interrupted"}}
+		event := map[string]any{"type": "response.incomplete", "response": response}
+		if create.StreamID != "" {
+			event["stream_id"] = create.StreamID
+		}
+		body, err := common.Marshal(event)
+		if err != nil {
+			return types.NewError(err, types.ErrorCodeBadResponse, types.ErrOptionWithSkipRetry())
+		}
+		state.terminal = &responsesWSMessage{kind: websocket.TextMessage, body: body}
+		if !writer.outputOverflow {
+			history := append(slices.Clone(items), output...)
+			cache.remember(writer.responseID, create.StreamID, model, history)
+		}
+		return nil
+	}
 	if apiErr != nil {
 		service.RecordPolicyFailure(c, info.ChannelId, apiErr, service.PolicyDecision{Action: "stop", Reason: "websocket_http_no_replay", Source: "transport"})
 		service.ProcessChannelError(c, *types.NewChannelError(info.ChannelId, info.ChannelType, common.GetContextKeyString(c, appconstant.ContextKeyChannelName), info.ChannelIsMultiKey, info.ApiKey, common.GetContextKeyBool(c, appconstant.ContextKeyChannelAutoBan)), apiErr, info)
@@ -349,6 +388,7 @@ func (s *responsesWSSession) warmHTTPContext(state *responsesWSCallState, create
 		return types.NewErrorWithStatusCode(errors.New("WebSocket context cache is full; retry with full input"), types.ErrorCodeBadResponse, http.StatusServiceUnavailable, types.ErrOptionWithSkipRetry())
 	}
 	response := map[string]any{"id": id, "object": "response", "created_at": time.Now().Unix(), "status": "completed", "model": create.Request.Model, "output": []any{}, "error": nil, "incomplete_details": nil, "usage": map[string]any{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}}
+	state.responseID = id
 	for _, kind := range []string{"response.created", "response.completed"} {
 		if kind == "response.created" {
 			response["status"] = "in_progress"
@@ -373,20 +413,25 @@ func (s *responsesWSSession) warmHTTPContext(state *responsesWSCallState, create
 }
 
 // responsesWSHTTPWriter translates the normal SSE writer into WebSocket
-// events. It never retains deltas: only the final raw output items are cached,
-// preserving reasoning ciphertext, tool calls, and vendor extension fields.
+// events. It never retains deltas: completed raw output items are retained for
+// interruption, preserving reasoning ciphertext and vendor extension fields.
 type responsesWSHTTPWriter struct {
 	gin.ResponseWriter
-	session    *responsesWSSession
-	state      *responsesWSCallState
-	streamID   string
-	buffer     []byte
-	err        error
-	responseID string
-	completed  bool
-	output     []common.RawMessage
-	mu         sync.Mutex // Controls only read responseID/terminal state through this mutex.
-	terminal   bool
+	session        *responsesWSSession
+	state          *responsesWSCallState
+	streamID       string
+	buffer         []byte
+	err            error
+	responseID     string
+	completed      bool
+	output         []common.RawMessage
+	mu             sync.Mutex // Serializes interrupt acceptance with event delivery.
+	terminal       bool
+	interrupted    bool
+	usage          common.RawMessage
+	completedItems map[int]common.RawMessage
+	outputBytes    int
+	outputOverflow bool
 }
 
 func (w *responsesWSHTTPWriter) Write(data []byte) (int, error) {
@@ -436,6 +481,13 @@ func (w *responsesWSHTTPWriter) event(data []byte) error {
 	if err := common.Unmarshal(event["type"], &kind); err != nil {
 		return errors.New("missing upstream Responses event type")
 	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	// Events already buffered by the HTTP scanner still contribute to its usage
+	// accumulator, but cannot deliver partial items after interrupt acceptance.
+	if w.interrupted {
+		return nil
+	}
 	if w.streamID != "" {
 		event["stream_id"], _ = common.Marshal(w.streamID)
 	} else {
@@ -461,18 +513,43 @@ func (w *responsesWSHTTPWriter) event(data []byte) error {
 		var response struct {
 			ID     string              `json:"id"`
 			Output []common.RawMessage `json:"output"`
+			Usage  common.RawMessage   `json:"usage"`
 		}
 		if err := common.Unmarshal(raw, &response); err != nil {
 			return errors.New("invalid upstream response envelope")
 		}
-		w.mu.Lock()
 		if response.ID != "" {
 			w.responseID = response.ID
 		}
-		w.mu.Unlock()
+		if len(response.Usage) > 0 && !bytes.Equal(bytes.TrimSpace(response.Usage), []byte("null")) {
+			w.usage = response.Usage
+		}
 		if kind == "response.completed" || kind == "response.done" {
 			w.completed = true
 			w.output = response.Output
+		}
+	}
+	if kind == "response.output_item.done" && !w.outputOverflow {
+		var item struct {
+			Status string `json:"status"`
+		}
+		var index int
+		if common.Unmarshal(event["item"], &item) == nil && common.Unmarshal(event["output_index"], &index) == nil && index >= 0 &&
+			(item.Status == "" || item.Status == "completed") {
+			if w.completedItems == nil {
+				w.completedItems = make(map[int]common.RawMessage)
+			}
+			if previous, exists := w.completedItems[index]; exists {
+				w.outputBytes += len(event["item"]) - len(previous)
+			} else {
+				w.outputBytes += len(event["item"]) + 24
+			}
+			if w.outputBytes > responsesWSHTTPContextBytes {
+				w.outputOverflow = true
+				w.completedItems = nil
+			} else {
+				w.completedItems[index] = event["item"]
+			}
 		}
 	}
 	body, err := common.Marshal(event)
@@ -481,9 +558,7 @@ func (w *responsesWSHTTPWriter) event(data []byte) error {
 	}
 	switch kind {
 	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
-		w.mu.Lock()
 		w.terminal = true
-		w.mu.Unlock()
 		w.state.terminal = &responsesWSMessage{kind: websocket.TextMessage, body: body}
 		return nil
 	default:
@@ -491,23 +566,39 @@ func (w *responsesWSHTTPWriter) event(data []byte) error {
 	}
 }
 
-func (w *responsesWSHTTPWriter) validateCancel(control responsesWSControl) error {
+func (w *responsesWSHTTPWriter) applyControl(control responsesWSControl) (bool, error) {
 	var event struct {
 		ResponseID string `json:"response_id"`
 	}
 	if err := common.Unmarshal(control.body, &event); err != nil {
-		return errors.New("invalid response.cancel")
+		return false, errors.New("invalid response control event")
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if control.kind == "response.interrupt" {
+		accepted := event.ResponseID == w.responseID && (control.streamID == "" || control.streamID == w.streamID)
+		body, err := buildResponsesWSInterruptAck(control, accepted)
+		if err != nil {
+			return false, err
+		}
+		if err := w.session.writeClient(websocket.TextMessage, body); err != nil {
+			w.session.shutdown(websocket.CloseInternalServerErr, "")
+			return false, err
+		}
+		if !accepted || w.terminal || w.interrupted {
+			return false, nil
+		}
+		w.interrupted = true
+		return true, nil
+	}
 	if w.terminal {
-		return errors.New("response has already completed")
+		return false, errors.New("response has already completed")
 	}
 	if control.streamID != "" && control.streamID != w.streamID {
-		return errors.New("response.cancel stream_id does not match the active response")
+		return false, errors.New("response.cancel stream_id does not match the active response")
 	}
 	if event.ResponseID != "" && event.ResponseID != w.responseID {
-		return errors.New("response.cancel response_id does not match the active response")
+		return false, errors.New("response.cancel response_id does not match the active response")
 	}
-	return nil
+	return true, nil
 }

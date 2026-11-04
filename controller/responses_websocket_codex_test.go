@@ -16,6 +16,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gorilla/websocket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,10 +45,9 @@ func TestResponsesHTTPWebSocketCodexProviderFlag(t *testing.T) {
 			}
 			baseURL := f.gatewayURL
 			if mode == "connection-cap" {
-				// The fixture is already holding one socket. Simulate the
-				// main conversation and a child agent taking the other two;
-				// the real CLI must fall back on its fourth handshake.
-				for range 2 {
+				// The fixture already owns one socket. Fill the remaining
+				// configured allowance so the real CLI must fall back.
+				for range operation_setting.GetResponsesWSMaxConnectionsPerUser() - 1 {
 					held, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(baseURL, "http")+"/v1/responses", http.Header{"Authorization": []string{"Bearer sk-" + f.token.Key}})
 					require.NoError(t, err)
 					defer held.Close()
