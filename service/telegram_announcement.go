@@ -30,6 +30,7 @@ var (
 	ErrAnnouncementUnavailable        = errors.New("The announcement bot is not connected. Configure its protected server file first.")
 	ErrAnnouncementChannelMissing     = errors.New("No announcement channel is configured.")
 	ErrAnnouncementChannelUnavailable = errors.New("The bot cannot publish to the configured channel. Check the channel ID and administrator permissions.")
+	ErrAnnouncementDiscussionMismatch = errors.New("The announcement channel must be linked to the configured discussion group.")
 	ErrAnnouncementConflict           = errors.New("This publication ID belongs to a different announcement.")
 )
 
@@ -42,6 +43,7 @@ type AnnouncementTemplate struct {
 }
 
 type AnnouncementInput struct {
+	BodyFormat       string `json:"body_format,omitempty"`
 	Title            string `json:"title"`
 	Body             string `json:"body"`
 	Pin              bool   `json:"pin"`
@@ -58,6 +60,7 @@ type AnnouncementPreview struct {
 	ChannelChatID int64                `json:"channel_chat_id"`
 	ChannelTitle  string               `json:"channel_title"`
 	BotUsername   string               `json:"bot_username"`
+	BodyHTML      string               `json:"body_html"`
 	HTML          string               `json:"-"`
 }
 
@@ -157,26 +160,29 @@ func announcementHash(value any) string {
 func PreviewAnnouncement(input AnnouncementInput) (*AnnouncementPreview, error) {
 	input.Title = strings.TrimSpace(input.Title)
 	input.Body = strings.TrimSpace(input.Body)
-	if input.Title == "" || input.Body == "" || !utf8.ValidString(input.Title+input.Body) || utf8.RuneCountInString(input.Title) > 120 {
+	if (input.PublishToChannel && input.Pin) || input.Title == "" || input.Body == "" || !utf8.ValidString(input.Title+input.Body) || utf8.RuneCountInString(input.Title) > 120 {
 		return nil, ErrAnnouncementInvalid
 	}
 	template, err := GetAnnouncementTemplate()
 	if err != nil {
 		return nil, err
 	}
-	text := input.Title + "\n\n" + input.Body
-	rendered := "<b>" + html.EscapeString(input.Title) + "</b>\n\n" + html.EscapeString(input.Body)
+	bodyHTML, bodyText, err := renderAnnouncementBody(input.Body, input.BodyFormat)
+	if err != nil || strings.TrimSpace(bodyText) == "" {
+		return nil, ErrAnnouncementInvalid
+	}
+	text := input.Title + "\n\n" + bodyText
+	rendered := "<b>" + html.EscapeString(input.Title) + "</b>\n\n" + bodyHTML
 	if template.Footer != "" {
 		text += "\n\n" + template.Footer
 		rendered += "\n\n" + html.EscapeString(template.Footer)
 	}
-	text += "\n" + template.ChannelLabel + "：" + template.ChannelURL + "\n" + template.ContactLabel + "：" + template.ContactURL
-	rendered += "\n" + html.EscapeString(template.ChannelLabel) + "：<a href=\"" + html.EscapeString(template.ChannelURL) + "\">" + html.EscapeString(template.ChannelURL) + "</a>\n" + html.EscapeString(template.ContactLabel) + "：<a href=\"" + html.EscapeString(template.ContactURL) + "\">" + html.EscapeString(template.ContactURL) + "</a>"
+
 	count := len(utf16.Encode([]rune(text)))
 	if count > 4096 {
 		return nil, ErrAnnouncementInvalid
 	}
-	preview := &AnnouncementPreview{AnnouncementInput: input, Template: template, Text: text, HTML: rendered, Characters: count}
+	preview := &AnnouncementPreview{AnnouncementInput: input, Template: template, Text: text, HTML: rendered, BodyHTML: bodyHTML, Characters: count}
 	cfg, _ := loadAnnouncementBot()
 	preview.ChatID, preview.BotUsername = cfg.GroupID, cfg.Username
 	if input.PublishToChannel {
@@ -192,12 +198,13 @@ func PreviewAnnouncement(input AnnouncementInput) (*AnnouncementPreview, error) 
 		preview.ChannelChatID, preview.ChannelTitle = cfg.ChannelID, title
 	}
 	preview.Hash = announcementHash(struct {
-		Input     AnnouncementInput
-		Template  AnnouncementTemplate
-		ChatID    int64
-		Username  string
-		ChannelID int64
-	}{input, template, cfg.GroupID, cfg.Username, preview.ChannelChatID})
+		Input           AnnouncementInput
+		Template        AnnouncementTemplate
+		ChatID          int64
+		Username        string
+		ChannelID       int64
+		DeliveryVersion int
+	}{input, template, cfg.GroupID, cfg.Username, preview.ChannelChatID, 2})
 	return preview, nil
 }
 
@@ -293,6 +300,9 @@ func PublishAnnouncement(ctx context.Context, operatorID int, request Announceme
 		record.ChannelChatID = preview.ChannelChatID
 		record.ChannelTitle = preview.ChannelTitle
 		record.ChannelStatus = "queued"
+		// The primary receipt identifies the only direct destination. Historical
+		// double-send receipts retain their different group and channel IDs.
+		record.ChatID = preview.ChannelChatID
 	}
 	if request.Pin {
 		record.PinStatus = "pending"
@@ -311,10 +321,24 @@ func PublishAnnouncement(ctx context.Context, operatorID int, request Announceme
 	// Finish and persist the receipt even if the browser disconnects mid-send.
 	sendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 70*time.Second)
 	defer cancel()
-	group := deliverAnnouncement(sendCtx, cfg, preview, cfg.GroupID)
-	record.Status, record.Error = group.status, group.message
-	record.MessageID, record.MessageURL = group.messageID, group.messageURL
-	if err := model.UpdateTelegramAnnouncement(record.ID, map[string]any{"status": record.Status, "message_id": record.MessageID, "message_url": record.MessageURL, "error": record.Error}); err != nil {
+	delivery := deliverAnnouncement(sendCtx, cfg, preview, record.ChatID)
+	record.Status, record.Error = delivery.status, delivery.message
+	record.MessageID, record.MessageURL = delivery.messageID, delivery.messageURL
+	updates := map[string]any{"status": record.Status, "message_id": record.MessageID, "message_url": record.MessageURL, "error": record.Error}
+	if request.PublishToChannel {
+		record.ChannelStatus, record.ChannelError = delivery.status, delivery.message
+		record.ChannelMessageID, record.ChannelMessageURL = delivery.messageID, delivery.messageURL
+		if delivery.status == "unknown" {
+			record.Error = "Channel delivery is unconfirmed. Check the channel before publishing again."
+		} else if delivery.status == "failed" {
+			record.Error = "Telegram rejected the channel announcement. Check bot permissions and message content."
+		}
+		record.ChannelError = record.Error
+		updates["error"] = record.Error
+		updates["channel_status"], updates["channel_error"] = record.ChannelStatus, record.ChannelError
+		updates["channel_message_id"], updates["channel_message_url"] = record.ChannelMessageID, record.ChannelMessageURL
+	}
+	if err := model.UpdateTelegramAnnouncement(record.ID, updates); err != nil {
 		return nil, err
 	}
 	if record.Status == "sent" && request.Pin {
@@ -323,25 +347,6 @@ func PublishAnnouncement(ctx context.Context, operatorID int, request Announceme
 			record.PinStatus = "pinned"
 		}
 		if err := model.UpdateTelegramAnnouncement(record.ID, map[string]any{"pin_status": record.PinStatus}); err != nil {
-			return nil, err
-		}
-	}
-	if request.PublishToChannel {
-		// Persist an independent state before sending to the second destination.
-		// A retry of the publication ID only returns this receipt, never resumes it.
-		if err := model.UpdateTelegramAnnouncement(record.ID, map[string]any{"channel_status": "sending"}); err != nil {
-			return nil, err
-		}
-		channel := deliverAnnouncement(sendCtx, cfg, preview, record.ChannelChatID)
-		record.ChannelStatus, record.ChannelError = channel.status, channel.message
-		record.ChannelMessageID, record.ChannelMessageURL = channel.messageID, channel.messageURL
-		if record.ChannelStatus == "unknown" {
-			record.ChannelError = "Channel delivery is unconfirmed. Check the channel before publishing again."
-		}
-		if record.ChannelStatus == "failed" {
-			record.ChannelError = "Telegram rejected the channel announcement. Check bot permissions and message content."
-		}
-		if err := model.UpdateTelegramAnnouncement(record.ID, map[string]any{"channel_status": record.ChannelStatus, "channel_error": record.ChannelError, "channel_message_id": record.ChannelMessageID, "channel_message_url": record.ChannelMessageURL}); err != nil {
 			return nil, err
 		}
 	}

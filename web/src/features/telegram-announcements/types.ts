@@ -25,6 +25,7 @@ export type AnnouncementTemplate = {
 }
 
 export type AnnouncementInput = {
+  body_format?: 'plain' | 'markdown'
   title: string
   body: string
   pin: boolean
@@ -32,6 +33,7 @@ export type AnnouncementInput = {
 }
 export type AnnouncementPreview = AnnouncementInput & {
   template: AnnouncementTemplate
+  body_html?: string
   text: string
   characters: number
   hash: string
@@ -61,6 +63,8 @@ export type AnnouncementRecord = {
   operator_id: number
   created_at: number
   error: string
+  chat_id: number
+  channel_chat_id: number
   channel_requested: boolean
   channel_status:
     | ''

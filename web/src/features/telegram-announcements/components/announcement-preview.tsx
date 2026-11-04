@@ -17,8 +17,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { ArrowUpRight, Send } from 'lucide-react'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { HtmlContent } from '@/components/html-content'
+
+import {
+  renderAnnouncementMarkdown,
+  sanitizeAnnouncementHTML,
+} from '../lib/format'
 import type { AnnouncementInput, AnnouncementTemplate } from '../types'
 
 function safeLink(value: string): string | undefined {
@@ -37,8 +44,18 @@ export function AnnouncementMessage(props: {
   input: AnnouncementInput
   template: AnnouncementTemplate
   username: string
+  bodyHTML?: string
 }) {
   const { t } = useTranslation()
+  const body = useMemo(() => {
+    if (props.bodyHTML !== undefined) {
+      return sanitizeAnnouncementHTML(props.bodyHTML)
+    }
+    if (props.input.body_format === 'markdown') {
+      return renderAnnouncementMarkdown(props.input.body)
+    }
+    return undefined
+  }, [props.bodyHTML, props.input.body, props.input.body_format])
   const links = [
     {
       id: 'channel',
@@ -61,29 +78,22 @@ export function AnnouncementMessage(props: {
         <h3 className='font-semibold [overflow-wrap:anywhere] break-words whitespace-pre-wrap'>
           {props.input.title.trim() || t('Announcement title')}
         </h3>
-        <p className='mt-3 text-sm leading-7 [overflow-wrap:anywhere] break-words whitespace-pre-wrap'>
-          {props.input.body.trim() || t('Your announcement will appear here.')}
-        </p>
-        <div className='mt-5 border-t pt-4 text-sm leading-6'>
-          {props.template.footer && (
-            <p className='mb-2 break-words whitespace-pre-wrap'>
-              {props.template.footer}
-            </p>
-          )}
-          {links.map((link) => (
-            <p key={link.id} className='[overflow-wrap:anywhere] break-words'>
-              {link.label}：{' '}
-              <a
-                href={safeLink(link.url)}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='text-primary hover:underline'
-              >
-                {link.url}
-              </a>
-            </p>
-          ))}
-        </div>
+        {body !== undefined && props.input.body.trim() ? (
+          <HtmlContent
+            content={body}
+            className='[&_a]:text-primary [&_blockquote]:text-muted-foreground [&_pre]:bg-muted mt-3 text-sm leading-7 [overflow-wrap:anywhere] whitespace-pre-wrap [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_code]:font-mono [&_code]:text-xs [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre]:rounded-md [&_pre]:p-3'
+          />
+        ) : (
+          <p className='mt-3 text-sm leading-7 [overflow-wrap:anywhere] break-words whitespace-pre-wrap'>
+            {props.input.body.trim() ||
+              t('Your announcement will appear here.')}
+          </p>
+        )}
+        {props.template.footer && (
+          <p className='mt-5 border-t pt-4 text-sm leading-6 break-words whitespace-pre-wrap'>
+            {props.template.footer}
+          </p>
+        )}
       </article>
       {links.map((link) => (
         <a

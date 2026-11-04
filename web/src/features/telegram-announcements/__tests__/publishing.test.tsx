@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { api } from '@/lib/api'
 
 import { TelegramAnnouncements } from '..'
+import { renderAnnouncementMarkdown } from '../lib/format'
 import type { AnnouncementConfig } from '../types'
 
 const config: AnnouncementConfig = {
@@ -106,16 +107,16 @@ describe('Telegram announcement publishing', () => {
     expect(post).not.toHaveBeenCalled()
   })
 
-  test('channel publishing starts unchecked and cannot be selected before configuration', async () => {
+  test('channel mode cannot be selected before configuration', async () => {
     renderPage(true, false)
-    const channel = screen.getByRole('checkbox', {
-      name: 'Also publish to channel',
+    const channel = screen.getByRole('radio', {
+      name: 'Publish to channel',
     })
     expect(channel).not.toBeChecked()
     expect(channel).toHaveAttribute('aria-disabled', 'true')
     expect(
       screen.getByText(
-        'Configure the announcement channel before enabling this option.'
+        'Configure the announcement channel before selecting this destination.'
       )
     ).toBeVisible()
   })
@@ -157,10 +158,11 @@ describe('Telegram announcement publishing', () => {
         }
       })
     renderPage()
-    const channel = screen.getByRole('checkbox', {
-      name: 'Also publish to channel',
+    const channel = screen.getByRole('radio', {
+      name: 'Publish to channel',
     })
-    expect(channel).not.toBeChecked()
+    expect(channel).toBeChecked()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
     await user.type(
       screen.getByLabelText('Announcement title'),
       'Channel update'
@@ -169,7 +171,6 @@ describe('Telegram announcement publishing', () => {
       screen.getByLabelText('Announcement content'),
       'Shared announcement'
     )
-    await user.click(channel)
     expect(channel).toBeChecked()
     await user.click(
       screen.getByRole('button', { name: 'Preview and publish' })
@@ -177,7 +178,7 @@ describe('Telegram announcement publishing', () => {
     const confirmation = await screen.findByRole('alertdialog')
     expect(
       within(confirmation).getByText(
-        'This announcement will be sent to both the group and the channel.'
+        'This announcement will be posted once to the channel. Telegram will automatically forward it to the linked discussion group.'
       )
     ).toBeVisible()
     expect(
@@ -195,7 +196,7 @@ describe('Telegram announcement publishing', () => {
       publish_to_channel: true,
       preview_hash: 'channel-preview-hash',
     })
-    expect(channel).not.toBeChecked()
+    expect(channel).toBeChecked()
   })
 
   test('channel failure preserves the draft instead of claiming a successful publication', async () => {
@@ -220,7 +221,9 @@ describe('Telegram announcement publishing', () => {
         data: {
           success: true,
           data: {
-            status: 'sent',
+            status: 'failed',
+            chat_id: -100456,
+            channel_chat_id: -100456,
             channel_requested: true,
             channel_status: 'failed',
           },
@@ -235,9 +238,6 @@ describe('Telegram announcement publishing', () => {
     await user.type(
       screen.getByLabelText('Announcement content'),
       'Keep the draft'
-    )
-    await user.click(
-      screen.getByRole('checkbox', { name: 'Also publish to channel' })
     )
     await user.click(
       screen.getByRole('button', { name: 'Preview and publish' })
@@ -292,6 +292,7 @@ describe('Telegram announcement publishing', () => {
       screen.getByLabelText('Announcement content'),
       'Continuous conversations are available.'
     )
+    await user.click(screen.getByRole('radio', { name: 'Group only' }))
     await user.click(
       screen.getByRole('switch', { name: 'Pin in group after publishing' })
     )
@@ -324,6 +325,39 @@ describe('Telegram announcement publishing', () => {
       preview_hash: 'preview-hash',
     })
     expect(screen.getByLabelText('Announcement title')).toHaveValue('')
+  })
+
+  test('switching from group to channel clears the group pin setting', async () => {
+    const user = userEvent.setup()
+    const posts = vi.spyOn(api, 'post').mockResolvedValue({
+      data: { success: false, message: 'Preview unavailable' },
+    })
+    renderPage()
+    await user.click(screen.getByRole('radio', { name: 'Group only' }))
+    await user.click(
+      screen.getByRole('switch', { name: 'Pin in group after publishing' })
+    )
+    expect(screen.getByRole('switch')).toBeChecked()
+    const channel = screen.getByRole('radio', { name: 'Publish to channel' })
+    channel.focus()
+    await user.keyboard('[Space]')
+    expect(channel).toBeChecked()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText('Announcement title'), 'Update')
+    await user.type(
+      screen.getByLabelText('Announcement content'),
+      'Announcement body'
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Preview and publish' })
+    )
+    await waitFor(() => expect(posts).toHaveBeenCalled())
+    expect(posts.mock.calls[0][1]).toMatchObject({
+      publish_to_channel: true,
+      pin: false,
+    })
+    await user.click(screen.getByRole('radio', { name: 'Group only' }))
+    expect(screen.getByRole('switch')).not.toBeChecked()
   })
 
   test('a failed network response keeps the publication ID for a manual retry', async () => {
@@ -452,6 +486,8 @@ describe('Telegram announcement publishing', () => {
                 title: 'Shared update',
                 body: 'Announcement body',
                 status: 'sent',
+                chat_id: -100123,
+                channel_chat_id: -100456,
                 message_url: 'https://t.me/c/123/42',
                 channel_requested: true,
                 channel_title: 'AiProxy announcements',
@@ -482,6 +518,85 @@ describe('Telegram announcement publishing', () => {
     ).not.toBeInTheDocument()
   })
 
+  test('channel-only history shows automatic forwarding without a duplicate group link', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          items: [
+            {
+              id: 'channel-only',
+              title: 'Channel-only update',
+              body: 'Body',
+              status: 'sent',
+              chat_id: -100456,
+              channel_chat_id: -100456,
+              message_url: 'https://t.me/c/456/84',
+              channel_requested: true,
+              channel_status: 'sent',
+              channel_message_url: 'https://t.me/c/456/84',
+              created_at: 1793635200,
+            },
+          ],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        },
+      },
+    })
+    renderPage()
+    await user.click(screen.getByRole('tab', { name: 'Publication history' }))
+    expect(await screen.findByText('Channel-only update')).toBeVisible()
+    expect(screen.getByText('Telegram automatic forwarding')).toBeVisible()
+    expect(
+      screen.queryByRole('link', { name: 'Group message' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole('link', { name: 'Channel message' })[0]
+    ).toHaveAttribute('href', 'https://t.me/c/456/84')
+  })
+
+  test('message preview formats Markdown and keeps template addresses only in buttons', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.type(
+      screen.getByLabelText('Announcement content'),
+      '**Discount** and _details_ with `code`\n\n> Limited offer'
+    )
+    const section = screen.getByRole('region', { name: 'Announcement preview' })
+    expect(section.querySelector('b')).toHaveTextContent('Discount')
+    expect(section.querySelector('i')).toHaveTextContent('details')
+    expect(section.querySelector('code')).toHaveTextContent('code')
+    expect(section.querySelector('blockquote')).toHaveTextContent(
+      'Limited offer'
+    )
+    expect(
+      within(section).getAllByRole('link', { name: '频道地址' })
+    ).toHaveLength(1)
+    expect(
+      within(section).getAllByRole('link', { name: '对接地址' })
+    ).toHaveLength(1)
+    expect(section).not.toHaveTextContent(config.template.channel_url)
+    expect(section).not.toHaveTextContent(config.template.contact_url)
+    expect(section).toHaveTextContent(config.template.footer)
+  })
+
+  test('formatting buttons wrap the selected text and restore editor focus', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const body = screen.getByLabelText<HTMLTextAreaElement>(
+      'Announcement content'
+    )
+    await user.type(body, 'Limited offer')
+    body.setSelectionRange(0, 7)
+    await user.click(screen.getByRole('button', { name: 'Bold' }))
+    expect(body).toHaveValue('**Limited** offer')
+    await waitFor(() => expect(body).toHaveFocus())
+    expect(body.selectionStart).toBe(2)
+    expect(body.selectionEnd).toBe(9)
+  })
+
   test('empty history shows guidance and supports refreshing', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -493,5 +608,23 @@ describe('Telegram announcement publishing', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Refresh' })).toBeEnabled()
     )
+  })
+})
+
+describe('Telegram Markdown formatting', () => {
+  test.each([
+    ['**bold** _italic_ `code`', '<b>bold</b> <i>italic</i> <code>code</code>'],
+    [
+      '[site](https://92ai.asia/?a=1&b=2)',
+      '<a href="https://92ai.asia/?a=1&amp;b=2">site</a>',
+    ],
+    ['[site](javascript:alert%281%29)', 'site'],
+    ['hello <b onclick="alert(1)">world</b>', 'hello world'],
+    ['![logo](https://example.com/logo.png)', 'logo'],
+    ['**bold `code`**', '<b>bold code</b>'],
+    ['> **offer**', '<blockquote><b>offer</b></blockquote>'],
+    ['```\nx < y\n```', '<pre><code>x &lt; y\n</code></pre>'],
+  ])('renders the same Telegram subset for %s', (source, expected) => {
+    expect(renderAnnouncementMarkdown(source)).toBe(expected)
   })
 })

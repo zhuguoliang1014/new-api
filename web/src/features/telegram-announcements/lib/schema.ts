@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { z } from 'zod'
 
 export const announcementSchema = z.object({
+  body_format: z.enum(['plain', 'markdown']).optional(),
   title: z
     .string()
     .trim()
@@ -28,7 +29,7 @@ export const announcementSchema = z.object({
     .string()
     .trim()
     .min(1, 'Required')
-    .max(4096, 'Announcement is too long'),
+    .max(65536, 'Announcement is too long'),
   pin: z.boolean(),
   publish_to_channel: z.boolean(),
 })

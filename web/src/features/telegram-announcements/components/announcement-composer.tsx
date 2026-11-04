@@ -17,7 +17,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Eye, Send } from 'lucide-react'
+import { Bold, Code, Eye, Italic, Link, Quote, Send } from 'lucide-react'
+import { useRef } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -30,9 +31,17 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
@@ -43,24 +52,41 @@ import { AnnouncementMessage } from './announcement-preview'
 
 export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
   const { t } = useTranslation()
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null)
   const form = useForm<AnnouncementInput>({
     resolver: zodResolver(announcementSchema),
     defaultValues: {
       title: '',
       body: '',
+      body_format: 'markdown',
       pin: false,
-      publish_to_channel: false,
+      publish_to_channel: props.config.channel_configured,
     },
   })
   const values = useWatch({ control: form.control })
   const input = {
     title: values.title ?? '',
     body: values.body ?? '',
+    body_format: values.body_format ?? 'markdown',
     pin: values.pin ?? false,
-    publish_to_channel: values.publish_to_channel ?? false,
+    publish_to_channel:
+      values.publish_to_channel ?? props.config.channel_configured,
   }
   const { confirmation, setConfirmation, preview, publish } =
     useAnnouncementPublisher(() => form.reset())
+  const bodyField = form.register('body')
+  const formatting = [
+    { label: t('Bold'), icon: Bold, before: '**', after: '**' },
+    { label: t('Italic'), icon: Italic, before: '_', after: '_' },
+    { label: t('Inline code'), icon: Code, before: '`', after: '`' },
+    { label: t('Quote'), icon: Quote, before: '> ', after: '' },
+    {
+      label: t('Link'),
+      icon: Link,
+      before: '[',
+      after: '](https://example.com)',
+    },
+  ]
   return (
     <>
       <div className='grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]'>
@@ -100,9 +126,60 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
                 <Label htmlFor='announcement-body'>
                   {t('Announcement content')}
                 </Label>
+                <div
+                  role='group'
+                  aria-label={t('Text formatting')}
+                  className='flex flex-wrap gap-1'
+                >
+                  {formatting.map((item) => (
+                    <Button
+                      key={item.label}
+                      type='button'
+                      variant='outline'
+                      size='sm'
+                      aria-label={item.label}
+                      onClick={() => {
+                        const body = bodyRef.current
+                        if (!body) return
+                        const start = body.selectionStart
+                        const end = body.selectionEnd
+                        const selected =
+                          body.value.slice(start, end) || t('Text')
+                        const formatted =
+                          item.before +
+                          selected.replaceAll(
+                            '\n',
+                            item.before === '> ' ? '\n> ' : '\n'
+                          ) +
+                          item.after
+                        form.setValue(
+                          'body',
+                          body.value.slice(0, start) +
+                            formatted +
+                            body.value.slice(end),
+                          { shouldDirty: true, shouldValidate: true }
+                        )
+                        requestAnimationFrame(() => {
+                          body.focus()
+                          body.setSelectionRange(
+                            start + item.before.length,
+                            start + item.before.length + selected.length
+                          )
+                        })
+                      }}
+                    >
+                      <item.icon className='size-4' aria-hidden='true' />
+                      <span>{item.label}</span>
+                    </Button>
+                  ))}
+                </div>
                 <Textarea
                   id='announcement-body'
-                  {...form.register('body')}
+                  {...bodyField}
+                  ref={(element) => {
+                    bodyField.ref(element)
+                    bodyRef.current = element
+                  }}
                   className='min-h-72 resize-y leading-7'
                   aria-invalid={Boolean(form.formState.errors.body)}
                   aria-describedby='announcement-body-help announcement-body-error'
@@ -112,7 +189,7 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
                   className='text-muted-foreground text-xs'
                 >
                   {t(
-                    'Content is sent as plain text. The title is formatted automatically.'
+                    'Supports Markdown: **bold**, _italic_, `code`, > quotes and [links](https://example.com). The title is bold automatically.'
                   )}
                 </p>
                 {form.formState.errors.body && (
@@ -125,45 +202,87 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
                   </p>
                 )}
               </div>
-              <div className='flex items-start gap-3 rounded-lg border p-3'>
-                <Checkbox
-                  id='announcement-channel'
-                  checked={input.publish_to_channel}
-                  disabled={
-                    !props.config.connected || !props.config.channel_configured
-                  }
-                  onCheckedChange={(checked) =>
-                    form.setValue('publish_to_channel', checked)
-                  }
-                  aria-describedby='announcement-channel-help'
-                  className='mt-0.5'
-                />
-                <div className='min-w-0 space-y-1'>
-                  <Label htmlFor='announcement-channel'>
-                    {t('Also publish to channel')}
-                  </Label>
-                  <p
-                    id='announcement-channel-help'
-                    className='text-muted-foreground text-xs'
+              <FieldSet>
+                <FieldLegend variant='label'>
+                  {t('Publishing destination')}
+                </FieldLegend>
+                <RadioGroup
+                  aria-label={t('Publishing destination')}
+                  value={input.publish_to_channel ? 'channel' : 'group'}
+                  onValueChange={(value) => {
+                    form.setValue('publish_to_channel', value === 'channel')
+                    if (value === 'channel') form.setValue('pin', false)
+                  }}
+                >
+                  <Field
+                    orientation='horizontal'
+                    className='rounded-lg border p-3'
                   >
-                    {props.config.channel_configured
-                      ? t('Unchecked: group only. Checked: group and channel.')
-                      : t(
-                          'Configure the announcement channel before enabling this option.'
+                    <RadioGroupItem
+                      id='announcement-channel'
+                      value='channel'
+                      disabled={
+                        !props.config.connected ||
+                        !props.config.channel_configured
+                      }
+                      aria-describedby='announcement-channel-help'
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor='announcement-channel'>
+                        {t('Publish to channel')}
+                      </FieldLabel>
+                      <FieldDescription
+                        id='announcement-channel-help'
+                        className='text-xs'
+                      >
+                        {props.config.channel_configured
+                          ? t(
+                              'Post once to the channel. Telegram automatically forwards it to the linked discussion group.'
+                            )
+                          : t(
+                              'Configure the announcement channel before selecting this destination.'
+                            )}
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
+                  <Field
+                    orientation='horizontal'
+                    className='rounded-lg border p-3'
+                  >
+                    <RadioGroupItem
+                      id='announcement-group'
+                      value='group'
+                      disabled={!props.config.connected}
+                      aria-describedby='announcement-group-help'
+                    />
+                    <FieldContent>
+                      <FieldLabel htmlFor='announcement-group'>
+                        {t('Group only')}
+                      </FieldLabel>
+                      <FieldDescription
+                        id='announcement-group-help'
+                        className='text-xs'
+                      >
+                        {t(
+                          'Send a group notice without posting to the channel.'
                         )}
-                  </p>
+                      </FieldDescription>
+                    </FieldContent>
+                  </Field>
+                </RadioGroup>
+              </FieldSet>
+              {!input.publish_to_channel && (
+                <div className='flex items-center justify-between gap-4 rounded-lg border p-3'>
+                  <Label htmlFor='announcement-pin'>
+                    {t('Pin in group after publishing')}
+                  </Label>
+                  <Switch
+                    id='announcement-pin'
+                    checked={input.pin}
+                    onCheckedChange={(checked) => form.setValue('pin', checked)}
+                  />
                 </div>
-              </div>
-              <div className='flex items-center justify-between gap-4 rounded-lg border p-3'>
-                <Label htmlFor='announcement-pin'>
-                  {t('Pin in group after publishing')}
-                </Label>
-                <Switch
-                  id='announcement-pin'
-                  checked={input.pin}
-                  onCheckedChange={(checked) => form.setValue('pin', checked)}
-                />
-              </div>
+              )}
               {!props.config.connected && (
                 <p role='status' className='text-destructive text-sm'>
                   {t(
@@ -210,7 +329,7 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
         desc={
           confirmation?.preview.publish_to_channel
             ? t(
-                'This announcement will be sent to both the group and the channel.'
+                'This announcement will be posted once to the channel. Telegram will automatically forward it to the linked discussion group.'
               )
             : t('Group members will receive this announcement immediately.')
         }
@@ -222,6 +341,7 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
           publish.mutate({
             title: confirmation.preview.title,
             body: confirmation.preview.body,
+            body_format: confirmation.preview.body_format,
             pin: confirmation.preview.pin,
             publish_to_channel: confirmation.preview.publish_to_channel,
             id: confirmation.id,
@@ -240,6 +360,7 @@ export function AnnouncementComposer(props: { config: AnnouncementConfig }) {
             )}
             <AnnouncementMessage
               input={confirmation.preview}
+              bodyHTML={confirmation.preview.body_html}
               template={confirmation.preview.template}
               username={confirmation.preview.bot_username}
             />

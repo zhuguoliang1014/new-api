@@ -22,6 +22,7 @@ export const STATIC_I18N_KEYS = [
   // Telegram announcement validation and server delivery results.
   'No announcement channel is configured.',
   'The bot cannot publish to the configured channel. Check the channel ID and administrator permissions.',
+  'The announcement channel must be linked to the configured discussion group.',
   'Channel delivery is unconfirmed. Check the channel before publishing again.',
   'Telegram rejected the channel announcement. Check bot permissions and message content.',
 

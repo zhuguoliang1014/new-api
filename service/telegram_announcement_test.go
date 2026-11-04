@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"maps"
 	"net/http"
 	"net/http/httptest"
@@ -116,7 +117,14 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 					if mode.Load().(string) == "wrong_type" {
 						chatType = "supergroup"
 					}
-					_, _ = w.Write([]byte(`{"ok":true,"result":{"id":-100456,"type":"` + chatType + `","title":"AiProxy announcements"}}`))
+					linkedID := int64(-100123)
+					if mode.Load().(string) == "unlinked" {
+						linkedID = 0
+					}
+					if mode.Load().(string) == "wrong_group" {
+						linkedID = -100999
+					}
+					_, _ = fmt.Fprintf(w, `{"ok":true,"result":{"id":-100456,"type":%q,"title":"AiProxy announcements","linked_chat_id":%d}}`, chatType, linkedID)
 					return
 				case strings.HasSuffix(r.URL.Path, "/getChatMember"):
 					permission := "true"
@@ -192,7 +200,8 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 			input := AnnouncementInput{Title: "WSS 上线", Body: "已支持 <script> & HTTPS", Pin: true}
 			preview, err := PreviewAnnouncement(input)
 			require.NoError(t, err)
-			assert.Contains(t, preview.Text, "频道地址：https://t.me/+NrE5joFDk_MzZTRh")
+			assert.NotContains(t, preview.Text, "https://t.me/")
+			assert.NotContains(t, preview.HTML, "频道地址：")
 			request := AnnouncementPublishRequest{AnnouncementInput: input, ID: uuid.NewString(), PreviewHash: preview.Hash}
 			t.Run("concurrent retry sends once and pins the returned message", func(t *testing.T) {
 				mode.Store("blocked")
@@ -261,6 +270,19 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 				_, err = PreviewAnnouncement(AnnouncementInput{Title: "title", Body: "body" + strings.Repeat("x", padding+1)})
 				assert.ErrorIs(t, err, ErrAnnouncementInvalid)
 			})
+			t.Run("formatted previews count visible UTF16 and omit duplicated button addresses", func(t *testing.T) {
+				short, err := PreviewAnnouncement(AnnouncementInput{Title: "title", Body: "**x**", BodyFormat: "markdown"})
+				require.NoError(t, err)
+				assert.Contains(t, short.HTML, "<b>x</b>")
+				assert.NotContains(t, short.Text, "https://92ai.asia/")
+				assert.NotContains(t, short.HTML, "频道地址：")
+				padding := 4096 - short.Characters
+				exact, err := PreviewAnnouncement(AnnouncementInput{Title: "title", Body: "**x" + strings.Repeat("a", padding) + "**", BodyFormat: "markdown"})
+				require.NoError(t, err)
+				assert.Equal(t, 4096, exact.Characters)
+				_, err = PreviewAnnouncement(AnnouncementInput{Title: "title", Body: "**x" + strings.Repeat("a", padding+1) + "**", BodyFormat: "markdown"})
+				assert.ErrorIs(t, err, ErrAnnouncementInvalid)
+			})
 			t.Run("migration and restart preserve receipts and uniqueness", func(t *testing.T) {
 				require.NoError(t, db.AutoMigrate(&model.TelegramAnnouncement{}))
 				records, total, err := model.ListTelegramAnnouncements(1, 20)
@@ -280,6 +302,7 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 				before := sends.Load()
 				channelInput := input
 				channelInput.PublishToChannel = true
+				channelInput.Pin = false
 				_, err := PreviewAnnouncement(channelInput)
 				assert.ErrorIs(t, err, ErrAnnouncementChannelMissing)
 				assert.Equal(t, before, sends.Load())
@@ -292,26 +315,61 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 					before := sends.Load()
 					channelInput := input
 					channelInput.PublishToChannel = true
+					channelInput.Pin = false
 					_, err := PreviewAnnouncement(channelInput)
 					assert.ErrorIs(t, err, ErrAnnouncementChannelUnavailable)
 					assert.Equal(t, before, sends.Load())
 				})
 			}
+			for _, failure := range []string{"unlinked", "wrong_group"} {
+				t.Run(failure+" prevents sending to an unexpected discussion group", func(t *testing.T) {
+					mode.Store(failure)
+					before := sends.Load()
+					_, err := PreviewAnnouncement(AnnouncementInput{Title: input.Title, Body: input.Body, PublishToChannel: true})
+					assert.ErrorIs(t, err, ErrAnnouncementDiscussionMismatch)
+					assert.Equal(t, before, sends.Load())
+				})
+			}
+			t.Run("legacy double-send preview requires a new confirmation", func(t *testing.T) {
+				mode.Store("success")
+				cfg, err := loadAnnouncementBot()
+				require.NoError(t, err)
+				template, err := GetAnnouncementTemplate()
+				require.NoError(t, err)
+				channelInput := AnnouncementInput{Title: input.Title, Body: input.Body, PublishToChannel: true}
+				legacyHash := announcementHash(struct {
+					Input     AnnouncementInput
+					Template  AnnouncementTemplate
+					ChatID    int64
+					Username  string
+					ChannelID int64
+				}{channelInput, template, cfg.GroupID, cfg.Username, cfg.ChannelID})
+				before := sends.Load()
+				_, err = PublishAnnouncement(context.Background(), 1, AnnouncementPublishRequest{AnnouncementInput: channelInput, ID: uuid.NewString(), PreviewHash: legacyHash})
+				assert.ErrorIs(t, err, ErrAnnouncementChanged)
+				assert.Equal(t, before, sends.Load())
+			})
+			t.Run("channel mode cannot request a separate group pin", func(t *testing.T) {
+				mode.Store("success")
+				_, err := PreviewAnnouncement(AnnouncementInput{Title: input.Title, Body: input.Body, PublishToChannel: true, Pin: true})
+				assert.ErrorIs(t, err, ErrAnnouncementInvalid)
+			})
 			for _, tc := range []struct{ mode, groupStatus, channelStatus string }{
 				{"success", "sent", "sent"},
-				{"channel_rejected", "sent", "failed"},
-				{"channel_ambiguous", "sent", "unknown"},
-				{"group_rejected", "failed", "sent"},
+				{"channel_rejected", "failed", "failed"},
+				{"channel_ambiguous", "unknown", "unknown"},
+				{"group_rejected", "sent", "sent"},
 			} {
-				t.Run(tc.mode+" records group and channel independently without duplicate delivery", func(t *testing.T) {
+				t.Run(tc.mode+" sends only to the channel without duplicate delivery", func(t *testing.T) {
 					mode.Store(tc.mode)
 					channelInput := input
 					channelInput.PublishToChannel = true
+					channelInput.Pin = false
 					preview, err := PreviewAnnouncement(channelInput)
 					require.NoError(t, err)
 					assert.Equal(t, "AiProxy announcements", preview.ChannelTitle)
 					request := AnnouncementPublishRequest{AnnouncementInput: channelInput, ID: uuid.NewString(), PreviewHash: preview.Hash}
-					before, beforeChannel := sends.Load(), channelSends.Load()
+					before, beforeChannel, beforePins := sends.Load(), channelSends.Load(), pins.Load()
 					record, err := PublishAnnouncement(context.Background(), 1, request)
 					require.NoError(t, err)
 					assert.Equal(t, tc.groupStatus, record.Status)
@@ -321,22 +379,36 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 					if tc.channelStatus == "sent" {
 						assert.Equal(t, "https://t.me/c/456/84", record.ChannelMessageURL)
 					}
-					if tc.groupStatus == "sent" {
-						assert.Equal(t, "pinned", record.PinStatus)
-					}
+					assert.Equal(t, "not_requested", record.PinStatus)
+					assert.EqualValues(t, -100456, record.ChatID)
+					assert.Equal(t, record.ChannelMessageURL, record.MessageURL)
+					assert.Equal(t, record.ChannelMessageID, record.MessageID)
+					assert.Equal(t, beforePins, pins.Load())
 					_, err = PublishAnnouncement(context.Background(), 1, request)
 					require.NoError(t, err)
-					assert.Equal(t, before+2, sends.Load())
+					assert.Equal(t, before+1, sends.Load())
 					assert.Equal(t, beforeChannel+1, channelSends.Load())
 					request.PublishToChannel = false
 					_, err = PublishAnnouncement(context.Background(), 1, request)
 					assert.ErrorIs(t, err, ErrAnnouncementConflict)
 				})
 			}
+			t.Run("historical double-send receipt returns unchanged without sending again", func(t *testing.T) {
+				input := AnnouncementInput{Title: "Legacy title", Body: "Old body", PublishToChannel: true, Pin: true}
+				request := AnnouncementPublishRequest{AnnouncementInput: input, ID: uuid.NewString(), PreviewHash: strings.Repeat("c", 64)}
+				old := model.TelegramAnnouncement{ID: request.ID, RequestHash: announcementHash(request), Title: input.Title, Body: input.Body, ChatID: -100123, Status: "sent", MessageID: 42, MessageURL: "https://t.me/c/123/42", ChannelRequested: true, ChannelChatID: -100456, ChannelStatus: "unknown", PinRequested: true, PinStatus: "pinned"}
+				require.NoError(t, db.Create(&old).Error)
+				before := sends.Load()
+				persisted, err := PublishAnnouncement(context.Background(), 1, request)
+				require.NoError(t, err)
+				assert.Equal(t, old, *persisted)
+				assert.Equal(t, before, sends.Load())
+			})
 			t.Run("changing the channel after preview requires confirmation again", func(t *testing.T) {
 				mode.Store("success")
 				channelInput := input
 				channelInput.PublishToChannel = true
+				channelInput.Pin = false
 				preview, err := PreviewAnnouncement(channelInput)
 				require.NoError(t, err)
 				require.NoError(t, os.WriteFile(configPath, []byte(`{"token":"test-secret","bot_username":"announcement_test_bot","group_id":-100123,"channel_id":-100789}`), 0600))
@@ -349,4 +421,30 @@ func TestTelegramAnnouncementDatabaseMatrix(t *testing.T) {
 
 		})
 	}
+}
+
+func TestTelegramAnnouncementFormatting(t *testing.T) {
+	for _, tc := range []struct{ name, body, format, html, text string }{
+		{"legacy plain text", "**bold** <script>", "", "**bold** &lt;script&gt;", "**bold** <script>"},
+		{"bold italic code", "**bold** _italic_ `code`", "markdown", "<b>bold</b> <i>italic</i> <code>code</code>", "bold italic code"},
+		{"paragraphs", "First\nline\n\nSecond", "markdown", "First\nline\n\nSecond", "First\nline\n\nSecond"},
+		{"safe link", "[site](https://92ai.asia/?a=1&b=2)", "markdown", `<a href="https://92ai.asia/?a=1&amp;b=2">site</a>`, "site"},
+		{"unsafe link", "[site](javascript:alert%281%29)", "markdown", "site", "site"},
+		{"inline HTML cannot inject", "hello <b onclick=\"alert(1)\">world</b>", "markdown", "hello world", "hello world"},
+		{"images are not fetched", "![logo](https://example.com/logo.png)", "markdown", "logo", "logo"},
+		{"code in bold stays valid Telegram HTML", "**bold `code`**", "markdown", "<b>bold code</b>", "bold code"},
+		{"quote", "> **offer**", "markdown", "<blockquote><b>offer</b></blockquote>", "offer"},
+		{"code keeps terminal newline", "```\nx < y\n```", "markdown", "<pre><code>x &lt; y\n</code></pre>", "x < y\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rendered, visible, err := renderAnnouncementBody(tc.body, tc.format)
+			require.NoError(t, err)
+			assert.Equal(t, tc.html, rendered)
+			assert.Equal(t, tc.text, visible)
+		})
+	}
+	_, _, err := renderAnnouncementBody("body", "unexpected")
+	assert.ErrorIs(t, err, ErrAnnouncementInvalid)
+	_, _, err = renderAnnouncementBody(strings.Repeat("x", 65537), "markdown")
+	assert.ErrorIs(t, err, ErrAnnouncementInvalid)
 }

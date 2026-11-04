@@ -50,7 +50,9 @@ export function useAnnouncementPublisher(onPublished: () => void) {
       const allSent =
         record.status === 'sent' &&
         (!record.channel_requested || record.channel_status === 'sent')
-      if (record.channel_requested && !allSent) {
+      const channelOnly =
+        record.channel_requested && record.chat_id === record.channel_chat_id
+      if (record.channel_requested && !allSent && !channelOnly) {
         toast.warning(
           t(
             'Group and channel delivery results differ. Check publication history before publishing again.'
@@ -74,9 +76,7 @@ export function useAnnouncementPublisher(onPublished: () => void) {
         )
       } else {
         toast.warning(
-          t(
-            'Delivery is unconfirmed. Check the Telegram group before publishing again.'
-          )
+          t('Delivery is unconfirmed. Check Telegram before publishing again.')
         )
       }
     },
@@ -87,9 +87,7 @@ export function useAnnouncementPublisher(onPublished: () => void) {
       })
       handleServerError(
         error,
-        t(
-          'Delivery is unconfirmed. Check the Telegram group before publishing again.'
-        )
+        t('Delivery is unconfirmed. Check Telegram before publishing again.')
       )
     },
   })

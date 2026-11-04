@@ -74,6 +74,24 @@ export function AnnouncementHistory() {
         header: t('Group delivery'),
         cell: ({ row }) => {
           const record = row.original
+          if (
+            record.channel_requested &&
+            record.channel_chat_id &&
+            record.chat_id === record.channel_chat_id
+          ) {
+            return (
+              <div className='space-y-1'>
+                <Badge variant='outline'>
+                  {t('Telegram automatic forwarding')}
+                </Badge>
+                <p className='text-muted-foreground max-w-xs text-xs'>
+                  {t(
+                    'Check the linked discussion group for the forwarded post.'
+                  )}
+                </p>
+              </div>
+            )
+          }
           const labels = {
             prepared: t('Sending'),
             sending: t('Sending'),
@@ -160,23 +178,28 @@ export function AnnouncementHistory() {
         header: t('Actions'),
         cell: ({ row }) => (
           <div className='flex flex-wrap gap-1'>
-            {row.original.message_url && (
-              <Button
-                variant='ghost'
-                size='sm'
-                role='link'
-                render={
-                  <a
-                    href={row.original.message_url}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                  />
-                }
-              >
-                <ExternalLink className='size-4' aria-hidden='true' />
-                {t('Group message')}
-              </Button>
-            )}
+            {row.original.message_url &&
+              !(
+                row.original.channel_requested &&
+                row.original.channel_chat_id &&
+                row.original.chat_id === row.original.channel_chat_id
+              ) && (
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  role='link'
+                  render={
+                    <a
+                      href={row.original.message_url}
+                      target='_blank'
+                      rel='noopener noreferrer'
+                    />
+                  }
+                >
+                  <ExternalLink className='size-4' aria-hidden='true' />
+                  {t('Group message')}
+                </Button>
+              )}
             {row.original.channel_message_url && (
               <Button
                 variant='ghost'

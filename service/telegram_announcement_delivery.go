@@ -21,12 +21,16 @@ func validateAnnouncementChannel(ctx context.Context, cfg announcementBotConfig)
 	}
 	chatResult, ok := announcementAPI.call(ctx, cfg.Token, "getChat", map[string]any{"chat_id": cfg.ChannelID})
 	var chat struct {
-		ID    int64  `json:"id"`
-		Type  string `json:"type"`
-		Title string `json:"title"`
+		ID           int64  `json:"id"`
+		Type         string `json:"type"`
+		Title        string `json:"title"`
+		LinkedChatID int64  `json:"linked_chat_id"`
 	}
 	if !ok || !chatResult.OK || common.Unmarshal(chatResult.Result, &chat) != nil || chat.ID != cfg.ChannelID || chat.Type != "channel" {
 		return "", ErrAnnouncementChannelUnavailable
+	}
+	if chat.LinkedChatID != cfg.GroupID {
+		return "", ErrAnnouncementDiscussionMismatch
 	}
 	memberResult, ok := announcementAPI.call(ctx, cfg.Token, "getChatMember", map[string]any{"chat_id": cfg.ChannelID, "user_id": me.ID})
 	var member struct {
