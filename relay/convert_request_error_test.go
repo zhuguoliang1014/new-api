@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MoeForge/moego/ojson"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -23,7 +24,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/tidwall/gjson"
 )
 
 type imageReservation struct {
@@ -119,16 +119,16 @@ func TestPlaygroundConvertsChatRequestsThroughPassThroughChannels(t *testing.T) 
 				assert.Equal(t, body, string(out.body))
 				return
 			}
-			assert.Equal(t, "upstream-model", gjson.GetBytes(out.body, "model").String())
-			assert.Equal(t, int64(123), gjson.GetBytes(out.body, "max_tokens").Int())
+			assert.Equal(t, "upstream-model", ojson.GetBytes(out.body, "model").String())
+			assert.Equal(t, int64(123), ojson.GetBytes(out.body, "max_tokens").Int())
 			if tc.channelType == constant.ChannelTypeAnthropic {
-				assert.Equal(t, "Stable instructions", gjson.GetBytes(out.body, "system.0.text").String())
-				assert.Equal(t, "1h", gjson.GetBytes(out.body, "system.0.cache_control.ttl").String())
-				assert.Equal(t, "user", gjson.GetBytes(out.body, "messages.0.role").String())
-				assert.Equal(t, "ephemeral", gjson.GetBytes(out.body, "messages.0.content.0.cache_control.type").String())
-				assert.False(t, gjson.GetBytes(out.body, "prompt_cache_key").Exists())
+				assert.Equal(t, "Stable instructions", ojson.GetBytes(out.body, "system.0.text").String())
+				assert.Equal(t, "1h", ojson.GetBytes(out.body, "system.0.cache_control.ttl").String())
+				assert.Equal(t, "user", ojson.GetBytes(out.body, "messages.0.role").String())
+				assert.Equal(t, "ephemeral", ojson.GetBytes(out.body, "messages.0.content.0.cache_control.type").String())
+				assert.False(t, ojson.GetBytes(out.body, "prompt_cache_key").Exists())
 			} else {
-				assert.Equal(t, "playground-conversation", gjson.GetBytes(out.body, "prompt_cache_key").String())
+				assert.Equal(t, "playground-conversation", ojson.GetBytes(out.body, "prompt_cache_key").String())
 			}
 		})
 	}
@@ -202,7 +202,7 @@ func TestImageRequestReservesFinalQuantityBeforeUpstream(t *testing.T) {
 			assert.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
 			require.Len(t, received, 1)
 			body := <-received
-			assert.Equal(t, int64(tc.count), gjson.GetBytes(body, "n").Int())
+			assert.Equal(t, int64(tc.count), ojson.GetBytes(body, "n").Int())
 			assert.Equal(t, tc.count*20000, info.PriceData.QuotaToPreConsume)
 			assert.GreaterOrEqual(t, reservation.held, info.PriceData.QuotaToPreConsume)
 			assert.Nil(t, info.BillingImageCount)

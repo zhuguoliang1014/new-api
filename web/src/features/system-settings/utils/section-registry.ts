@@ -62,13 +62,17 @@ export function createSectionNavigation<
     ...TSectionId[],
   ]
 
-  function getSectionNavItems(t: TFunction) {
+  function getSectionNavItems(
+    t: TFunction,
+    badges?: Partial<Record<TSectionId, string>>
+  ) {
     return sections.map((section) => ({
       title: t(section.titleKey),
       url:
         urlStyle === 'path'
           ? `${basePath}/${section.id}`
           : `${basePath}?section=${section.id}`,
+      badge: badges?.[section.id],
     }))
   }
 
