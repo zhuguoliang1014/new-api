@@ -49,9 +49,9 @@ HTTP POST /v1/responses 保持原有行为。客户端不能使用 WSS 时，由
 - 同一连接当前串行处理 response.create。命名 stream_id 分别保存最近一轮，可交替续问或从仍保留的同连接父响应分支。一个正在执行的请求不能被另一条 create 覆盖。
 - 保存原始 input/output 项，保留工具调用、工具结果和 reasoning.encrypted_content；向上游发送完整历史并删除 previous_response_id。拒绝跨上游存储查找的 conversation 和 item_reference，要求发送完整项。协议适配和渠道参数覆盖之后也不允许重新注入上游续轮 ID。
 - `generate:false` 在本地预存输入、返回可续接的响应 ID，不调用模型、不生成消费记录。它不代表已在上游预热模型，也不会提前选择渠道、账号或锁定缓存路由；实际生成时再依据完整请求选路。
-- 只缓存成功完成且有完整 output 数组的响应；失败、断流或结果未知的响应不作为下一轮历史。HTTP 上游失败没有应用层自动重放；部分已产生用量继续按已有计费规则结算。
+- 正常完成时缓存完整 output 数组；确认中断时仅保留中断前已交付的完整 output item。其他失败、断流或结果未知的响应不作为下一轮历史。HTTP 上游失败没有应用层自动重放；部分已产生用量继续按已有计费规则结算。
 - 取消请求会取消对应的 HTTP 请求；客户端断开也会终止该请求。每轮独立 request_id（`-ws-N`）、日志与结算，终止事件在本轮结算和限流完成后才发送，避免客户端立即续轮的竞态。
-- `response.interrupt` 要求当前连接的 `response_id` 和 `mode:"discard_partial_items"`。有效中断返回 `response.interrupt.accepted`，取消该轮 HTTP 请求，结算后返回 `response.incomplete`、原因 `interrupted`；只保留中断前已交付的完整 output item，丢弃未完成项，允许同连接从该 ID 继续。未知用量保持 `null`，真实结算仍走原有上游 usage / 缺失用量保护，不把本地终止事件重新计费。ID 或 stream 不匹配返回 `response.interrupt.failed`，不能影响另一连接或另一轮。重复中断和与最近一轮完成交错的中断可确认成功，不重复生成、结算或修改下一轮；原生上游 WSS 保留原始中断事件及回执。此兼容修改尚未部署，不能据此认定生产已生效。
+- `response.interrupt` 要求当前连接的 `response_id` 和 `mode:"discard_partial_items"`。有效中断返回 `response.interrupt.accepted`，取消该轮 HTTP 请求，结算后返回 `response.incomplete`、原因 `interrupted`；只保留中断前已交付的完整 output item，丢弃未完成项，允许同连接从该 ID 继续。未知用量保持 `null`，真实结算仍走原有上游 usage / 缺失用量保护，不把本地终止事件重新计费。ID 或 stream 不匹配返回 `response.interrupt.failed`，不能影响另一连接或另一轮。重复中断和与最近一轮完成交错的中断可确认成功，不重复生成、结算或修改下一轮；原生上游 WSS 保留原始中断事件及回执。2026-11-04 已部署 revision `ab90fa8e2e1d56f9fd50e62f2c1f49afeacf51fe`；生产协议帧实测已通过，具体记录见下文。
 - 历史仅保存在该连接内，断开即释放；重启、多实例之间不共享。未命中的父响应返回 `previous_response_not_found`，客户端需要去掉旧 ID、发送完整上下文重建。已提交但结果未知的生成不能当成安全重试。
 - 每连接缓存最多 32 MiB、33 份最近历史（32 个命名 lane 加默认 lane），进程缓存合计最多 256 MiB。缓存不足时仍交付已完成的生成；之后若无法续接，客户端需完整重放上下文。连接最长一小时，之后重连恢复。
 
@@ -86,6 +86,8 @@ Codex 互操作测试使用 --ignore-user-config、--ephemeral、本地模拟接
 中断协议按 OpenAI Codex `codex-rs/codex-api/src/endpoint/responses_websocket.rs` 的 `response.interrupt` / accepted / failed 交互，以及 `codex-rs/codex-api/src/sse/responses.rs` 对 `response.incomplete`、`interrupted` 的解析核对。新增回归覆盖中断与续问、完整 reasoning 保留、部分工具参数丢弃、未知用量、三库独立结算、跨连接隔离、重复控制、已结算但尚未发送完成事件时的竞态，以及原生 WSS 事件透传。
 
 2026-11-04 本地验证：真实 SQLite 3.50.4、MySQL 8.4.11、PostgreSQL 15.17（MySQL/PostgreSQL 各自隔离主库与日志库）通过上述 HTTP WSS / 中断回归；`go test -race ./relay ./controller -run 'TestResponsesHTTPWebSocket|TestResponsesWebSocket|TestResponsesWS' -count=1`、`go vet ./relay ./controller`、root `go build` 通过。真实 Codex CLI 0.166.0 的 WSS、HTTPS、426 回退及连接满额回退验证通过，满额用例改为占满当前配置值，修正原先硬编码 3 条的过时假设。完整“追加指令触发中断”场景在该真实客户端中未成功复现，不能将协议帧回归表述成此场景的实机验收。
+
+2026-11-04 北京时间23:55生产核验：三入口WSS握手、本地预存及续问、迟到/重复中断accepted、未知ID failed均通过。运维用户1经渠道65发起实际生成，收到response.created后中断，得到accepted及response.incomplete/interrupted，usage为null、完整output为空；同连接从该响应ID续问正常完成并返回OK。消费日志1782565/1782568分别0与212 quota，共0.000424站内额度，各结算一次；未调整用户180账户。此测试直接发送协议帧，仍不能替代真实Codex追加指令场景的验收。恢复与验证材料位于 `/root/upgrade-recovery/new-api-wss-interrupt-20261104T154412Z/`。
 
 安全核对参考 OWASP ASVS 5.0.0、Authentication / Session Management / WebSocket Security Cheat Sheets：逐消息鉴权、对象归属、Origin、资源边界、断开清理与日志脱敏。这里只记录本次实现与回归范围，不声称全站通过 ASVS 认证。
 
