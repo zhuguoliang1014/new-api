@@ -30,11 +30,15 @@ import { Route as IndexRoute } from '@/routes/_authenticated/system-settings/cus
 import { getCustomIntegrationsSectionNavItems } from '../section-registry'
 
 describe('add-on settings navigation', () => {
-  it('shows Hupijiao as the only add-on entry', () => {
+  it('shows payment and Responses WebSocket under add-on features', () => {
     expect(getCustomIntegrationsSectionNavItems(i18next.t)).toEqual([
       {
         title: 'Hupijiao Gateway',
         url: '/system-settings/custom-integrations/hupijiao',
+      },
+      {
+        title: 'Responses WebSocket',
+        url: '/system-settings/custom-integrations/responses-websocket',
       },
     ])
   })
@@ -46,34 +50,41 @@ describe('add-on settings navigation', () => {
     '/system-settings/custom-integrations/invite-rewards',
     '/system-settings/custom-integrations/unknown',
     '/system-settings/custom-integrations/hupijiao',
-  ])('opening %s lands on the Hupijiao payment settings', async (href) => {
-    const root = createRootRoute()
-    const indexOptions = {
-      ...IndexRoute.options,
-      id: '/system-settings/custom-integrations/',
-      path: '/system-settings/custom-integrations/',
-      getParentRoute: () => root,
-    }
-    const sectionOptions = {
-      ...SectionRoute.options,
-      id: '/system-settings/custom-integrations/$section',
-      path: '/system-settings/custom-integrations/$section',
-      getParentRoute: () => root,
-    }
-    const index = IndexRoute.update(indexOptions)
-    const section = SectionRoute.update(sectionOptions)
-    const router = createRouter({
-      routeTree: root.addChildren([index, section]),
-      history: createMemoryHistory({ initialEntries: [href] }),
-    })
+    '/system-settings/custom-integrations/responses-websocket',
+  ])(
+    'opening %s lands on the selected or default add-on settings',
+    async (href) => {
+      const root = createRootRoute()
+      const indexOptions = {
+        ...IndexRoute.options,
+        id: '/system-settings/custom-integrations/',
+        path: '/system-settings/custom-integrations/',
+        getParentRoute: () => root,
+      }
+      const sectionOptions = {
+        ...SectionRoute.options,
+        id: '/system-settings/custom-integrations/$section',
+        path: '/system-settings/custom-integrations/$section',
+        getParentRoute: () => root,
+      }
+      const index = IndexRoute.update(indexOptions)
+      const section = SectionRoute.update(sectionOptions)
+      const router = createRouter({
+        routeTree: root.addChildren([index, section]),
+        history: createMemoryHistory({ initialEntries: [href] }),
+      })
 
-    await router.load()
+      await router.load()
 
-    expect(router.state.location.pathname).toBe(
-      '/system-settings/custom-integrations/hupijiao'
-    )
-    expect(router.state.matches.at(-1)?.params).toMatchObject({
-      section: 'hupijiao',
-    })
-  })
+      const expectedSection = href.endsWith('/responses-websocket')
+        ? 'responses-websocket'
+        : 'hupijiao'
+      expect(router.state.location.pathname).toBe(
+        `/system-settings/custom-integrations/${expectedSection}`
+      )
+      expect(router.state.matches.at(-1)?.params).toMatchObject({
+        section: expectedSection,
+      })
+    }
+  )
 })

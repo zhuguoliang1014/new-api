@@ -1,4 +1,5 @@
 export type CustomIntegrationSettings = {
+  ResponsesWSMaxConnectionsPerUser: number
   /** 虎皮椒专用充值定价（独立 Option，与支付网关无关） */
   HupijiaoPrice: number
   HupijiaoAmountOptions: string

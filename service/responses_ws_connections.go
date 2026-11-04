@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/go-redis/redis/v8"
 )
 
-const ResponsesWSConnectionsPerUser = 3
+const ResponsesWSConnectionsPerUser = operation_setting.DefaultResponsesWSMaxConnectionsPerUser
 const responsesWSConnectionTTL = time.Minute
 const responsesWSConnectionRenewInterval = 15 * time.Second
 const responsesWSConnectionRedisTimeout = 2 * time.Second
@@ -102,7 +103,7 @@ func AcquireResponsesWSConnection(ctx context.Context, userID int) (*ResponsesWS
 	}
 	if !common.RedisEnabled {
 		responsesWSLocalConnections.Lock()
-		if responsesWSLocalConnections.users[userID] >= ResponsesWSConnectionsPerUser {
+		if responsesWSLocalConnections.users[userID] >= operation_setting.GetResponsesWSMaxConnectionsPerUser() {
 			responsesWSLocalConnections.Unlock()
 			return nil, false, nil
 		}
@@ -129,7 +130,7 @@ func acquireRedisResponsesWSConnection(ctx context.Context, rdb *redis.Client, u
 	key := fmt.Sprintf("new-api:responses-ws:connections:user:%d", userID)
 	member := common.NewRequestId()
 	acquireCtx, cancel := context.WithTimeout(ctx, responsesWSConnectionRedisTimeout)
-	acquired, err := rdb.Eval(acquireCtx, responsesWSConnectionAcquireScript, []string{key}, ResponsesWSConnectionsPerUser, responsesWSConnectionTTL.Milliseconds(), member).Int()
+	acquired, err := rdb.Eval(acquireCtx, responsesWSConnectionAcquireScript, []string{key}, operation_setting.GetResponsesWSMaxConnectionsPerUser(), responsesWSConnectionTTL.Milliseconds(), member).Int()
 	cancel()
 	if err != nil || acquired != 1 {
 		return nil, false, err

@@ -184,6 +184,7 @@ func InitOptionMap() {
 	common.OptionMap["DemoSiteEnabled"] = strconv.FormatBool(operation_setting.DemoSiteEnabled)
 	common.OptionMap["SelfUseModeEnabled"] = strconv.FormatBool(operation_setting.SelfUseModeEnabled)
 	common.OptionMap["ModelRequestRateLimitEnabled"] = strconv.FormatBool(setting.ModelRequestRateLimitEnabled)
+	common.OptionMap[operation_setting.ResponsesWSMaxConnectionsPerUserOptionKey] = strconv.Itoa(operation_setting.DefaultResponsesWSMaxConnectionsPerUser)
 	common.OptionMap["CheckSensitiveOnPromptEnabled"] = strconv.FormatBool(setting.CheckSensitiveOnPromptEnabled)
 	common.OptionMap["StopOnSensitiveEnabled"] = strconv.FormatBool(setting.StopOnSensitiveEnabled)
 	common.OptionMap["SensitiveWords"] = setting.SensitiveWordsToString()
@@ -238,6 +239,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == operation_setting.ResponsesWSMaxConnectionsPerUserOptionKey {
+		return operation_setting.ValidateResponsesWSMaxConnectionsPerUser(value)
+	}
 	if key == HomepageModelsOptionKey {
 		return ValidateHomepageModelsOption(value)
 	}

@@ -5,12 +5,15 @@ import { customIntegrationsNavigation } from '@/features/system-settings/section
 import { createSectionRegistry } from '@/features/system-settings/utils/section-registry'
 
 import { HupijiaoSettingsSection } from './hupijiao-settings-section'
+import { ResponsesWebSocketSettingsSection } from './responses-websocket-settings-section'
 import type { CustomIntegrationSettings } from './types'
 
 function resolveAddonDefaults(
   settings: CustomIntegrationSettings
 ): CustomIntegrationSettings {
   return {
+    ResponsesWSMaxConnectionsPerUser:
+      settings.ResponsesWSMaxConnectionsPerUser ?? 10,
     HupijiaoPrice: settings.HupijiaoPrice ?? 7.3,
     HupijiaoAmountOptions: settings.HupijiaoAmountOptions ?? '[]',
     HupijiaoAmountDiscount: settings.HupijiaoAmountDiscount ?? '{}',
@@ -30,6 +33,17 @@ const CUSTOM_INTEGRATIONS_SECTIONS = [
     ...customIntegrationsNavigation.getSectionMeta('hupijiao'),
     build: (settings: CustomIntegrationSettings) => (
       <HupijiaoSettingsSection defaultValues={resolveAddonDefaults(settings)} />
+    ),
+  },
+  {
+    ...customIntegrationsNavigation.getSectionMeta('responses-websocket'),
+    build: (settings: CustomIntegrationSettings) => (
+      <ResponsesWebSocketSettingsSection
+        defaultValues={{
+          ResponsesWSMaxConnectionsPerUser:
+            settings.ResponsesWSMaxConnectionsPerUser ?? 10,
+        }}
+      />
     ),
   },
 ] as const

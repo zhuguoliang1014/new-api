@@ -163,6 +163,10 @@ export const customIntegrationsNavigation = createSectionNavigation({
       titleKey: 'Hupijiao Gateway',
       descriptionKey: 'Configuration for Alipay payments through Hupijiao',
     },
+    {
+      id: 'responses-websocket',
+      titleKey: 'Responses WebSocket',
+    },
   ] as const,
   defaultSection: 'hupijiao',
   basePath: '/system-settings/custom-integrations',

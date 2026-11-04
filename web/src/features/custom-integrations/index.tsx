@@ -8,6 +8,7 @@ import {
 import type { CustomIntegrationSettings } from './types'
 
 const defaultSettings: CustomIntegrationSettings = {
+  ResponsesWSMaxConnectionsPerUser: 10,
   HupijiaoPrice: 7.3,
   HupijiaoAmountOptions: '[]',
   HupijiaoAmountDiscount: '{}',

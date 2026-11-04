@@ -75,10 +75,84 @@ func TestResponsesWSLocalConnectionsConcurrentAdmissionIsAtomic(t *testing.T) {
 	for lease := range leases {
 		lease.Release()
 	}
-	assert.Equal(t, int32(3), admitted.Load())
+	assert.Equal(t, int32(10), admitted.Load())
 	responsesWSLocalConnections.Lock()
 	defer responsesWSLocalConnections.Unlock()
 	assert.NotContains(t, responsesWSLocalConnections.users, 70603)
+}
+
+func TestResponsesWSConfiguredLimitAppliesToNewConnectionsWithoutDroppingLeases(t *testing.T) {
+	for _, useRedis := range []bool{false, true} {
+		t.Run(fmt.Sprintf("redis=%t", useRedis), func(t *testing.T) {
+			previousEnabled, previousClient := common.RedisEnabled, common.RDB
+			common.RedisEnabled = useRedis
+			if useRedis {
+				server := miniredis.RunT(t)
+				common.RDB = redis.NewClient(&redis.Options{Addr: server.Addr()})
+				defer common.RDB.Close()
+			}
+			defer func() { common.RedisEnabled, common.RDB = previousEnabled, previousClient }()
+			const key = "ResponsesWSMaxConnectionsPerUser"
+			common.OptionMapRWMutex.Lock()
+			mapWasNil := common.OptionMap == nil
+			old, hadOld := common.OptionMap[key]
+			if common.OptionMap == nil {
+				common.OptionMap = map[string]string{}
+			}
+			common.OptionMap[key] = "2"
+			common.OptionMapRWMutex.Unlock()
+			defer func() {
+				common.OptionMapRWMutex.Lock()
+				defer common.OptionMapRWMutex.Unlock()
+				if mapWasNil {
+					common.OptionMap = nil
+				} else if hadOld {
+					common.OptionMap[key] = old
+				} else {
+					delete(common.OptionMap, key)
+				}
+			}()
+			var leases []*ResponsesWSConnectionLease
+			defer func() {
+				for _, lease := range leases {
+					lease.Release()
+				}
+			}()
+			acquire := func(want bool) {
+				lease, ok, err := AcquireResponsesWSConnection(t.Context(), 70609)
+				require.NoError(t, err)
+				if lease != nil {
+					leases = append(leases, lease)
+				}
+				require.Equal(t, want, ok)
+			}
+			acquire(true)
+			acquire(true)
+			acquire(false)
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap[key] = "4"
+			common.OptionMapRWMutex.Unlock()
+			acquire(true)
+			acquire(true)
+			acquire(false)
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap[key] = "1"
+			common.OptionMapRWMutex.Unlock()
+			for _, lease := range leases {
+				select {
+				case <-lease.Lost():
+					t.Fatal("lowering the limit must not terminate existing leases")
+				default:
+				}
+			}
+			acquire(false)
+			for _, lease := range leases {
+				lease.Release()
+			}
+			acquire(true)
+			acquire(false)
+		})
+	}
 }
 
 func TestResponsesWSRedisConnectionsSharedAcrossClients(t *testing.T) {
@@ -111,15 +185,15 @@ func TestResponsesWSRedisConnectionsSharedAcrossClients(t *testing.T) {
 		})
 	}
 	wg.Wait()
-	require.Len(t, leases, 3)
-	assert.Equal(t, int64(3), first.ZCard(t.Context(), "new-api:responses-ws:connections:user:70604").Val())
+	require.Len(t, leases, 10)
+	assert.Equal(t, int64(10), first.ZCard(t.Context(), "new-api:responses-ws:connections:user:70604").Val())
 	leases[0].Release()
 	replacement, ok, err := acquireRedisResponsesWSConnection(t.Context(), second, 70604, time.Hour)
 	require.NoError(t, err)
 	require.True(t, ok)
 	leases = append(leases, replacement)
 	leases[0].Release()
-	assert.Equal(t, int64(3), first.ZCard(t.Context(), "new-api:responses-ws:connections:user:70604").Val())
+	assert.Equal(t, int64(10), first.ZCard(t.Context(), "new-api:responses-ws:connections:user:70604").Val())
 }
 
 func TestResponsesWSRedisAbandonedLeaseExpiresAndCannotResurrect(t *testing.T) {
@@ -227,7 +301,7 @@ func TestResponsesWSConnectionsWithRealRedis(t *testing.T) {
 			l.Release()
 		}
 	}()
-	for range 3 {
+	for range 10 {
 		lease, ok, err := acquireRedisResponsesWSConnection(t.Context(), client, userID, 10*time.Millisecond)
 		require.NoError(t, err)
 		require.True(t, ok)
@@ -238,7 +312,7 @@ func TestResponsesWSConnectionsWithRealRedis(t *testing.T) {
 	assert.False(t, ok)
 	members, err := client.ZRange(t.Context(), key, 0, -1).Result()
 	require.NoError(t, err)
-	require.Len(t, members, 3)
+	require.Len(t, members, 10)
 	initial := client.ZScore(t.Context(), key, members[0]).Val()
 	require.Eventually(t, func() bool { return client.ZScore(t.Context(), key, members[0]).Val() > initial }, time.Second, 10*time.Millisecond)
 	leases[0].Release()

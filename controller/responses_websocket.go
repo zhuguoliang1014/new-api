@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -17,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 )
@@ -119,8 +121,10 @@ func ResponsesWebSocket(c *gin.Context) {
 	lease, acquired, err := service.AcquireResponsesWSConnection(c.Request.Context(), c.GetInt("id"))
 	if err != nil || !acquired {
 		code := "websocket_connection_limit"
+		message := fmt.Sprintf("WebSocket transport unavailable; use HTTPS. Each user may keep up to %d Responses WebSocket connections, including separate agent connections.", operation_setting.GetResponsesWSMaxConnectionsPerUser())
 		if err != nil {
 			code = "websocket_transport_unavailable"
+			message = "WebSocket transport unavailable; use HTTPS."
 		}
 		// Codex treats an unavailable WebSocket upgrade as a reason to use
 		// its normal HTTPS Responses transport. Do not return 429 or upgrade
@@ -128,7 +132,7 @@ func ResponsesWebSocket(c *gin.Context) {
 		c.Header("Cache-Control", "no-store")
 		c.JSON(http.StatusUpgradeRequired, gin.H{"error": gin.H{
 			"type": "invalid_request_error", "code": code,
-			"message": "WebSocket transport unavailable; use HTTPS. Each user may keep up to 3 WebSocket connections, including separate agent connections.",
+			"message": message,
 		}})
 		return
 	}
