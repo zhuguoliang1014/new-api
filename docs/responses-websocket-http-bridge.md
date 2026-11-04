@@ -26,7 +26,7 @@ HTTP POST /v1/responses 保持原有行为。客户端不能使用 WSS 时，由
 
 ## 管理员配置每用户客户端 WSS 上限
 
-2026-11-04 的配置化改动已在本地完成验证，尚未发布；以下描述更新后的源码行为。
+2026-11-04 已发布，应用 revision `c33eb297141d12069281a7cad4fb246747c98ed9`，Actions `41769210971` 构建部署成功；北京时间11:52生产、后台设置页及真实握手核验通过。
 
 - 默认每用户同时最多 10 条 Responses WSS 物理连接。管理员可在「系统设置 → 附加功能 → Responses WebSocket → 每用户 Responses WebSocket 连接上限」保存 1–1000 之间的整数。配置键为 `ResponsesWSMaxConnectionsPerUser`，复用受保护的管理设置接口及 options 持久化，无需修改代码或重启。此设置独立于模型请求限流开关。
 - 按通过鉴权的本站 user_id 统计。同一用户的不同 API Key、模型、设备共用名额；subAgent 只要另建连接，也占一个名额。不会按客户端自报的用户 ID 或 subAgent 名称分配额外名额。
@@ -92,3 +92,12 @@ Codex 互操作测试使用 --ignore-user-config、--ephemeral、本地模拟接
 - https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html
 - https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
 - https://asvs.owasp.org/
+
+
+## 首日完整运行统计（2026-11-03，北京时间）
+
+只读生产日志统计11月3日00:00至11月4日00:00的 Responses/compact 调用记录：WSS 1487条、9位用户，其中1476条消费日志、11条错误日志；消费日志中1449条流状态正常、27条异常。因此不能用消费日志占比声称调用成功率。握手/鉴权阶段未写入业务日志的拒绝不在此统计内。
+
+WSS输入Token共233603460，缓存Token217715599，输入Token加权缓存命中率93.1988%。1476个有效服务端首响样本平均7.021秒、中位5.0525秒、P90为11.585秒；同期HTTPS有效样本8244个，平均7.422秒、中位4.3395秒。均值低约5.4%但中位数高约16.4%，模型、线路、用户及上下文长度不同，不能将差异归因于WSS并宣传统一提速。服务端首响也不是客户端实测首字，未包含用户网络上传/传输时间。
+
+本次可明确量化的升级是连接容量3→10，为原来的3.33倍、提升233.3%，不是模型生成速度提升。公告仅使用汇总数据；未代用户发布到Telegram。审计SQL和原始聚合结果位于上述服务器恢复目录。
