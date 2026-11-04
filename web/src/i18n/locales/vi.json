@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "Không thể tải các nhóm tạo ảnh.",
     "Could not load the changelog": "Không thể tải nhật ký thay đổi",
     "Could not load this source": "Không thể tải nguồn này",
+    "Could not read the reference image. Select it again and retry.": "Không thể đọc ảnh tham chiếu. Hãy chọn lại ảnh rồi thử lại.",
     "Count": "Số lượng",
     "Count must be between {{min}} and {{max}}": "Số lượng phải nằm trong khoảng từ {{min}} đến {{max}}.",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "Bộ đếm và giá trị trung bình được tính từ khi chỉ số máy chủ nguồn được khởi tạo hoặc đặt lại.",

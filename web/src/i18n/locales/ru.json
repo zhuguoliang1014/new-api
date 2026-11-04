@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "Не удалось загрузить группы генерации.",
     "Could not load the changelog": "Не удалось загрузить историю изменений",
     "Could not load this source": "Не удалось загрузить этот источник",
+    "Could not read the reference image. Select it again and retry.": "Не удалось прочитать исходное изображение. Выберите его заново и повторите попытку.",
     "Count": "Количество",
     "Count must be between {{min}} and {{max}}": "Количество должно быть от {{min}} до {{max}}",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "Счётчики и средние значения охватывают период с инициализации или сброса метрик сервера.",

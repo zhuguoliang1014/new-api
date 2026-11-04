@@ -40,6 +40,62 @@ export function validateReferenceFiles(files: File[], maxReferences = 4): void {
   }
 }
 
+/** Read picker files before submission instead of relying on a live native file handle. */
+export function readReferenceImage(
+  file: File,
+  signal: AbortSignal
+): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    const cleanup = () => signal.removeEventListener('abort', abort)
+    const abort = () => {
+      cleanup()
+      reader.abort()
+      reject(new DOMException('Aborted', 'AbortError'))
+    }
+    const failed = () => {
+      cleanup()
+      reject(
+        new Error(
+          t('Could not read the reference image. Select it again and retry.')
+        )
+      )
+    }
+    reader.addEventListener(
+      'load',
+      () => {
+        const bytes = reader.result
+        if (!(bytes instanceof ArrayBuffer) || bytes.byteLength !== file.size) {
+          failed()
+          return
+        }
+        cleanup()
+        resolve(new Blob([bytes], { type: file.type }))
+      },
+      { once: true }
+    )
+    reader.addEventListener('error', failed, { once: true })
+    reader.addEventListener(
+      'abort',
+      () => {
+        cleanup()
+        reject(new DOMException('Aborted', 'AbortError'))
+      },
+      { once: true }
+    )
+    signal.addEventListener('abort', abort, { once: true })
+    if (signal.aborted) {
+      abort()
+      return
+    }
+    try {
+      reader.readAsArrayBuffer(file)
+    } catch {
+      failed()
+    }
+  })
+}
+
 export async function getImageBlob(
   src: string,
   signal?: AbortSignal,

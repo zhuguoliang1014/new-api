@@ -10,6 +10,12 @@ import (
 	"slices"
 )
 
+var (
+	errStudioReferenceEmpty = errors.New("empty reference image")
+	errStudioReferenceSize  = errors.New("reference image too large")
+	errStudioReferenceType  = errors.New("unsupported reference image type")
+)
+
 // Keep studio history metadata on this server. Preserve uploaded image bytes
 // and their MIME headers when rebuilding the relay's multipart request.
 func encodeStudioRelayForm(form *multipart.Form, contentType string) ([]byte, string, int, error) {
@@ -39,8 +45,17 @@ func encodeStudioRelayForm(form *multipart.Form, contentType string) ([]byte, st
 		}
 		for _, header := range form.File[key] {
 			count++
-			if count > 4 || header.Size <= 0 || header.Size > 10<<20 || !slices.Contains([]string{"image/png", "image/jpeg", "image/webp"}, header.Header.Get("Content-Type")) {
+			if count > 4 {
 				return nil, "", 0, errors.New("invalid reference image")
+			}
+			if header.Size <= 0 {
+				return nil, "", 0, errStudioReferenceEmpty
+			}
+			if header.Size > 10<<20 {
+				return nil, "", 0, errStudioReferenceSize
+			}
+			if !slices.Contains([]string{"image/png", "image/jpeg", "image/webp"}, header.Header.Get("Content-Type")) {
+				return nil, "", 0, errStudioReferenceType
 			}
 			file, err := header.Open()
 			if err != nil {
@@ -57,7 +72,7 @@ func encodeStudioRelayForm(form *multipart.Form, contentType string) ([]byte, st
 		}
 	}
 	if count == 0 {
-		return nil, "", 0, errors.New("reference image is required")
+		return nil, "", 0, errStudioReferenceEmpty
 	}
 	if err = writer.Close(); err != nil {
 		return nil, "", 0, err

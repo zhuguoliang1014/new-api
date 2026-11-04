@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "Could not load generation groups.",
     "Could not load the changelog": "Could not load the changelog",
     "Could not load this source": "Could not load this source",
+    "Could not read the reference image. Select it again and retry.": "Could not read the reference image. Select it again and retry.",
     "Count": "Count",
     "Count must be between {{min}} and {{max}}": "Count must be between {{min}} and {{max}}",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "Counters and averages cover the period since the upstream metrics were initialized or reset.",

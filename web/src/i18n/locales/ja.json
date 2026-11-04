@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "生成グループを読み込めませんでした。",
     "Could not load the changelog": "変更履歴を読み込めません",
     "Could not load this source": "このソースを読み込めませんでした",
+    "Could not read the reference image. Select it again and retry.": "参照画像を読み込めません。画像を選び直して再試行してください。",
     "Count": "回数",
     "Count must be between {{min}} and {{max}}": "カウントは{{min}}から{{max}}の間である必要があります",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "カウンターと平均値は、上流の指標が初期化またはリセットされてからの期間を対象とします。",

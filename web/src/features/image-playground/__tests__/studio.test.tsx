@@ -26,6 +26,7 @@ import {
   within,
 } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import i18next from 'i18next'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
 import { getPricing } from '@/features/pricing/api'
@@ -1449,6 +1450,36 @@ it('accepts a second generation while the first is pending and keeps each result
       .sort()
   ).toEqual(['First creation', 'Second creation'])
 })
+it('translates a rejected submission and preserves the draft for retry', async () => {
+  i18next.addResource(
+    'zh',
+    'translation',
+    'invalid image task request',
+    '图片任务请求无效'
+  )
+  await i18next.changeLanguage('zh')
+  try {
+    vi.mocked(createStudioTask).mockRejectedValue(
+      new Error('invalid image task request')
+    )
+    showStudio()
+    await ready()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Image prompt' }), {
+      target: { value: 'A lake' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Generate image' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '图片任务请求无效'
+    )
+    expect(screen.getByRole('textbox', { name: 'Image prompt' })).toHaveValue(
+      'A lake'
+    )
+    expect(createStudioTask).toHaveBeenCalledTimes(1)
+  } finally {
+    await i18next.changeLanguage('en')
+  }
+})
+
 it('keeps the remaining job running when one of two parallel requests fails', async () => {
   acceptPendingTasks()
   showStudio()

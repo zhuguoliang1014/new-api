@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
@@ -167,7 +168,18 @@ func CreateImageStudioTask(c *gin.Context) {
 		}
 		body, contentType, references, err = encodeStudioRelayForm(form, contentType)
 		if err != nil {
-			writePlaygroundError(c, 400, "invalid image task request")
+			reason, message := "encoding_failed", "invalid image task request"
+			switch {
+			case errors.Is(err, errStudioReferenceEmpty):
+				reason, message = "empty_reference", "Could not read the reference image. Select it again and retry."
+			case errors.Is(err, errStudioReferenceSize):
+				reason, message = "oversized_reference", "Each reference image must be smaller than 10 MB."
+			case errors.Is(err, errStudioReferenceType):
+				reason, message = "unsupported_reference_type", "Upload PNG, JPEG or WebP images."
+			}
+			// Record only a bounded reason; never log prompts, image data or credentials.
+			logger.LogWarn(c.Request.Context(), common.LogText("image_studio_task_rejected user_id=%d stage=reference_upload reason=%s", c.GetInt("id"), reason))
+			writePlaygroundError(c, 400, message)
 			return
 		}
 	} else {

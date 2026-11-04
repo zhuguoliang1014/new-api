@@ -21,7 +21,10 @@ import { t } from 'i18next'
 import { nanoid } from 'nanoid'
 import { useEffect, useRef } from 'react'
 
-import { getServerErrorMessage } from '@/lib/server-error-message'
+import {
+  getServerErrorMessage,
+  translateServerText,
+} from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
@@ -424,9 +427,9 @@ export function useImageStudio() {
         ) {
           return
         }
-        let message = getServerErrorMessage(
-          error,
-          t('Image generation failed.')
+        let message = translateServerText(
+          t,
+          getServerErrorMessage(error, t('Image generation failed.'))
         )
         if (controller.signal.aborted) {
           message = t(

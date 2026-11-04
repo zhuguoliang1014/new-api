@@ -27,7 +27,7 @@ import {
 } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { validateReferenceFiles } from './lib/images'
+import { readReferenceImage, validateReferenceFiles } from './lib/images'
 import {
   getImageModelOptions,
   getImageRequestFields,
@@ -308,7 +308,14 @@ export async function createStudioTask(
       form.append(key, String(value))
     }
     form.append('studio_metadata', JSON.stringify(metadata))
-    for (const file of references) form.append('image[]', file, file.name)
+    // Materialize picker bytes sequentially to limit mobile peak memory. Some
+    // WebKit file handles cannot be serialized reliably after tab suspension.
+    for (const [index, file] of references.entries()) {
+      const blob = await readReferenceImage(file, signal)
+      const name =
+        file.name.trim() || `reference-${index + 1}.${file.type.split('/')[1]}`
+      form.append('image[]', blob, name)
+    }
     body = form
   }
   if (signal.aborted || scope !== getImageAuthScope()) {

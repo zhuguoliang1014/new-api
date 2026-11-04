@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "生圖分組載入失敗。",
     "Could not load the changelog": "無法載入更新日誌",
     "Could not load this source": "無法載入該來源",
+    "Could not read the reference image. Select it again and retry.": "無法讀取參考圖，請重新選擇圖片後再試。",
     "Count": "數量",
     "Count must be between {{min}} and {{max}}": "計數必須介於{{min}}和{{max}}之間",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "計數與平均值統計自上游指標初始化或重設以來的資料。",

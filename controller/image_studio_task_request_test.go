@@ -63,6 +63,56 @@ func TestStudioRelayFormPreservesReferenceBytesWithoutHistoryMetadata(t *testing
 	require.Error(t, err)
 }
 
+func TestStudioReferenceUploadRejectsMissingBytesBeforeEnqueue(t *testing.T) {
+	previous := imageStudioTasks
+	t.Cleanup(func() { imageStudioTasks = previous })
+	store, err := service.NewStudioTaskStore(t.TempDir(), nil)
+	require.NoError(t, err)
+	imageStudioTasks = store
+	router := gin.New()
+	router.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) { c.Set("id", 1507) })
+	router.POST("/:kind", CreateImageStudioTask)
+	metadata := `{"parameters":{"prompt":"A lake","model":"gpt-image-2.5-basic","group":"画图","size":"4096x4096","quality":"auto","format":"png","background":"auto","count":1},"referenceCount":1}`
+	for _, tc := range []struct {
+		name, filename, contentType, contents, message string
+		status                                         int
+	}{
+		{"nameless file is not a multipart file", "", "image/png", "original", "Could not read the reference image. Select it again and retry.", 400},
+		{"empty file", "photo.png", "image/png", "", "Could not read the reference image. Select it again and retry.", 400},
+		{"unsupported format", "photo.heic", "image/heic", "original", "Upload PNG, JPEG or WebP images.", 400},
+		{"fallback filename", "reference-1.png", "image/png", "original", "", 202},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			for key, value := range map[string]string{"studio_metadata": metadata, "prompt": "A lake", "size": "4096x4096", "n": "1"} {
+				require.NoError(t, writer.WriteField(key, value))
+			}
+			header := textproto.MIMEHeader{}
+			header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": "image[]", "filename": tc.filename}))
+			header.Set("Content-Type", tc.contentType)
+			part, err := writer.CreatePart(header)
+			require.NoError(t, err)
+			_, err = io.WriteString(part, tc.contents)
+			require.NoError(t, err)
+			require.NoError(t, writer.Close())
+			req := httptest.NewRequest("POST", "/edits", &body)
+			req.Header.Set("Content-Type", writer.FormDataContentType())
+			req.Header.Set("X-Studio-Group", url.QueryEscape(service.ImageStudioGroup))
+			req.Header.Set("X-Studio-Model", "gpt-image-2.5-basic")
+			req.Header.Set("X-Studio-Task-ID", "mobile-reference-test-0001")
+			before := len(store.List(1507))
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			require.Equal(t, tc.status, rec.Code, rec.Body.String())
+			if tc.status == 400 {
+				require.Contains(t, rec.Body.String(), tc.message)
+				require.Len(t, store.List(1507), before)
+			}
+		})
+	}
+}
+
 func TestStudioMJReferencesUseGenerationJSONAndPinHDTier(t *testing.T) {
 	previous := imageStudioTasks
 	defer func() { imageStudioTasks = previous }()

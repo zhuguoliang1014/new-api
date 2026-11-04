@@ -151,6 +151,81 @@ it.each([0, -1, 5, 1.5])(
   }
 )
 
+it('gives a nameless mobile reference a filename so multipart keeps it as a file', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+    data: { success: true, data: accepted },
+  })
+  const reference = new File(['reference bytes'], '', { type: 'image/png' })
+  await createStudioTask(
+    taskID,
+    parameters,
+    [reference],
+    { ...metadata, referenceCount: 1 },
+    new AbortController().signal
+  )
+  const form = post.mock.calls[0][1] as FormData
+  const uploaded = form.get('image[]') as File
+  expect(uploaded.name).toBe('reference-1.png')
+  expect(uploaded.type).toBe('image/png')
+  const bytes = await new Promise<string>((resolve) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => resolve(String(reader.result)), {
+      once: true,
+    })
+    reader.readAsText(uploaded)
+  })
+  expect(bytes).toBe('reference bytes')
+})
+
+it.each(['unreadable', 'truncated'])(
+  'rejects a %s reference before submitting a billable task',
+  async (failure) => {
+    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+      data: { success: true, data: accepted },
+    })
+    vi.spyOn(FileReader.prototype, 'readAsArrayBuffer').mockImplementation(
+      function (this: FileReader) {
+        if (failure === 'unreadable') {
+          this.dispatchEvent(new Event('error'))
+        } else {
+          Object.defineProperty(this, 'result', { value: new ArrayBuffer(0) })
+          this.dispatchEvent(new Event('load'))
+        }
+      }
+    )
+    await expect(
+      createStudioTask(
+        taskID,
+        parameters,
+        [new File(['reference'], 'photo.png', { type: 'image/png' })],
+        { ...metadata, referenceCount: 1 },
+        new AbortController().signal
+      )
+    ).rejects.toThrow(
+      'Could not read the reference image. Select it again and retry.'
+    )
+    expect(post).not.toHaveBeenCalled()
+  }
+)
+
+it('does not submit a task when reference reading is cancelled', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post')
+  const controller = new AbortController()
+  vi.spyOn(FileReader.prototype, 'readAsArrayBuffer').mockImplementation(() => {
+    controller.abort()
+  })
+  await expect(
+    createStudioTask(
+      taskID,
+      parameters,
+      [new File(['reference'], 'photo.png', { type: 'image/png' })],
+      { ...metadata, referenceCount: 1 },
+      controller.signal
+    )
+  ).rejects.toThrow('Aborted')
+  expect(post).not.toHaveBeenCalled()
+})
+
 it('does not submit a task after the session has ended', async () => {
   const post = vi.spyOn(imageRelayClient, 'post')
   useAuthStore.getState().auth.reset()

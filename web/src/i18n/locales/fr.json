@@ -1703,6 +1703,7 @@
     "Could not load generation groups.": "Impossible de charger les groupes.",
     "Could not load the changelog": "Impossible de charger le journal",
     "Could not load this source": "Impossible de charger cette source",
+    "Could not read the reference image. Select it again and retry.": "Impossible de lire l’image de référence. Sélectionnez-la à nouveau et réessayez.",
     "Count": "Quantité",
     "Count must be between {{min}} and {{max}}": "Le nombre doit être compris entre {{min}} et {{max}}",
     "Counters and averages cover the period since the upstream metrics were initialized or reset.": "Compteurs et moyennes depuis l’initialisation ou la remise à zéro des métriques amont.",
