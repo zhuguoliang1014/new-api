@@ -134,7 +134,10 @@ func ResponsesHTTPWebSocketHelper(c *gin.Context, client *websocket.Conn, runner
 }
 
 func responsesWebSocketHelper(c *gin.Context, client *websocket.Conn, runner ResponsesWSRequestRunner, bridge *responsesWSHTTPState) *types.NewAPIError {
-	ctx, cancel := context.WithCancel(c.Request.Context())
+	// WebSocket connections need an independent context that outlives the HTTP handshake.
+	// Using c.Request.Context() as the parent causes the session context to be canceled
+	// when the HTTP upgrade completes, leading to false client_gone errors mid-stream.
+	ctx, cancel := context.WithCancel(context.Background())
 	s := &responsesWSSession{ctx: ctx, cancel: cancel, client: client, runner: runner,
 		request: c.Request.Clone(ctx), requestID: c.GetString(common.RequestIdKey), httpBridge: bridge}
 	if s.requestID == "" {
