@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,9 +13,11 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -672,4 +675,204 @@ func TestResponsesHTTPWebSocketDisconnectCancelsAndSettlesOnce(t *testing.T) {
 	assert.Equal(t, int32(1), calls.Load())
 	require.NoError(t, model.DB.First(f.token, f.token.Id).Error)
 	assert.Equal(t, 3000-logs[0].Quota, f.token.RemainQuota)
+}
+
+func TestResponsesHTTPWebSocketAutoGroupContinuation(t *testing.T) {
+	f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0))`)
+	previousGroups := setting.UserUsableGroups2JSONString()
+	previousAuto := setting.AutoGroups2JsonString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousGroups))
+		require.NoError(t, setting.UpdateAutoGroupsByJsonString(previousAuto))
+	})
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","auto":"Auto"}`))
+	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["default"]`))
+	require.NoError(t, model.DB.First(f.token, f.token.Id).Error)
+	f.token.Group = "auto"
+	require.NoError(t, f.token.Update())
+	var calls atomic.Int32
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+		writeResponsesHTTPWSCompletion(t, w, fmt.Sprintf("auto_%d", calls.Add(1)), []any{})
+	}
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"first"}`)))
+	require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","previous_response_id":"auto_1","input":"second"}`)))
+	event := readResponsesHTTPWSTerminal(t, f.client)
+	assert.Equal(t, "response.completed", event["type"], "a valid auto-group token must support a second turn")
+	assert.Equal(t, int32(2), calls.Load())
+}
+
+func TestResponsesHTTPWebSocketTerminalDoesNotWaitForUpstreamEOF(t *testing.T) {
+	for _, kind := range []string{"response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled", "error", "response.error"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0))`)
+			release := make(chan struct{})
+			defer close(release)
+			var calls atomic.Int32
+			f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+				if calls.Add(1) > 1 {
+					writeResponsesHTTPWSCompletion(t, w, "after_terminal", []any{})
+					return
+				}
+				w.Header().Set("Content-Type", "text/event-stream")
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.created", "response": map[string]any{"id": "terminal_wait", "status": "in_progress"}})
+				writeResponsesHTTPWSEvent(t, w, map[string]any{"type": kind, "response": map[string]any{"id": "terminal_wait", "status": strings.TrimPrefix(kind, "response."), "incomplete_details": map[string]any{"reason": "max_output_tokens"}, "output": []any{}, "usage": map[string]any{"input_tokens": 10, "output_tokens": 1, "total_tokens": 11}}})
+				select {
+				case <-release:
+				case <-r.Context().Done():
+				}
+			}
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"hello"}`)))
+			require.Equal(t, "response.created", readResponsesWSTestEvent(t, f.client)["type"])
+			require.Equal(t, kind, readResponsesWSTestEvent(t, f.client)["type"], "terminal must arrive while the upstream body is still open")
+			require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","input":"next"}`)))
+			require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+			assert.Equal(t, int32(2), calls.Load())
+			var logs []model.Log
+			require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Order("id").Find(&logs).Error)
+			require.Len(t, logs, 2, "each turn settles exactly once")
+			assert.Equal(t, 10, logs[0].PromptTokens)
+			assert.Equal(t, 1, logs[0].CompletionTokens)
+		})
+	}
+}
+
+func TestResponsesHTTPWebSocketRejectsOversizedMetadata(t *testing.T) {
+	f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0))`)
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) { t.Error("invalid requests must remain local") }
+	for _, field := range []string{"model", "previous_response_id"} {
+		request := map[string]any{"type": "response.create", "model": "ws-billing", "input": []any{}, "generate": false}
+		request[field] = strings.Repeat("m", 1<<20)
+		payload, err := common.Marshal(request)
+		require.NoError(t, err)
+		require.NoError(t, f.client.WriteMessage(websocket.TextMessage, payload))
+		event := readResponsesHTTPWSTerminal(t, f.client)
+		require.Equal(t, "error", event["type"])
+		assert.Equal(t, float64(http.StatusBadRequest), event["status"])
+	}
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create","model":"ws-billing","generate":false,"input":[]}`)))
+	require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+	var logs []model.Log
+	require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Find(&logs).Error)
+	assert.Empty(t, logs)
+}
+
+func TestResponsesHTTPWebSocketCompletedMissingUsageMatchesHTTPFallback(t *testing.T) {
+	f := newResponsesHTTPWSFixture(t, `tier("input", p * 2)`)
+	constant.CountToken = true
+	var calls atomic.Int32
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		id := fmt.Sprintf("no_usage_%d", calls.Add(1))
+		writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.created", "response": map[string]any{"id": id, "status": "in_progress"}})
+		writeResponsesHTTPWSEvent(t, w, map[string]any{"type": "response.completed", "response": map[string]any{"id": id, "status": "completed", "model": "gpt-4o", "output": []any{map[string]any{"type": "message", "role": "assistant", "content": []any{map[string]any{"type": "output_text", "text": "done"}}}}}})
+	}
+	payload := `{"model":"ws-billing","input":"Please count these ordinary words as input tokens for this complete response.","stream":true}`
+	require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(`{"type":"response.create",`+payload[1:])))
+	require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+	req, err := http.NewRequest(http.MethodPost, f.gatewayURL+"/v1/responses", strings.NewReader(payload))
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer sk-"+f.token.Key)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
+	require.NoError(t, err)
+	_, err = io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+	<-f.httpDone
+	var logs []model.Log
+	require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Order("id").Find(&logs).Error)
+	require.Len(t, logs, 2)
+	require.Positive(t, logs[1].PromptTokens)
+	assert.Equal(t, logs[1].PromptTokens, logs[0].PromptTokens)
+	assert.Equal(t, logs[1].Quota, logs[0].Quota)
+}
+
+func TestResponsesHTTPWebSocketAzureContinuationKeepsAPIVersion(t *testing.T) {
+	previousVersion := constant.AzureDefaultAPIVersion
+	constant.AzureDefaultAPIVersion = "2025-04-01-preview"
+	t.Cleanup(func() { constant.AzureDefaultAPIVersion = previousVersion })
+	f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0))`)
+	baseURL := *f.channel.BaseURL + "/cognitiveservices.azure.com"
+	require.NoError(t, model.DB.Model(f.channel).Updates(map[string]any{"type": constant.ChannelTypeAzure, "other": "2025-03-01-preview", "base_url": baseURL}).Error)
+	versions := make(chan string, 2)
+	var calls atomic.Int32
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+		versions <- r.URL.Query().Get("api-version")
+		writeResponsesHTTPWSCompletion(t, w, fmt.Sprintf("azure_%d", calls.Add(1)), []any{})
+	}
+	for _, payload := range []string{
+		`{"type":"response.create","model":"ws-billing","input":"first"}`,
+		`{"type":"response.create","model":"ws-billing","previous_response_id":"azure_1","input":"second"}`,
+	} {
+		require.NoError(t, f.client.WriteMessage(websocket.TextMessage, []byte(payload)))
+		require.Equal(t, "response.completed", readResponsesHTTPWSTerminal(t, f.client)["type"])
+	}
+	first, second := <-versions, <-versions
+	require.Equal(t, "2025-03-01-preview", first)
+	assert.Equal(t, first, second, "subsequent HTTP requests must retain the channel API version")
+}
+
+func TestResponsesHTTPClientCancellationBeforeHeadersRefundsWithoutRetry(t *testing.T) {
+	f := newResponsesHTTPWSFixture(t, `tier("request", fixed(0.002))`)
+	oldErrors, oldRetries := constant.ErrorLogEnabled, common.RetryTimes
+	constant.ErrorLogEnabled, common.RetryTimes = true, 2
+	t.Cleanup(func() { constant.ErrorLogEnabled, common.RetryTimes = oldErrors, oldRetries })
+	started, upstreamCancelled := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int32
+	f.httpUpstream = func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, r.Body)
+		if calls.Add(1) == 1 {
+			close(started)
+		}
+		<-r.Context().Done()
+		close(upstreamCancelled)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, f.gatewayURL+"/v1/responses", strings.NewReader(`{"model":"ws-billing","input":"hello","stream":true}`))
+	require.NoError(t, err)
+	request.Header.Set("Authorization", "Bearer sk-"+f.token.Key)
+	request.Header.Set("Content-Type", "application/json")
+	finished := make(chan error, 1)
+	go func() {
+		response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request)
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		finished <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	cancel()
+	require.ErrorIs(t, <-finished, context.Canceled)
+	select {
+	case <-f.httpDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("cancelled relay did not finish")
+	}
+	select {
+	case <-upstreamCancelled:
+	case <-time.After(3 * time.Second):
+		t.Fatal("upstream was not cancelled")
+	}
+	assert.Equal(t, int32(1), calls.Load())
+	var logs []model.Log
+	require.NoError(t, model.LOG_DB.Where("token_id = ?", f.token.Id).Find(&logs).Error)
+	require.Len(t, logs, 1)
+	assert.Equal(t, model.LogTypeError, logs[0].Type)
+	assert.Contains(t, logs[0].Content, "status_code=499")
+	assert.Contains(t, logs[0].Content, "request canceled before upstream response")
+	assert.NotContains(t, logs[0].Content, "upstream error: do request failed")
+	require.Eventually(t, func() bool {
+		require.NoError(t, model.DB.First(f.token, f.token.Id).Error)
+		return f.token.RemainQuota == 3000
+	}, 3*time.Second, 10*time.Millisecond, "pre-consumed token quota must be refunded")
+	require.NoError(t, model.DB.First(f.user, f.user.Id).Error)
+	assert.Equal(t, 100000, f.user.Quota)
+	require.NoError(t, model.DB.First(f.channel, f.channel.Id).Error)
+	assert.Equal(t, common.ChannelStatusEnabled, f.channel.Status)
 }

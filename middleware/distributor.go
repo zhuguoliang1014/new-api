@@ -689,6 +689,13 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 
 	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, false)
 
+	SetupChannelRequestMetadata(c, channel)
+	return nil
+}
+
+// SetupChannelRequestMetadata also runs for a pinned WebSocket continuation,
+// whose fresh request context must retain provider-specific URL parameters.
+func SetupChannelRequestMetadata(c *gin.Context, channel *model.Channel) {
 	// TODO: api_version统一
 	switch channel.Type {
 	case constant.ChannelTypeAzure:
@@ -708,7 +715,6 @@ func SetupContextForSelectedChannel(c *gin.Context, channel *model.Channel, mode
 	case constant.ChannelTypeCoze:
 		c.Set("bot_id", channel.Other)
 	}
-	return nil
 }
 
 // extractModelNameFromGeminiPath 从 Gemini API URL 路径中提取模型名

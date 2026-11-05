@@ -93,8 +93,10 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Stop(err)
 			return
 		}
-		if (streamResponse.Type == "response.completed" || streamResponse.Type == "response.done") &&
-			streamResponse.Response != nil && info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) {
+		switch streamResponse.Type {
+		case "response.completed", "response.done", "response.incomplete", "response.failed", "response.cancelled", "response.canceled", "error", "response.error":
+			// Done ends transport scanning; the accumulator already recorded
+			// the distinct protocol outcome, including failures and cancellation.
 			sr.Done()
 		}
 	})
@@ -106,7 +108,9 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		if info.StreamStatus.ResponseOutcome() == "" {
 			info.StreamStatus.RecordError("Responses stream ended without a terminal event")
 		}
-		if !accumulator.HasUpstreamUsage() {
+		completedNormally := info.StreamStatus.ResponseOutcome() == string(relaycommon.ResponseOutcomeCompleted) &&
+			info.StreamStatus.IsNormalEnd() && !info.StreamStatus.HasErrors()
+		if !accumulator.HasUpstreamUsage() && !completedNormally {
 			// A long cached conversation may be almost entirely discounted.
 			// Losing its usage on disconnect is not evidence of zero cache:
 			// do not turn the reconstructed input into a full-price estimate.

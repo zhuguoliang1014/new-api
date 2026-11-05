@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -488,6 +489,12 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	common2.SetContextKey(c, appconstant.ContextKeyUpstreamRequestOrigin, req.URL.Scheme+"://"+req.URL.Host)
 	resp, err := relayClient.Do(req)
 	if err != nil {
+		if errors.Is(req.Context().Err(), context.Canceled) && errors.Is(err, context.Canceled) {
+			// A downstream disconnect/control cancelled this attempt before any
+			// response headers. Do not report an upstream 500 or replay it on
+			// another channel; the ordinary failure path still refunds the reserve.
+			return nil, types.NewErrorWithStatusCode(fmt.Errorf("request canceled before upstream response: %w", context.Canceled), types.ErrorCode("request_cancelled"), 499, types.ErrOptionWithSkipRetry())
+		}
 		logger.LogError(c, common2.LogText("do request failed: %s", err.Error()))
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}

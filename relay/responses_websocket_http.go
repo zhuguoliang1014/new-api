@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -56,13 +57,15 @@ func (h *responsesWSHTTPState) clear() {
 }
 
 func (h *responsesWSHTTPState) remember(id, streamID, model string, items []common.RawMessage) bool {
-	var size int64
+	// Budget the snapshot header and retained identifiers as well as input.
+	// Empty-input warmups still retain metadata and must consume the budget.
+	size := int64(80 + len(id) + len(streamID) + len(model))
 	for _, item := range items {
 		// Include slice-header overhead rather than budgeting only payload
 		// bytes for a history containing many small tool/message items.
 		size += int64(len(item)) + 24
 	}
-	if id == "" || size > responsesWSHTTPContextBytes {
+	if id == "" || len(id) > responsesWSMaxIdentifierBytes || len(model) > responsesWSMaxIdentifierBytes || len(streamID) > 256 || size > responsesWSHTTPContextBytes {
 		return false
 	}
 	// Drop superseded lane state before reserving the new snapshot. Branches
@@ -88,7 +91,11 @@ func (h *responsesWSHTTPState) remember(id, streamID, model string, items []comm
 			break
 		}
 	}
-	h.history = append(h.history, responsesWSHTTPHistory{id: id, streamID: streamID, model: model, items: items, size: size})
+	// Own the slice at its logical length; spare capacity in the caller's
+	// expansion must not retain unbudgeted item headers. Item bytes are immutable.
+	snapshot := make([]common.RawMessage, len(items))
+	copy(snapshot, items)
+	h.history = append(h.history, responsesWSHTTPHistory{id: strings.Clone(id), streamID: strings.Clone(streamID), model: strings.Clone(model), items: snapshot, size: size})
 	h.bytes += size
 	return true
 }
@@ -271,9 +278,6 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 	info.IsStream = true
 	common.SetContextKey(c, appconstant.ContextKeyIsStream, true)
 	info.InitChannelMeta(c)
-	if channel != nil {
-		s.rememberConnectionContext(c, channel, info, model)
-	}
 	c.Set("responses_downstream_transport", "websocket")
 	c.Set("responses_upstream_transport", "http")
 	defer func() {
@@ -286,6 +290,11 @@ func (s *responsesWSSession) runHTTPCall(c *gin.Context, state *responsesWSCallS
 	}()
 	if apiErr = PrepareRequestBilling(c, info); apiErr != nil {
 		return apiErr
+	}
+	// Billing resolves an auto token to the group selected for this request.
+	// Pin that concrete group so subsequent turns can recheck its permission.
+	if channel != nil {
+		s.rememberConnectionContext(c, channel, info, model)
 	}
 	requestCtx, cancel := context.WithCancel(c.Request.Context())
 	defer cancel()
@@ -557,7 +566,7 @@ func (w *responsesWSHTTPWriter) event(data []byte) error {
 		return err
 	}
 	switch kind {
-	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error", "response.error":
 		w.terminal = true
 		w.state.terminal = &responsesWSMessage{kind: websocket.TextMessage, body: body}
 		return nil

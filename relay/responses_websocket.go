@@ -35,6 +35,7 @@ import (
 
 const responsesWSEventTypeResponseCreate = "response.create"
 const responsesWSWriteTimeout = 30 * time.Second
+const responsesWSMaxIdentifierBytes = 1024
 
 // ResponsesWSRequestRunner executes the existing authentication and rate-limit
 // middleware around one complete request, without a second HTTP connection.
@@ -713,6 +714,7 @@ func (s *responsesWSSession) restoreConnectionContext(c *gin.Context, model stri
 	common.SetContextKey(c, appconstant.ContextKeyChannelParamOverride, paramOverride)
 	common.SetContextKey(c, appconstant.ContextKeyChannelModelMapping, channel.GetModelMapping())
 	common.SetContextKey(c, appconstant.ContextKeyChannelStatusCodeMapping, channel.GetStatusCodeMapping())
+	middleware.SetupChannelRequestMetadata(c, channel)
 	policy := service.RequestPolicy(c)
 	policy.BeginAttempt(channel, s.lockedGroup)
 	policy.AddEvent(service.PolicyEvent{ChannelID: channel.Id, Decision: service.PolicyDecision{Action: "select", Reason: "pinned_channel", Source: "channel_constraint"}})
@@ -971,6 +973,12 @@ func normalizeResponsesWSCreateEvent(message []byte, event responsesWSCreateEven
 	}
 	if helper.ExceedsMaxTokensLimit(create.Request.MaxOutputTokens) {
 		return create, errors.New("max_output_tokens is invalid")
+	}
+	if len(create.Request.Model) > responsesWSMaxIdentifierBytes {
+		return create, errors.New("model must not exceed 1024 bytes")
+	}
+	if len(create.Request.PreviousResponseID) > responsesWSMaxIdentifierBytes {
+		return create, errors.New("previous_response_id must not exceed 1024 bytes")
 	}
 	create.Request.Stream = nil
 	create.Request.StreamOptions = nil

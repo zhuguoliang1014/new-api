@@ -71,3 +71,33 @@ func TestResponsesHTTPWebSocketContinuationKeepsRawItems(t *testing.T) {
 	assert.Contains(t, string(full.Body), "reasoning.encrypted_content")
 	assert.Contains(t, string(full.Body), `"store":false`)
 }
+
+func TestResponsesHTTPWebSocketHistoryMetadataBudget(t *testing.T) {
+	before := responsesWSHTTPMemory.Load()
+	h := &responsesWSHTTPState{}
+	defer func() { h.clear(); assert.Equal(t, before, responsesWSHTTPMemory.Load()) }()
+	require.True(t, h.remember("parent", "lane", "gpt-4o", nil))
+	assert.GreaterOrEqual(t, h.bytes, int64(len("parentlanegpt-4o")))
+	assert.Equal(t, h.bytes, responsesWSHTTPMemory.Load()-before)
+	h.clear()
+	// Metadata must be charged even when the item bytes alone fit the cap.
+	item := common.RawMessage(strings.Repeat("x", responsesWSHTTPContextBytes-24))
+	assert.False(t, h.remember("parent", "lane", "gpt-4o", []common.RawMessage{item}))
+	for _, field := range []string{"id", "stream", "model"} {
+		id, stream, model := "parent", "lane", "gpt-4o"
+		switch field {
+		case "id":
+			id = strings.Repeat("i", 1025)
+		case "stream":
+			stream = strings.Repeat("s", 257)
+		case "model":
+			model = strings.Repeat("m", 1025)
+		}
+		assert.False(t, h.remember(id, stream, model, nil))
+	}
+	assert.Empty(t, h.history)
+	assert.Equal(t, before, responsesWSHTTPMemory.Load())
+	responsesWSHTTPMemory.Store(responsesWSHTTPGlobalBytes - 1)
+	assert.False(t, h.remember("parent", "lane", "gpt-4o", nil))
+	responsesWSHTTPMemory.Store(before)
+}
