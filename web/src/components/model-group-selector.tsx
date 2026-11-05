@@ -72,6 +72,7 @@ interface ModelOption {
   label: string
   value: string
   category?: string
+  subcategory?: string
   description?: string
   price?: React.ReactNode
 }
@@ -252,6 +253,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
             category.toLowerCase().includes(query) ||
             m.label.toLowerCase().includes(query) ||
             m.value.toLowerCase().includes(query) ||
+            m.subcategory?.toLowerCase().includes(query) ||
             m.description?.toLowerCase().includes(query)
         )
         if (matches.length > 0) {
@@ -317,6 +319,8 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                     <div className='border-border my-1 border-t' />
                   )}
                   <div
+                    role='heading'
+                    aria-level={3}
                     className={cn(
                       'text-muted-foreground px-2 py-1 font-medium',
                       isMobile ? 'text-xs' : 'text-[10px]',
@@ -328,96 +332,109 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                       ? category
                       : t('{{category}} Models', { category })}
                   </div>
-                  {categoryModels.map((model) => (
-                    <CommandItem
-                      key={model.value}
-                      value={model.value}
-                      onSelect={handleModelChange}
-                      className={cn(
-                        'mb-0.5 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs',
-                        'transition-all duration-200',
-                        'hover:bg-accent',
-                        'data-[selected=true]:bg-accent',
-                        presentation === 'field' &&
-                          'min-h-12 gap-3 px-3 py-2.5 [&>svg:last-child]:hidden',
-                        presentation === 'field' &&
-                          selectedModel === model.value &&
-                          'bg-accent/60'
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          'flex min-w-0 flex-1 items-center gap-1',
-                          presentation === 'field' && 'gap-2'
-                        )}
-                      >
-                        {presentation === 'field' && (
-                          <Check
-                            aria-hidden='true'
-                            className={cn(
-                              'size-3.5 shrink-0 text-primary',
-                              selectedModel !== model.value && 'opacity-0'
-                            )}
-                          />
-                        )}
-                        <div
-                          className={cn(
-                            'min-w-0 font-medium',
-                            presentation === 'field'
-                              ? 'flex-1 whitespace-normal break-words'
-                              : 'truncate',
-                            presentation === 'field' || isMobile
-                              ? 'text-sm'
-                              : 'text-[11px]'
-                          )}
-                        >
-                          <span className='inline'>{model.label}</span>
-                          {presentation === 'field' &&
-                            (model.description ||
-                              (model.price !== undefined &&
-                                model.price !== null)) && (
-                              <span className='text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal'>
-                                {model.description && (
-                                  <span
-                                    title={model.description}
-                                    className='min-w-0 truncate'
-                                  >
-                                    {model.description}
-                                  </span>
-                                )}
-                                {model.price !== undefined &&
-                                  model.price !== null && (
-                                    <>
-                                      {model.description && (
-                                        <span aria-hidden='true'>·</span>
-                                      )}
-                                      <span className='shrink-0 whitespace-nowrap'>
-                                        {model.price}
-                                      </span>
-                                    </>
-                                  )}
-                              </span>
-                            )}
-                        </div>
-                        {presentation !== 'field' && (
-                          <Check
-                            className={cn(
-                              'h-4 w-4 flex-shrink-0',
-                              selectedModel === model.value
-                                ? 'opacity-100'
-                                : 'opacity-0'
-                            )}
-                          />
-                        )}
-                      </div>
-                      {presentation !== 'field' &&
-                        model.price !== undefined &&
-                        model.price !== null && (
-                          <div className='ml-auto shrink-0 text-right'>
-                            {model.price}
+                  {categoryModels.map((model, modelIndex) => (
+                    <React.Fragment key={model.value}>
+                      {model.subcategory &&
+                        model.subcategory !==
+                          categoryModels[modelIndex - 1]?.subcategory && (
+                          <div
+                            role='heading'
+                            aria-level={4}
+                            className='text-muted-foreground mx-3 mt-2 border-l-2 py-1 pl-3 text-xs font-medium'
+                          >
+                            {model.subcategory}
                           </div>
                         )}
-                    </CommandItem>
+                      <CommandItem
+                        key={model.value}
+                        value={model.value}
+                        onSelect={handleModelChange}
+                        className={cn(
+                          'mb-0.5 flex items-center justify-between rounded-lg px-2 py-1.5 text-xs',
+                          'transition-all duration-200',
+                          'hover:bg-accent',
+                          'data-[selected=true]:bg-accent',
+                          presentation === 'field' &&
+                            'min-h-12 gap-3 px-3 py-2.5 [&>svg:last-child]:hidden',
+                          presentation === 'field' &&
+                            selectedModel === model.value &&
+                            'bg-accent/60'
+                        )}
+                      >
+                        <div
+                          className={cn(
+                            'flex min-w-0 flex-1 items-center gap-1',
+                            presentation === 'field' && 'gap-2'
+                          )}
+                        >
+                          {presentation === 'field' && (
+                            <Check
+                              aria-hidden='true'
+                              className={cn(
+                                'size-3.5 shrink-0 text-primary',
+                                selectedModel !== model.value && 'opacity-0'
+                              )}
+                            />
+                          )}
+                          <div
+                            className={cn(
+                              'min-w-0 font-medium',
+                              presentation === 'field'
+                                ? 'flex-1 whitespace-normal break-words'
+                                : 'truncate',
+                              presentation === 'field' || isMobile
+                                ? 'text-sm'
+                                : 'text-[11px]'
+                            )}
+                          >
+                            <span className='inline'>{model.label}</span>
+                            {presentation === 'field' &&
+                              (model.description ||
+                                (model.price !== undefined &&
+                                  model.price !== null)) && (
+                                <span className='text-muted-foreground mt-0.5 flex min-w-0 items-center gap-1.5 text-xs font-normal'>
+                                  {model.description && (
+                                    <span
+                                      title={model.description}
+                                      className='min-w-0 truncate'
+                                    >
+                                      {model.description}
+                                    </span>
+                                  )}
+                                  {model.price !== undefined &&
+                                    model.price !== null && (
+                                      <>
+                                        {model.description && (
+                                          <span aria-hidden='true'>·</span>
+                                        )}
+                                        <span className='shrink-0 whitespace-nowrap'>
+                                          {model.price}
+                                        </span>
+                                      </>
+                                    )}
+                                </span>
+                              )}
+                          </div>
+                          {presentation !== 'field' && (
+                            <Check
+                              className={cn(
+                                'h-4 w-4 flex-shrink-0',
+                                selectedModel === model.value
+                                  ? 'opacity-100'
+                                  : 'opacity-0'
+                              )}
+                            />
+                          )}
+                        </div>
+                        {presentation !== 'field' &&
+                          model.price !== undefined &&
+                          model.price !== null && (
+                            <div className='ml-auto shrink-0 text-right'>
+                              {model.price}
+                            </div>
+                          )}
+                      </CommandItem>
+                    </React.Fragment>
                   ))}
                 </CommandGroup>
               )

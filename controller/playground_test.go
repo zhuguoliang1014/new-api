@@ -474,7 +474,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 			name, body string
 			status     int
 		}{
-			{"gpt-image-2-hq", `{"size":"4096x4096"}`, 403},
+			{"gpt-image-2-hq", `{"size":"4096x4096"}`, 200},
 			{"gpt-image-2-hq", `{"size":"8192x8192"}`, 400},
 			{"gpt-image-2-basic", `{"size":"8192x8192"}`, 400},
 			{"gpt-image-2-native", `{"size":"4096x4096"}`, 400},
@@ -493,8 +493,20 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		token, err := model.GetImageStudioToken(user.Id, service.ImageStudioGroup)
 		require.NoError(t, err)
 		assert.NotContains(t, response.Body.String(), token.Key)
-		originalLimits := token.ModelLimits
-		require.NoError(t, db.Model(token).Update("model_limits", "gpt-image-2-hq").Error)
+		assert.False(t, token.ModelLimitsEnabled)
+		assert.Empty(t, token.ModelLimits)
+		// Models added after a user's first visit must appear without
+		// changing their key or erasing explicit user restrictions.
+		for _, name := range []string{"gpt-image-2.5-sunburst-basic", "gpt-image-2.6-basic"} {
+			require.NoError(t, db.Create(&model.Ability{Group: service.ImageStudioGroup, Model: name, ChannelId: 2, Enabled: true}).Error)
+		}
+		response = request("/bootstrap", "", "", "{}", false)
+		require.Equal(t, 200, response.Code)
+		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
+		assert.Contains(t, payload.Data[0].Models, "gpt-image-2.5-sunburst-basic")
+		assert.Contains(t, payload.Data[0].Models, "gpt-image-2.6-basic")
+		assert.Equal(t, 200, request("/image", service.ImageStudioGroup, "gpt-image-2.6-basic", `{"size":"4096x4096"}`, false).Code)
+		require.NoError(t, db.Model(token).Updates(map[string]any{"model_limits_enabled": true, "model_limits": "gpt-image-2-hq"}).Error)
 		response = request("/bootstrap", "", "", "{}", false)
 		require.Equal(t, 200, response.Code)
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
@@ -502,7 +514,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		assert.Empty(t, payload.Data[0].Models)
 		assert.Equal(t, 200, request("/image", service.ImageStudioGroup, "gpt-image-2-hq", `{}`, false).Code)
 		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, service.ImageStudioDefaultModel, `{}`, false).Code)
-		require.NoError(t, db.Model(token).Update("model_limits", originalLimits).Error)
+		require.NoError(t, db.Model(token).Updates(map[string]any{"model_limits_enabled": false, "model_limits": ""}).Error)
 		require.NoError(t, db.Model(token).Update("status", common.TokenStatusDisabled).Error)
 		assert.Equal(t, 200, request("/bootstrap", "", "", "{}", false).Code)
 		assert.Equal(t, 403, request("/image", service.ImageStudioGroup, "mj-v8.2", `{}`, false).Code)

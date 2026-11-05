@@ -44,6 +44,13 @@ func EnsureImageStudioTokens(userID int, expectedGroup string, groups map[string
 					return err
 				}
 				token = Token{UserId: userID, Name: ImageStudioTokenName(group), Key: key, Status: common.TokenStatusEnabled, Group: group, CreatedTime: common.GetTimestamp(), AccessedTime: common.GetTimestamp(), ExpiredTime: -1, UnlimitedQuota: true, ModelLimitsEnabled: true, ModelLimits: strings.Join(groups[group], ",")}
+				// The unified image group already limits routing to its enabled
+				// image abilities. A frozen allowlist here hides later channel
+				// additions. Existing keys with explicit limits remain untouched.
+				if group == "画图" {
+					token.ModelLimitsEnabled = false
+					token.ModelLimits = ""
+				}
 				if err := tx.Create(&token).Error; err != nil {
 					return err
 				}

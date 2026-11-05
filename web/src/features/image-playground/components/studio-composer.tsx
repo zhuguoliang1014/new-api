@@ -59,6 +59,15 @@ import { StudioParameters } from './studio-parameters'
 import { StudioReferences } from './studio-references'
 import { StudioStyleSelector } from './studio-style-selector'
 
+function modelOrder(model: string): number {
+  if (model.startsWith('gpt-image-')) {
+    return model.endsWith('-native') ? 1 : 0
+  }
+  if (model.startsWith('gemini-')) return 2
+  if (model.startsWith('mj-')) return 3
+  return 4
+}
+
 export function StudioComposer(props: {
   refining: boolean
   onRefine: (prompt: string) => Promise<string>
@@ -216,51 +225,61 @@ export function StudioComposer(props: {
                 presentation='field'
                 selectedModel={parameters.model}
                 disabled={!group?.models.length}
-                models={(group?.models ?? []).map((model) => {
-                  let label = model
-                  let description = model
-                  let category = t('Other')
-                  if (model.endsWith('-basic')) {
-                    label = model.slice(0, -6)
-                    description = t('Upscaled · up to 4K')
-                    category = t('GPT Image · Upscaled')
-                  } else if (model.endsWith('-native')) {
-                    label = model.slice(0, -7)
-                    description = t('Native · up to 4K')
-                    category = t('GPT Image · Native')
-                  } else if (model.startsWith('gemini-')) {
-                    category = t('Banana')
-                    if (model.includes('3-pro')) {
-                      label = t('Banana Pro')
-                    } else if (model.includes('3.1-flash')) {
-                      label = t('Banana 2')
-                    } else if (model.includes('nano-banana')) {
-                      label = `${t('Banana')} · 2.1`
-                    } else {
-                      label = `${t('Banana')} · Gemini 2.5 Flash`
+                models={[...(group?.models ?? [])]
+                  .sort(
+                    (a, b) =>
+                      modelOrder(a) - modelOrder(b) ||
+                      a.localeCompare(b, 'en', { numeric: true })
+                  )
+                  .map((model) => {
+                    let label = model
+                    let description = model
+                    let category = t('Other')
+                    let subcategory: string | undefined
+                    if (model.endsWith('-basic')) {
+                      label = model.slice(0, -6)
+                      description = t('Upscaled · up to 4K')
+                      category = 'GPT Image'
+                      subcategory = t('Upscaled images')
+                    } else if (model.endsWith('-native')) {
+                      label = model.slice(0, -7)
+                      description = t('Native · up to 4K')
+                      category = 'GPT Image'
+                      subcategory = t('Native images')
+                    } else if (model.startsWith('gemini-')) {
+                      category = t('Banana')
+                      if (model.includes('3-pro')) {
+                        label = t('Banana Pro')
+                      } else if (model.includes('3.1-flash')) {
+                        label = t('Banana 2')
+                      } else if (model.includes('nano-banana')) {
+                        label = `${t('Banana')} · 2.1`
+                      } else {
+                        label = `${t('Banana')} · Gemini 2.5 Flash`
+                      }
+                      if (model.endsWith('-preview')) {
+                        label += ` · ${t('Preview')}`
+                      }
+                    } else if (model === 'mj-v8.2') {
+                      label = 'Midjourney v8.2'
+                      description = t('Usually 4 images per request')
+                      category = 'Midjourney'
                     }
-                    if (model.endsWith('-preview')) {
-                      label += ` · ${t('Preview')}`
+                    return {
+                      value: model,
+                      label,
+                      category,
+                      subcategory,
+                      description,
+                      price: (
+                        <StudioCostEstimate
+                          group={group}
+                          model={model}
+                          presentation='unit'
+                        />
+                      ),
                     }
-                  } else if (model === 'mj-v8.2') {
-                    label = 'Midjourney v8.2'
-                    description = t('Usually 4 images per request')
-                    category = 'Midjourney'
-                  }
-                  return {
-                    value: model,
-                    label,
-                    category,
-                    description,
-                    price: (
-                      <StudioCostEstimate
-                        group={group}
-                        model={model}
-                        presentation='unit'
-                      />
-                    ),
-                  }
-                })}
+                  })}
                 onModelChange={(model) => {
                   setParameters({
                     model,

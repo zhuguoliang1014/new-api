@@ -23,6 +23,55 @@ const models = [
 
 afterEach(() => vi.unstubAllGlobals())
 
+it('keeps the parent and matching subgroup when searching generation modes on mobile', async () => {
+  vi.stubGlobal('innerWidth', 320)
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  render(
+    <ModelSelector
+      presentation='field'
+      selectedModel='flare-basic'
+      models={[
+        {
+          value: 'flare-basic',
+          label: 'flare',
+          category: 'GPT Image',
+          subcategory: 'Upscaled',
+        },
+        {
+          value: 'flare-native',
+          label: 'flare',
+          category: 'GPT Image',
+          subcategory: 'Native',
+        },
+        ...models,
+      ]}
+      onModelChange={onChange}
+    />
+  )
+  await user.click(screen.getByRole('combobox', { name: 'Model' }))
+  const search = screen.getByPlaceholderText('Search models...')
+  fireEvent.change(search, { target: { value: 'Native' } })
+  expect(
+    screen.getByRole('heading', { level: 3, name: 'GPT Image' })
+  ).toBeInTheDocument()
+  expect(
+    screen.getByRole('heading', { level: 4, name: 'Native' })
+  ).toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'Upscaled' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('heading', { name: 'Banana' })
+  ).not.toBeInTheDocument()
+  expect(
+    within(screen.getByRole('listbox')).getAllByRole('option')
+  ).toHaveLength(1)
+  search.focus()
+  await user.keyboard('{ArrowDown}{Enter}')
+  expect(onChange).toHaveBeenCalledWith('flare-native')
+})
+
 it('matches the desktop field popup width to the model selector', async () => {
   const user = userEvent.setup()
   render(

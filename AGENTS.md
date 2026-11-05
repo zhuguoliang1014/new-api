@@ -24,6 +24,8 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - JavaScript task plugins live in `plugins/tasks/`, run through `pkg/jsplugin/`, and integrate with host task polling and settlement.
 - `web/` is the React frontend (see `web/AGENTS.md`); `electron/` is the desktop wrapper.
 
+- **画图模型目录维护约定（2026-11-05）**：工作台模型来自启用渠道的 abilities，GPT 以一个大类下的「超分、原生」展示，分类顺序固定 GPT、香蕉、Midjourney；默认模型为 `gpt-image-2.5-flare-basic`。新建「画图」工作台专用 Key 由画图分组和图片能力校验约束，不再冻结创建时的模型名单；已有自定义模型限制、停用/删除状态及 IP/额度限制仍生效。此次将116把匹配旧版完整自动名单的现存 Key 改为跟随该分组，限定事务及逆向脚本保存在 `/root/upgrade-recovery/new-api-image-catalog-20261105/`；其他 Key 未纳入该迁移。新增模型时须同时验证渠道 abilities、工作台 bootstrap、实际列表和价格，不能仅检查映射或模拟数据。
+
 ## 当前生产环境速查（sub2api 2026-10-21 核对，其他项目见各条日期）
 
 - **WSS 稳定性与取消分类修复上线（2026-11-05）**：按用户授权提交并 push main，revision `dc1aabf8b5fbb7109aa3a7cd900eb2bf72e97737`，Actions `41957868263` 构建、部署均 success。北京时间 **10:59** 核验容器 healthy、香港本机/主站/国内入口状态与定价均200、前端资源正常。修复历史缓存元数据预算及标识长度限制、auto 分组续轮锁定、Azure 续轮参数、终止事件不等EOF，以及正常完成缺usage时的输入估算；异常断流仍保留未知缓存输入保护。等待上游响应头时明确 context.Canceled 的请求改记 `request_cancelled`/499、禁止重试并按原失败流程退款，避免误报上游500。三入口 WSS101、generate:false 续问、超长model/父ID拒绝后同连接恢复、迟到/重复中断及未知ID拒绝均通过，无付费生成。SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17真实三库回归、相关race、vet和root构建通过。135项options、31套餐、94模型、43渠道、2367令牌及既有用户设置/权限一致，Compose/.env/Nginx一致；sub2api、两套数据库及Redis容器未重启。耗时统计界面未改，原入群机器人未跟踪草稿保留且未发布。恢复目录 `/root/upgrade-recovery/new-api-wss-fixes-20261105T024915Z/` 含138160242字节全库备份、SHA-256及完整归档读取验证、配置快照、测试/Actions/线上核验记录和带revision保护的 `rollback.sh`；回滚镜像 `ghcr.io/zhuguoliang1014/new-api:rollback-wss-fixes-20261105t024915z`，仅切旧应用、不整库恢复，Compose检查通过，未实际回切。未发送公告。

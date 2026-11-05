@@ -4,7 +4,7 @@ import "strings"
 
 const (
 	ImageStudioGroup        = "画图"
-	ImageStudioDefaultModel = "gpt-image-2.5-basic"
+	ImageStudioDefaultModel = "gpt-image-2.5-flare-basic"
 )
 
 // Legacy aliases remain available, with studio generation capped at 4K.
