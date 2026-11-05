@@ -223,11 +223,11 @@ export function StudioComposer(props: {
                   if (model.endsWith('-basic')) {
                     label = model.slice(0, -6)
                     description = t('Upscaled · up to 4K')
-                    category = 'GPT Image'
+                    category = t('GPT Image · Upscaled')
                   } else if (model.endsWith('-native')) {
                     label = model.slice(0, -7)
                     description = t('Native · up to 4K')
-                    category = 'GPT Image'
+                    category = t('GPT Image · Native')
                   } else if (model.startsWith('gemini-')) {
                     category = t('Banana')
                     if (model.includes('3-pro')) {

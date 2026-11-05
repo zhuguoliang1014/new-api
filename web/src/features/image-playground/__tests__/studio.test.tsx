@@ -1790,9 +1790,8 @@ it('uses one image group and changes size limits and pricing controls with the m
   ).toBeTruthy()
   await userEvent.click(model)
   expect(screen.getByText('Banana')).toBeInTheDocument()
-  expect(screen.getAllByText('GPT Image', { exact: true })).toHaveLength(1)
-  expect(screen.queryByText('GPT Image · Upscaled')).not.toBeInTheDocument()
-  expect(screen.queryByText('GPT Image · Native')).not.toBeInTheDocument()
+  expect(screen.getByText('GPT Image · Upscaled')).toBeInTheDocument()
+  expect(screen.getByText('GPT Image · Native')).toBeInTheDocument()
   const gptOptions = screen
     .getAllByRole('option')
     .filter((option) =>
