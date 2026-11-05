@@ -61,19 +61,19 @@ export function PerformanceHealthPanel() {
   const hasData = models.length > 0
 
   return (
-    <section className='bg-card h-full overflow-hidden rounded-2xl border shadow-xs'>
-      <div className='flex items-center gap-2 border-b px-4 py-3 sm:px-5'>
+    <section className='bg-card h-full min-w-0 overflow-hidden rounded-2xl border shadow-xs'>
+      <div className='flex flex-wrap items-center gap-x-2 gap-y-1 border-b px-4 py-3 sm:px-5'>
         <IconBadge tone='success' size='sm'>
           <HeartPulse />
         </IconBadge>
         <h3 className='text-sm font-semibold'>{t('Performance health')}</h3>
-        <span className='text-muted-foreground ml-auto text-xs'>
+        <span className='text-muted-foreground w-full text-xs leading-relaxed'>
           {t('Performance metrics for the last 24 hours')}
         </span>
       </div>
 
       <div className='space-y-3 p-4 sm:p-5'>
-        <div className='grid grid-cols-3 gap-2'>
+        <div className='grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3'>
           <MetricCell
             icon={HeartPulse}
             label={t('Success rate')}
@@ -116,9 +116,9 @@ export function PerformanceHealthPanel() {
                 {topModels.map((model) => (
                   <div
                     key={model.model_name}
-                    className='flex items-center justify-between gap-2 rounded px-1.5 py-1'
+                    className='flex min-w-0 items-start justify-between gap-2 rounded px-1.5 py-1'
                   >
-                    <span className='min-w-0 flex-1 truncate font-mono text-[11px]'>
+                    <span className='min-w-0 flex-1 font-mono text-xs leading-relaxed break-all'>
                       {model.model_name}
                     </span>
                     <span className='inline-flex shrink-0 items-center gap-1'>
@@ -159,19 +159,19 @@ function MetricCell(props: {
 }) {
   const Icon = props.icon
   return (
-    <div className='bg-muted/40 rounded-xl px-3 py-2.5'>
-      <div className='text-muted-foreground flex items-center gap-1.5 text-[11px] font-medium'>
+    <div className='bg-muted/40 min-w-0 rounded-xl px-3 py-2.5'>
+      <div className='text-muted-foreground flex items-start gap-1.5 text-xs font-medium'>
         <IconBadge tone={props.tone} size='xs'>
           <Icon />
         </IconBadge>
-        <span className='truncate'>{props.label}</span>
+        <span className='min-w-0 break-words'>{props.label}</span>
       </div>
       {props.loading ? (
         <Skeleton className='mt-1.5 h-5 w-16' />
       ) : (
         <div
           className={cn(
-            'mt-1.5 font-mono text-sm font-semibold tabular-nums',
+            'mt-1.5 font-mono text-sm font-semibold break-all tabular-nums',
             props.valueClassName
           )}
         >

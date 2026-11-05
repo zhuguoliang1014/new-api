@@ -64,7 +64,7 @@ export function ApiInfoPanel() {
       height='h-72'
       contentClassName='p-0'
     >
-      <ScrollArea className='h-72'>
+      <ScrollArea className='max-h-96 [&_[data-slot=scroll-area-viewport]]:max-h-96'>
         <div>
           {list.map((item: ApiInfoItem, idx: number) => (
             <div

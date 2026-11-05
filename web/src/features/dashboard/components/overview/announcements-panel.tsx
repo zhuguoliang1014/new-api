@@ -74,7 +74,7 @@ export function AnnouncementsPanel() {
       height='h-72'
       contentClassName='p-0'
     >
-      <ScrollArea className='h-72'>
+      <ScrollArea className='max-h-96 [&_[data-slot=scroll-area-viewport]]:max-h-96'>
         <div>
           {list.map((item: AnnouncementItem, idx: number) => {
             const key = item.id ?? `announcement-${idx}`
@@ -91,10 +91,10 @@ export function AnnouncementsPanel() {
                 <div className='flex items-start gap-2.5'>
                   <AnnouncementStatusDot type={item.type} />
                   <div className='flex min-w-0 flex-1 flex-col gap-1'>
-                    <p className='line-clamp-1 text-sm font-medium'>
+                    <p className='text-sm leading-relaxed font-medium break-words'>
                       {getPreviewText(item.content)}
                     </p>
-                    <div className='flex items-center justify-between'>
+                    <div className='flex flex-wrap items-center justify-between gap-x-3 gap-y-1'>
                       {item.publishDate && (
                         <time className='text-muted-foreground/60 text-xs'>
                           {formatDateTimeObject(new Date(item.publishDate))}

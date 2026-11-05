@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
@@ -41,10 +41,12 @@ function PanelHeader(props: {
   actions?: ReactNode
 }) {
   const heading = (
-    <div className='flex flex-col gap-1'>
-      <div className='text-sm font-semibold'>{props.title}</div>
+    <div className='min-w-0 flex-1 space-y-1'>
+      <div className='text-sm font-semibold break-words'>{props.title}</div>
       {props.description != null && (
-        <div className='text-muted-foreground text-xs'>{props.description}</div>
+        <div className='text-muted-foreground text-xs leading-relaxed break-words'>
+          {props.description}
+        </div>
       )}
     </div>
   )
@@ -54,7 +56,7 @@ function PanelHeader(props: {
       {props.actions != null ? (
         <div className='flex items-start justify-between gap-2'>
           {heading}
-          {props.actions}
+          <div className='shrink-0'>{props.actions}</div>
         </div>
       ) : (
         heading
@@ -68,14 +70,18 @@ export function PanelWrapper(props: PanelWrapperProps) {
   const resolvedEmptyMessage = props.emptyMessage ?? t('No data available')
   const height = props.height ?? 'h-64'
   const frameClassName = cn(
-    'overflow-hidden rounded-2xl border bg-card shadow-xs',
+    'h-full min-w-0 overflow-hidden rounded-2xl border bg-card shadow-xs',
     props.className
   )
 
   if (props.loading) {
     return (
       <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
+        <PanelHeader
+          title={props.title}
+          description={props.description}
+          actions={props.headerActions}
+        />
         <div className={cn('p-4 sm:p-5', props.contentClassName)}>
           <Skeleton className={`w-full ${height}`} />
         </div>
@@ -86,7 +92,11 @@ export function PanelWrapper(props: PanelWrapperProps) {
   if (props.empty) {
     return (
       <div className={frameClassName}>
-        <PanelHeader title={props.title} description={props.description} />
+        <PanelHeader
+          title={props.title}
+          description={props.description}
+          actions={props.headerActions}
+        />
         <div
           className={cn(
             'text-muted-foreground flex items-center justify-center px-4 text-sm',

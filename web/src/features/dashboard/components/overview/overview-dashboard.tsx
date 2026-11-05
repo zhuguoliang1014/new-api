@@ -790,49 +790,44 @@ export function OverviewDashboard() {
           <SummaryCards />
 
           {showContentPanels && (
-            <CardStaggerContainer
-              className={cn(
-                'grid grid-cols-1 gap-4',
-                showLeftContentPanels &&
-                  showUptimePanel &&
-                  'xl:grid-cols-[minmax(0,1fr)_22rem]'
-              )}
-            >
-              {showLeftContentPanels && (
-                <div
-                  className={cn(
-                    'grid min-w-0 grid-cols-1 gap-4',
-                    (showApiInfoPanel ||
-                      showAnnouncementsPanel ||
-                      showFAQPanel) &&
-                      'lg:grid-cols-2'
-                  )}
+            <CardStaggerContainer className='grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2'>
+              {isAdmin && (
+                <CardStaggerItem
+                  className={cn('min-w-0', !showUptimePanel && 'xl:col-span-2')}
                 >
-                  {isAdmin && (
-                    <CardStaggerItem className='lg:col-span-2'>
-                      <PerformanceHealthPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showApiInfoPanel && (
-                    <CardStaggerItem>
-                      <ApiInfoPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showAnnouncementsPanel && (
-                    <CardStaggerItem>
-                      <AnnouncementsPanel />
-                    </CardStaggerItem>
-                  )}
-                  {showFAQPanel && (
-                    <CardStaggerItem>
-                      <FAQPanel />
-                    </CardStaggerItem>
-                  )}
-                </div>
+                  <PerformanceHealthPanel />
+                </CardStaggerItem>
               )}
               {showUptimePanel && (
-                <CardStaggerItem>
+                <CardStaggerItem
+                  className={cn('min-w-0', !isAdmin && 'xl:col-span-2')}
+                >
                   <UptimePanel />
+                </CardStaggerItem>
+              )}
+              {showApiInfoPanel && (
+                <CardStaggerItem
+                  className={cn(
+                    'min-w-0',
+                    !showAnnouncementsPanel && 'xl:col-span-2'
+                  )}
+                >
+                  <ApiInfoPanel />
+                </CardStaggerItem>
+              )}
+              {showAnnouncementsPanel && (
+                <CardStaggerItem
+                  className={cn(
+                    'min-w-0',
+                    !showApiInfoPanel && 'xl:col-span-2'
+                  )}
+                >
+                  <AnnouncementsPanel />
+                </CardStaggerItem>
+              )}
+              {showFAQPanel && (
+                <CardStaggerItem className='min-w-0 xl:col-span-2'>
+                  <FAQPanel />
                 </CardStaggerItem>
               )}
             </CardStaggerContainer>

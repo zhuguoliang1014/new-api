@@ -42,32 +42,32 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
   const status = props.status
 
   return (
-    <div className='group hover:bg-muted/40 flex items-center justify-between gap-2 px-3 py-2.5 transition-colors sm:gap-3 sm:px-5 sm:py-3'>
-      <div className='flex min-w-0 flex-1 items-center gap-2 sm:gap-3'>
+    <div className='group hover:bg-muted/40 flex min-w-0 flex-col gap-3 px-4 py-4 transition-colors sm:px-5'>
+      <div className='flex min-w-0 items-start gap-2.5'>
         <span
           className={cn(
-            'inline-block size-2 shrink-0 rounded-full',
+            'mt-1.5 inline-block size-2 shrink-0 rounded-full',
             getBgColorClass(item.color)
           )}
         />
 
-        <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-          <div className='flex items-baseline gap-2'>
-            <span className='font-mono text-sm font-semibold'>
-              {item.route}
-            </span>
-            <span className='text-muted-foreground/60 hidden truncate text-xs md:inline'>
+        <div className='flex min-w-0 flex-1 flex-col gap-1.5'>
+          <span className='text-sm leading-relaxed font-semibold break-words'>
+            {item.route}
+          </span>
+          {item.description && (
+            <span className='text-muted-foreground text-xs leading-relaxed break-words'>
               {item.description}
             </span>
-          </div>
-          <span className='text-muted-foreground/40 truncate font-mono text-xs'>
+          )}
+          <span className='text-muted-foreground font-mono text-xs leading-relaxed break-all'>
             {item.url}
           </span>
         </div>
       </div>
 
-      <div className='flex shrink-0 items-center gap-2'>
-        <div className='flex items-center'>
+      <div className='flex flex-wrap items-center justify-end gap-2 pl-4.5'>
+        <div className='mr-auto flex min-w-0 flex-wrap items-center gap-1'>
           {status.testing && (
             <StatusBadge
               label={t('Testing...')}
@@ -98,8 +98,9 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
             size='sm'
             onClick={() => props.onTest(item.url)}
             disabled={status.testing}
-            className='size-7 p-0'
+            className='size-8 p-0'
             title={t('Test Latency')}
+            aria-label={t('Test Latency')}
           >
             <Zap
               className={cn('size-3.5', status.testing && 'animate-pulse')}
@@ -110,8 +111,9 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
             variant='ghost'
             size='sm'
             onClick={() => openExternalSpeedTest(item.url)}
-            className='hidden size-7 p-0 sm:inline-flex'
+            className='size-8 p-0'
             title={t('External Speed Test')}
+            aria-label={t('External Speed Test')}
           >
             <Gauge className='size-3.5' />
           </Button>
@@ -120,7 +122,7 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
             value={item.url}
             variant='ghost'
             size='sm'
-            className='size-7 p-0'
+            className='size-8 p-0'
             iconClassName='size-3.5'
             tooltip={t('Copy URL')}
             aria-label={t('Copy URL')}
@@ -129,8 +131,10 @@ export function ApiInfoItemComponent(props: ApiInfoItemProps) {
           <Button
             variant='ghost'
             size='sm'
-            className='hidden size-7 p-0 sm:inline-flex'
+            className='size-8 p-0'
             title={t('Open in New Tab')}
+            aria-label={t('Open in New Tab')}
+            role='link'
             render={<a href={item.url} target='_blank' rel='noreferrer' />}
           >
             <ExternalLink className='size-3.5' />
