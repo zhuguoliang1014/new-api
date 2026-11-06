@@ -141,6 +141,7 @@ function SidebarMenuLink({ item, href }: { item: NavLink; href: string }) {
     <SidebarMenuItem>
       <SidebarMenuButton
         isActive={checkIsActive(href, item)}
+        className={item.badgeAnimated ? 'gap-1' : undefined}
         tooltip={item.title}
         render={
           <Link
