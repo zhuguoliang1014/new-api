@@ -1,19 +1,26 @@
 import type { TFunction } from 'i18next'
 import { Megaphone, Receipt, ScrollText, Wallet } from 'lucide-react'
 
-import type { NavItem, SidebarData } from '@/components/layout/types'
+import type {
+  NavItem,
+  SidebarData,
+  SidebarBadges,
+} from '@/components/layout/types'
 import { LOCAL_CONFIG } from '@/lib/local-config'
 import { ROLE } from '@/lib/roles'
 
 // Local-only sidebar entries. Kept in a sibling hook so future merges only
 // have to keep the single injectLocalNavItems() call in use-sidebar-data.ts.
 
-function getLocalPersonalItems(t: TFunction): NavItem[] {
+function getLocalPersonalItems(t: TFunction, badges: SidebarBadges): NavItem[] {
   return [
     {
       title: t('Wallet'),
       url: LOCAL_CONFIG.walletRoute,
       icon: Wallet,
+      badge: badges.walletSavings,
+      badgeVariant: 'destructive',
+      badgeAnimated: true,
     },
     {
       title: '我的订单',
@@ -54,10 +61,11 @@ function injectInto(
 
 export function injectLocalNavItems(
   base: SidebarData,
-  t: TFunction
+  t: TFunction,
+  badges: SidebarBadges = {}
 ): SidebarData {
   // Personal: prepend Wallet/Orders.
-  const personalItems = getLocalPersonalItems(t)
+  const personalItems = getLocalPersonalItems(t, badges)
   let next = injectInto(base, 'personal', personalItems, 0)
   // Admin: insert Order History after Channels (index 1).
   next = injectInto(next, 'admin', getLocalAdminItems(t), 1)

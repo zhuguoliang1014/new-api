@@ -52,6 +52,7 @@ import { useSettingsForm } from '../hooks/use-settings-form'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
+  ReferralRewardPercent: z.coerce.number().min(0).max(100).default(0),
   QuotaForNewUser: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
@@ -217,6 +218,37 @@ export function QuotaSettingsSection({
                   <FormDescription>
                     {t(
                       'Reserve the estimated input cost multiplied by this value, without estimating output tokens. Defaults to 1; positive decimals such as 0.5 and 1.5 are supported. Final charges use actual usage. Per-request and task prices are unaffected.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <SettingsFormGridItem span='full'>
+              <h3 className='text-sm font-semibold'>{t('Referral Program')}</h3>
+            </SettingsFormGridItem>
+            <FormField
+              control={form.control}
+              name='ReferralRewardPercent'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Recharge referral reward (%)')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      max={100}
+                      step='any'
+                      {...field}
+                      value={field.value ?? ''}
+                      onChange={handleNumberChange(field.onChange)}
+                      disabled={!complianceConfirmed}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Reward the inviter based on actual CNY wallet payments. At 5%, CNY 100 earns USD 5 in quota. Subscriptions and redemption codes are excluded. Set to 0 to disable.'
                     )}
                   </FormDescription>
                   <FormMessage />

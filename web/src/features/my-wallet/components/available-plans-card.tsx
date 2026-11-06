@@ -1,4 +1,4 @@
-import { ArrowRight, Crown, RefreshCw } from 'lucide-react'
+import { ArrowRight, Crown, RefreshCw, Timer } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -77,7 +77,7 @@ function computeSaleWindow(plan: SubscriptionPlan, nowSec: number): SaleWindow {
   return { status, startsAt, expiresAt, startsIn, endsIn }
 }
 
-function formatRelativeDuration(totalSeconds: number): string {
+function formatRelativeDuration(totalSeconds: number, dayUnit: string): string {
   const total = Math.max(0, Math.floor(totalSeconds))
   if (total <= 0) return '00:00:00'
   const days = Math.floor(total / 86400)
@@ -87,7 +87,7 @@ function formatRelativeDuration(totalSeconds: number): string {
   const hh = String(hours).padStart(2, '0')
   const mm = String(minutes).padStart(2, '0')
   const ss = String(secs).padStart(2, '0')
-  if (days > 0) return `${days}d ${hh}:${mm}:${ss}`
+  if (days > 0) return `${days} ${dayUnit} ${hh}:${mm}:${ss}`
   return `${hh}:${mm}:${ss}`
 }
 
@@ -179,9 +179,9 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         title={t('Subscription Plans')}
         icon={<Crown className='h-4 w-4' aria-hidden='true' />}
       >
-        <div className='grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 min-[90rem]:grid-cols-4'>
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
           {['first', 'second', 'third'].map((key) => (
-            <Skeleton key={key} className='h-80 w-full rounded-xl' />
+            <Skeleton key={key} className='h-72 w-full rounded-xl' />
           ))}
         </div>
       </TitledCard>
@@ -224,11 +224,11 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
           </Button>
         }
         disableHoverEffect
-        contentClassName='bg-muted/15'
+        contentClassName='bg-muted/15 sm:p-4'
       >
         <div
           data-slot='subscription-plan-grid'
-          className='grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 min-[90rem]:grid-cols-4'
+          className='grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
         >
           {plans.map((p, index) => {
             const plan = p?.plan
@@ -273,7 +273,6 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                 : t('Unlimited')
 
             const details = [
-              { label: t('Validity Period'), value: duration },
               { label: t('Quota Reset'), value: resetPeriod },
               {
                 label: t('Purchase Count'),
@@ -287,19 +286,23 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
               },
             ]
 
-            // Footer hint (only for live/ended; upcoming countdown lives on the button)
-            let footerHint: string | null = null
+            let saleHint: string | null = null
+            let saleHintLabel = t('Ends in')
             if (sale.status === 'ended') {
-              footerHint = `${t('Sale ended at')} ${formatTimestamp(sale.expiresAt)}`
+              saleHintLabel = t('Sale ended at')
+              saleHint = `${saleHintLabel} ${formatTimestamp(sale.expiresAt)}`
             } else if (sale.status === 'live' && sale.expiresAt > 0) {
-              footerHint = `${t('Ends in')} ${formatRelativeDuration(sale.endsIn)}`
+              saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.endsIn, t('days'))}`
+            } else if (sale.status === 'upcoming') {
+              saleHintLabel = t('Starts in')
+              saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.startsIn, t('days'))}`
             }
 
             let buttonLabel = t('Subscribe Now')
             if (reached) {
               buttonLabel = t('Limit Reached')
             } else if (sale.status === 'upcoming') {
-              buttonLabel = `${t('Starts in')} ${formatRelativeDuration(sale.startsIn)}`
+              buttonLabel = t('Not Started')
             } else if (sale.status === 'ended') {
               buttonLabel = t('Sale Ended')
             }
@@ -317,24 +320,41 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     : 'border-border/80 hover:border-foreground/20 hover:shadow-md'
                 )}
               >
-                <CardContent className='flex h-full min-w-0 flex-col p-4 sm:p-5'>
-                  <div className='flex min-h-16 items-start gap-3'>
-                    <div className='flex min-w-0 flex-1 items-start gap-3'>
+                <CardContent className='flex h-full min-w-0 flex-col p-3 sm:p-4'>
+                  {saleHint && (
+                    <div
+                      data-slot='plan-sale-notice'
+                      role={sale.status === 'ended' ? 'note' : 'timer'}
+                      aria-label={saleHintLabel}
+                      aria-live='off'
+                      className={cn(
+                        'mb-3 flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs leading-snug font-semibold tabular-nums',
+                        sale.status === 'live'
+                          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                          : 'border-border bg-muted/50 text-muted-foreground'
+                      )}
+                    >
+                      <Timer className='size-3.5 shrink-0' aria-hidden='true' />
+                      <span>{saleHint}</span>
+                    </div>
+                  )}
+                  <div className='flex items-start gap-2'>
+                    <div className='flex min-w-0 flex-1 items-start gap-2'>
                       <span
                         data-slot='plan-provider-icon'
                         aria-hidden='true'
                         className={cn(
-                          'mt-0.5 flex size-8 shrink-0 items-center justify-center',
+                          'mt-0.5 flex size-6 shrink-0 items-center justify-center',
                           isRecommended ? 'text-primary' : 'text-foreground/80'
                         )}
                       >
-                        {getLobeIcon('OpenAI', 32)}
+                        {getLobeIcon('OpenAI', 24)}
                       </span>
                       <div className='min-w-0'>
                         <h3
                           id={`subscription-plan-${plan.id}`}
                           title={plan.title || t('Subscription Plans')}
-                          className='text-lg leading-snug font-semibold tracking-tight break-words'
+                          className='text-base leading-snug font-semibold tracking-tight break-words'
                         >
                           {plan.title || t('Subscription Plans')}
                         </h3>
@@ -350,8 +370,8 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     </div>
                   </div>
 
-                  <div className='mt-4 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
-                    <p className='text-3xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                  <div className='mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
+                    <p className='text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                       {priceLabel}
                     </p>
                     <p className='text-muted-foreground text-xs whitespace-nowrap'>
@@ -359,7 +379,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     </p>
                   </div>
 
-                  <div className='bg-muted/40 mt-4 rounded-lg p-3'>
+                  <div className='bg-muted/40 mt-3 rounded-lg p-2.5'>
                     <div className='flex min-h-5 flex-wrap items-center justify-between gap-2'>
                       <p className='text-muted-foreground text-xs'>
                         {t('Available Quota')}
@@ -373,15 +393,12 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         />
                       )}
                     </div>
-                    <p className='mt-1.5 text-3xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                    <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                       {quotaLabel}
                     </p>
                     {savings && (
-                      <div
-                        data-slot='plan-savings'
-                        className='mt-3 space-y-1.5'
-                      >
-                        <p className='text-sm font-semibold text-green-700 dark:text-green-400'>
+                      <div data-slot='plan-savings' className='mt-2 space-y-1'>
+                        <p className='text-xs font-semibold text-green-700 dark:text-green-400'>
                           {t('Save about {{percent}}% vs wallet payment', {
                             percent: Math.floor(savings.savings * 100),
                           })}
@@ -435,11 +452,11 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     )}
                   </div>
 
-                  <dl className='mt-4 divide-y border-t'>
+                  <dl className='mt-3 divide-y border-t'>
                     {details.map((detail) => (
                       <div
                         key={detail.label}
-                        className='flex items-start justify-between gap-3 py-2.5 text-xs'
+                        className='flex items-start justify-between gap-2 py-1.5 text-xs'
                       >
                         <dt className='text-muted-foreground min-w-0 break-words'>
                           {detail.label}
@@ -451,7 +468,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     ))}
                   </dl>
 
-                  <div className='mt-auto pt-4'>
+                  <div className='mt-auto pt-3'>
                     {!onlinePaymentEnabled && isSaleable && !reached ? (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
@@ -488,12 +505,6 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         )}
                       </Button>
                     )}
-
-                    {footerHint ? (
-                      <p className='text-muted-foreground mt-1.5 text-center text-xs tabular-nums'>
-                        {footerHint}
-                      </p>
-                    ) : null}
                   </div>
                 </CardContent>
               </Card>

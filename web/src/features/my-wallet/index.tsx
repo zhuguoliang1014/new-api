@@ -23,7 +23,7 @@ interface MyWalletProps {
 export function MyWallet(props: MyWalletProps) {
   const { t } = useTranslation()
   const wallet = useMyWallet(props.initialTab)
-  const subscriptionSavings = useSubscriptionSavings(wallet.rechargePricing)
+  const subscriptionSavings = useSubscriptionSavings()
   const savingsPercent = Math.floor(subscriptionSavings.maxSavings * 100)
 
   const alipayMethod = useMemo(
@@ -80,7 +80,7 @@ export function MyWallet(props: MyWalletProps) {
                       <Badge
                         data-slot='subscription-savings-badge'
                         variant='destructive'
-                        className='bg-destructive text-destructive-foreground absolute -top-2 -right-2 h-4 px-1.5 text-[10px] leading-none'
+                        className='subscription-savings-attention bg-destructive text-destructive-foreground absolute -top-2 -right-2 h-4 px-1.5 text-[10px] leading-none'
                       >
                         {t('Save up to {{percent}}%', {
                           percent: savingsPercent,
@@ -139,6 +139,7 @@ export function MyWallet(props: MyWalletProps) {
                   user={wallet.user}
                   affiliateLink={wallet.affiliateLink}
                   onTransfer={() => wallet.setTransferDialogOpen(true)}
+                  rewardPercent={wallet.topupInfo?.referral_reward_percent ?? 0}
                   complianceConfirmed={wallet.complianceConfirmed}
                   loading={wallet.affiliateLoading}
                 />

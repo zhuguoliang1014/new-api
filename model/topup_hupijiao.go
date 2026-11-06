@@ -115,7 +115,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 			return fmt.Errorf("更新订单失败: %w", err)
 		}
 
-		return creditTopUpQuota(tx, topUp.UserId, quotaToAdd, nil)
+		return creditPaidTopUp(tx, &topUp, quotaToAdd, nil)
 	})
 
 	if err != nil {

@@ -26,6 +26,7 @@ import type {
   ResolvedSidebarView,
   SidebarBadges,
 } from '@/components/layout/types'
+import { useSubscriptionSavings } from '@/features/my-wallet/hooks/use-subscription-savings'
 import { useModelPricingIssueBadge } from '@/features/system-settings/models/pricing-issues'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
@@ -54,7 +55,15 @@ export function useSidebarView(): ResolvedSidebarView {
   const pathname = useLocation({ select: (l) => l.pathname })
   const userRole = useAuthStore((s) => s.auth.user?.role)
   const modelPricingBadge = useModelPricingIssueBadge()
-  const badges: SidebarBadges = { modelPricing: modelPricingBadge }
+  const savings = useSubscriptionSavings()
+  const savingsPercent = Math.floor(savings.maxSavings * 100)
+  const badges: SidebarBadges = {
+    modelPricing: modelPricingBadge,
+    walletSavings:
+      savingsPercent > 0
+        ? t('Save up to {{percent}}%', { percent: savingsPercent })
+        : undefined,
+  }
   const rootSidebarData = useSidebarData(badges)
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 

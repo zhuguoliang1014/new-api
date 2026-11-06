@@ -25,6 +25,7 @@ import {
 } from './section-registry.tsx'
 
 const defaultBillingSettings: BillingSettings = {
+  ReferralRewardPercent: 0,
   QuotaForNewUser: 0,
   QuotaForInviter: 0,
   QuotaForInvitee: 0,

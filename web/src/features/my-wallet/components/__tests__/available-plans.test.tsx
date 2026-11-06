@@ -147,12 +147,14 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
   ).toHaveClass(
     'grid-cols-1',
     'sm:grid-cols-2',
-    'md:grid-cols-1',
-    'lg:grid-cols-2',
-    'xl:grid-cols-3',
-    'min-[90rem]:grid-cols-4'
+    'lg:grid-cols-3',
+    'xl:grid-cols-4'
   )
   const card = screen.getByRole('article', { name: '苍穹版' })
+  expect(card.querySelector('[data-slot=card-content]')).toHaveClass(
+    'p-3',
+    'sm:p-4'
+  )
   expect(within(card).getByText('¥2,000')).toBeVisible()
   expect(within(card).getByText('$7,800')).toBeVisible()
   expect(within(card).getByText('/ 1 months')).toHaveClass('whitespace-nowrap')
@@ -213,7 +215,7 @@ it.each([
   {
     state: 'upcoming',
     fields: { starts_at: now + 3600 },
-    label: 'Starts in 01:00:00',
+    label: 'Not Started',
   },
   { state: 'ended', fields: { expires_at: now - 1 }, label: 'Sale Ended' },
 ])(
@@ -459,4 +461,22 @@ it('updates savings explanations when the interface language changes', async () 
   await act(() => i18n.changeLanguage('zhCN'))
   expect(screen.getByText('比余额支付省约 27%')).toBeVisible()
   expect(screen.getByRole('button', { name: '费用说明' })).toBeVisible()
+})
+
+it('highlights the localized sale countdown above the plan title and purchase action', async () => {
+  await renderPlans(
+    [plan({ expires_at: now + 3 * 86400 + 23 * 3600 + 57 * 60 + 31 })],
+    { language: 'zhCN' }
+  )
+  const timer = screen.getByRole('timer', { name: '距结束' })
+  expect(timer).toHaveTextContent('距结束 3 天 23:57:31')
+  const title = screen.getByRole('heading', { name: '苍穹版' })
+  const button = screen.getByRole('button', { name: '立即订阅' })
+  expect(
+    timer.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(
+    timer.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(timer).toHaveAttribute('aria-live', 'off')
 })

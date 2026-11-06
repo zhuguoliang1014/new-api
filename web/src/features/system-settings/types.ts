@@ -271,6 +271,7 @@ export type ModelSettings = {
 }
 
 export type BillingSettings = {
+  ReferralRewardPercent: number
   QuotaForNewUser: number
   QuotaForInviter: number
   QuotaForInvitee: number

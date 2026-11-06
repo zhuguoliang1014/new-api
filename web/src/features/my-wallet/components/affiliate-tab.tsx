@@ -16,6 +16,7 @@ interface AffiliateTabProps {
   affiliateLink: string
   onTransfer: () => void
   complianceConfirmed: boolean
+  rewardPercent?: number
   loading?: boolean
 }
 
@@ -24,6 +25,7 @@ export function AffiliateTab({
   affiliateLink,
   onTransfer,
   complianceConfirmed,
+  rewardPercent = 0,
   loading,
 }: AffiliateTabProps) {
   const { t } = useTranslation()
@@ -41,6 +43,15 @@ export function AffiliateTab({
   const totalEarned = user?.aff_history_quota ?? 0
   const inviteCount = user?.aff_count ?? 0
   const hasRewards = pending > 0
+  const rechargeRewardsEnabled = complianceConfirmed && rewardPercent > 0
+  const rewardDescription = rechargeRewardsEnabled
+    ? t(
+        'Earn {{percent}}% of your invitees’ CNY wallet payments as quota. CNY 100 at 5% earns USD 5. Subscription purchases and redemption codes are excluded.',
+        { percent: rewardPercent }
+      )
+    : t(
+        'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
+      )
 
   const stats: Array<{
     label: string
@@ -76,9 +87,7 @@ export function AffiliateTab({
     <div className='grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)] lg:items-start'>
       <TitledCard
         title={t('Referral Program')}
-        description={t(
-          'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
-        )}
+        description={rewardDescription}
         icon={<Share2 className='h-4 w-4' />}
         contentClassName='space-y-3'
       >
@@ -171,11 +180,7 @@ export function AffiliateTab({
           </div>
           <ol className='text-muted-foreground space-y-1.5 pl-4 [list-style:decimal]'>
             <li>{t('Share your referral link with friends')}</li>
-            <li>
-              {t(
-                'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
-              )}
-            </li>
+            <li>{rewardDescription}</li>
             <li>
               {t(
                 'Use the Transfer to Balance button when your pending rewards reach the minimum threshold.'

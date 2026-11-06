@@ -41,6 +41,7 @@ function Fixture() {
       <SettingsPageProvider actionsContainer={container}>
         <QuotaSettingsSection
           defaultValues={{
+            ReferralRewardPercent: 0,
             QuotaForNewUser: 0,
             QuotaForInviter: 0,
             QuotaForInvitee: 0,
@@ -145,3 +146,28 @@ test.each(['', '-1'])(
     expect(api.put).not.toHaveBeenCalled()
   }
 )
+
+test('saves the recharge referral percentage separately from fixed signup rewards', async () => {
+  await renderSettings()
+  const input = screen.getByRole('spinbutton', {
+    name: 'Recharge referral reward (%)',
+  })
+  fireEvent.change(input, { target: { value: '5' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() =>
+    expect(api.put).toHaveBeenCalledWith('/api/option/', {
+      key: 'ReferralRewardPercent',
+      value: 5,
+    })
+  )
+})
+test('prevents saving a recharge reward above 100 percent', async () => {
+  await renderSettings()
+  const input = screen.getByRole('spinbutton', {
+    name: 'Recharge referral reward (%)',
+  })
+  fireEvent.change(input, { target: { value: '101' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+  await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+  expect(api.put).not.toHaveBeenCalled()
+})

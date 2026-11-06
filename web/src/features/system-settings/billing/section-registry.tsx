@@ -60,6 +60,7 @@ const BILLING_SECTIONS = [
     build: (settings: BillingSettings) => (
       <QuotaSettingsSection
         defaultValues={{
+          ReferralRewardPercent: settings.ReferralRewardPercent,
           QuotaForNewUser: settings.QuotaForNewUser,
           QuotaForInviter: settings.QuotaForInviter,
           QuotaForInvitee: settings.QuotaForInvitee,

@@ -343,3 +343,25 @@ describe('model pricing badge', () => {
     expect(badgedEntries()).toHaveLength(0)
   })
 })
+
+it('shows the translated savings badge on Wallet and keeps it hidden without a valid offer', () => {
+  const { result, rerender } = renderHook(
+    (badges: { walletSavings?: string }) => useSidebarData(badges),
+    {
+      initialProps: { walletSavings: 'Save up to 36%' } as {
+        walletSavings?: string
+      },
+    }
+  )
+  const wallet = result.current.navGroups
+    .flatMap((g) => g.items)
+    .find((item) => item.title === 'Wallet')
+  expect(wallet?.badge).toBe('Save up to 36%')
+  expect(wallet?.badgeVariant).toBe('destructive')
+  rerender({})
+  expect(
+    result.current.navGroups
+      .flatMap((g) => g.items)
+      .find((item) => item.title === 'Wallet')?.badge
+  ).toBeUndefined()
+})

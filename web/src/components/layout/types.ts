@@ -25,6 +25,8 @@ import type { TFunction } from 'i18next'
 type BaseNavItem = {
   title: string
   badge?: string
+  badgeVariant?: 'destructive'
+  badgeAnimated?: boolean
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
@@ -113,6 +115,7 @@ export type SidebarViewParent = {
  * Counts shown next to sidebar entries, already formatted for display
  */
 export type SidebarBadges = {
+  walletSavings?: string
   /** Task models whose price needs attention, on the entries leading to model pricing */
   modelPricing?: string
 }

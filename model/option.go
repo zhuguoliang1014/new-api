@@ -239,6 +239,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == operation_setting.ReferralRewardPercentOptionKey {
+		return operation_setting.ValidateReferralRewardPercent(value)
+	}
 	if key == operation_setting.ResponsesWSMaxConnectionsPerUserOptionKey {
 		return operation_setting.ValidateResponsesWSMaxConnectionsPerUser(value)
 	}

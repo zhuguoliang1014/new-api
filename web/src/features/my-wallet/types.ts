@@ -1,8 +1,9 @@
-export type * from '@/features/wallet/types'
-
 import type { TopupInfo } from '@/features/wallet/types'
 
+export type * from '@/features/wallet/types'
+
 export interface MyWalletTopupInfo extends TopupInfo {
+  referral_reward_percent?: number
   enable_hupijiao_topup?: boolean
   hupijiao_min_topup?: number
   hupijiao_min_recharge_amount?: number

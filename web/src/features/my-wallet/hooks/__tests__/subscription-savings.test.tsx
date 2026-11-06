@@ -125,3 +125,41 @@ it('reports no savings when the user has no GPT group', async () => {
   expect(result.current.byPlan.size).toBe(0)
   expect(result.current.maxSavings).toBe(0)
 })
+
+it('shares topup configuration and the same savings between sidebar and wallet consumers', async () => {
+  const get = vi.spyOn(api, 'get').mockImplementation(async (url) => {
+    let data: unknown
+    if (url === '/api/subscription/plans') data = [gptPlan(1, 300, 1155)]
+    else if (url === '/api/user/self/groups') {
+      data = { GPT: { desc: 'GPT', ratio: 0.36 } }
+    } else if (url === '/api/user/topup/info') {
+      data = {
+        enable_online_topup: false,
+        enable_hupijiao_topup: true,
+        hupijiao_price: 1,
+      }
+    } else if (url === '/api/status') data = { price: 1 }
+    else throw new Error(`unexpected ${url}`)
+    return { data: { success: true, data } }
+  })
+  const { result } = renderHook(
+    () => {
+      const sidebar = useSubscriptionSavings()
+      const wallet = useSubscriptionSavings()
+      return { sidebar, wallet }
+    },
+    { wrapper }
+  )
+  await waitFor(() =>
+    expect(result.current.sidebar.maxSavings).toBeGreaterThan(0)
+  )
+  expect(result.current.sidebar.maxSavings).toBe(
+    result.current.wallet.maxSavings
+  )
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/user/topup/info')
+  ).toHaveLength(1)
+  expect(
+    get.mock.calls.filter(([url]) => url === '/api/subscription/plans')
+  ).toHaveLength(1)
+})

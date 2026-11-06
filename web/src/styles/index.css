@@ -745,3 +745,24 @@ For commercial licensing, please contact support@quantumnous.com
     display: none;
   }
 }
+
+/* A brief breathing accent with a resting interval; text stays fully legible. */
+@keyframes subscription-savings-attention {
+  0%,
+  72%,
+  100% {
+    transform: scale(1);
+  }
+  80%,
+  92% {
+    transform: scale(1.06);
+  }
+  86% {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .subscription-savings-attention {
+    animation: subscription-savings-attention 4s ease-in-out infinite;
+  }
+}

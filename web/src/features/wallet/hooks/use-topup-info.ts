@@ -16,11 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState, useEffect, useCallback } from 'react'
+import { useMemo } from 'react'
 
-import { handleServerError } from '@/lib/handle-server-error'
-
-import { getTopupInfo } from '../api'
 import {
   generatePresetAmounts,
   mergePresetAmounts,
@@ -33,6 +30,7 @@ import type {
   PaymentMethod,
   WaffoPayMethod,
 } from '../types'
+import { useTopupInfoQuery } from './use-topup-info-query'
 
 // ============================================================================
 // Topup Info Hook
@@ -166,71 +164,33 @@ function parseDiscountMap(data: unknown): Record<number, number> {
 }
 
 export function useTopupInfo() {
-  const [topupInfo, setTopupInfo] = useState<TopupInfo | null>(null)
-  const [presetAmounts, setPresetAmounts] = useState<PresetAmount[]>([])
-  const [loading, setLoading] = useState(true)
-
-  const fetchTopupInfo = useCallback(async () => {
-    try {
-      setLoading(true)
-
-      const response = await getTopupInfo()
-
-      if (!response.success || !response.data) {
-        handleServerError(response)
-        return
-      }
-
-      const processedData: TopupInfo = {
-        ...response.data,
-        pay_methods: parsePaymentMethods(
-          response.data.pay_methods,
-          response.data.stripe_min_topup
-        ),
-        amount_options: parseAmountOptions(response.data.amount_options),
-        discount: parseDiscountMap(response.data.discount),
-        creem_products: parseCreemProducts(response.data.creem_products),
-        waffo_pay_methods: parseWaffoPayMethods(
-          response.data.waffo_pay_methods
-        ),
-      }
-
-      setTopupInfo(processedData)
-
-      if (processedData.amount_options.length > 0) {
-        const customPresets = mergePresetAmounts(
-          processedData.amount_options,
-          processedData.discount || {}
-        )
-        setPresetAmounts(customPresets)
-      } else {
-        const minTopup = getMinTopupAmount(processedData)
-        const defaultPresets = generatePresetAmounts(minTopup)
-        setPresetAmounts(defaultPresets)
-      }
-    } catch (err) {
-      handleServerError(err)
-    } finally {
-      setLoading(false)
+  const query = useTopupInfoQuery()
+  const topupInfo = useMemo<TopupInfo | null>(() => {
+    const data = query.data?.data
+    if (!data) return null
+    return {
+      ...data,
+      pay_methods: parsePaymentMethods(data.pay_methods, data.stripe_min_topup),
+      amount_options: parseAmountOptions(data.amount_options),
+      discount: parseDiscountMap(data.discount),
+      creem_products: parseCreemProducts(data.creem_products),
+      waffo_pay_methods: parseWaffoPayMethods(data.waffo_pay_methods),
     }
-  }, [])
-
-  useEffect(() => {
-    let cancelled = false
-
-    queueMicrotask(() => {
-      if (!cancelled) void fetchTopupInfo()
-    })
-
-    return () => {
-      cancelled = true
+  }, [query.data])
+  const presetAmounts = useMemo<PresetAmount[]>(() => {
+    if (!topupInfo) return []
+    if (topupInfo.amount_options.length > 0) {
+      return mergePresetAmounts(
+        topupInfo.amount_options,
+        topupInfo.discount || {}
+      )
     }
-  }, [fetchTopupInfo])
-
+    return generatePresetAmounts(getMinTopupAmount(topupInfo))
+  }, [topupInfo])
   return {
     topupInfo,
     presetAmounts,
-    loading,
-    refetch: fetchTopupInfo,
+    loading: query.isPending,
+    refetch: query.refetch,
   }
 }

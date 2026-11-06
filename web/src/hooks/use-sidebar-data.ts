@@ -185,5 +185,5 @@ export function useSidebarData(badges: SidebarBadges = {}): SidebarData {
     ],
   }
 
-  return injectLocalNavItems(base, t)
+  return injectLocalNavItems(base, t, badges)
 }
