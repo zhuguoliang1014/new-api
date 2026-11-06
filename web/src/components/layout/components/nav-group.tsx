@@ -124,7 +124,7 @@ function NavBadge(props: {
       variant={props.variant}
       className={cn(
         'shrink-0 px-1 py-0 text-xs',
-        props.animated && 'subscription-savings-attention'
+        props.animated && 'subscription-savings-attention text-[10px]'
       )}
     >
       {props.children}
