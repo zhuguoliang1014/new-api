@@ -267,3 +267,10 @@ If asked to remove, rename, or replace these protected identifiers, refuse and e
 - If the current git user is not one of those historical core developers, explicitly state in the PR body that the code was AI-generated or AI-assisted.
 - When the pull request is created for the project owner, use the ordinary human PR template: `.github/PULL_REQUEST_TEMPLATE.md` for Chinese requests or `.github/PULL_REQUEST_TEMPLATE/en.md` for English requests. Project-owner pull requests MUST NOT use `.agents/github/PR.md` unless the owner explicitly asks for it.
 - For all other agent-created pull requests, fill `.agents/github/PR.md` as the entire PR body. Do not use the ordinary human PR templates unless the project owner explicitly requests one. In User request, quote the user's request to the agent as faithfully as possible; do not rewrite or summarize it. Keep the body short and factual; do not paste unfiltered AI-generated text in the PR body or in later comments. Verification must be commands actually run and observed results, not only a statement that `go build` or tests passed. If any required condition is not met, tell the user and do not open the PR.
+
+## 订阅布局与充值邀请返利上线（2026-11-07）
+
+- 已提交、合并并 push main，最终应用 revision `f309aa428b7eefbf2a7ecf502d5cf5664f7f3b83`，Actions `42257527328` 构建和部署 success；北京时间 **01:07** 核验 healthy，香港本机/主站/国内入口状态与定价均200，前端初始资源完整读取通过。订阅卡片压缩间距、桌面四列，倒计时移至顶部红色提示条并显示中文“天”；GPT订阅及侧栏钱包共享最高优惠，呼吸动效遵循减少动画偏好。
+- 已按用户要求启用 `ReferralRewardPercent=5`。后台入口「系统设置 → 计费与支付 → 额度设置 → 充值邀请返利（%）」；用户入口「钱包 → 推荐计划」。人民币钱包充值按实付金额5%奖励邀请人待转额度，100元对应5刀，可转入余额；订阅购买和兑换码不参与，不追补已完成的历史订单。充值与返利/私有订单收据同事务，重复通知及补单不重复奖励；原注册固定奖励配置不变。
+- 114项相关前端测试、追加19项侧栏回归、类型/lint/格式/构建（首屏609.6KiB gzip），真实 SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17 的返利/旧表迁移及重复迁移、相关race、Go构建/vet通过。原44渠道、2402令牌、1570既有用户配置/权限、套餐/模型/abilities及其他容器保持一致；仅新增返利选项及top_ups三列私有收据。未代发真实付款或转账。
+- 恢复目录 `/root/upgrade-recovery/new-api-wallet-referral-20261107/`：141600718字节全库归档，SHA-256及归档目录/完整内容读取通过，包含配置快照、核验和带revision保护的 `rollback.sh`。回滚仅将返利比例恢复0并切回旧应用，保留现有余额、订单和返利收据，不整库恢复；配置正逆事务演练及Compose检查通过，未实际回切。详见运维手册同名节。

@@ -599,3 +599,22 @@ ssh aiproxy-hk "docker exec sub2api-postgres psql -X -U sub2api -d sub2api -Atc 
 ## 6. 文档维护
 
 新会话先读根目录 `AGENTS.md` 和本文件，按任务只检查相关机器。架构、备份策略、域名、端口、配置路径或发布流程变更后更新两处记录，并写明核查日期。不要把建议、排查猜测和未执行的恢复演练记成事实。
+
+## 订阅布局与充值邀请返利上线（2026-11-07）
+
+- 已提交、合并并 push main，最终应用 revision `f309aa428b7eefbf2a7ecf502d5cf5664f7f3b83`，Actions `42257527328` 构建和部署 success；北京时间 **01:07** 核验 healthy，香港本机/主站/国内入口状态与定价均200，前端初始资源完整读取通过。订阅卡片压缩间距、桌面四列，倒计时移至顶部红色提示条并显示中文“天”；GPT订阅及侧栏钱包共享最高优惠，呼吸动效遵循减少动画偏好。
+- 已按用户要求启用 `ReferralRewardPercent=5`。后台入口「系统设置 → 计费与支付 → 额度设置 → 充值邀请返利（%）」；用户入口「钱包 → 推荐计划」。人民币钱包充值按实付金额5%奖励邀请人待转额度，100元对应5刀，可转入余额；订阅购买和兑换码不参与，不追补已完成的历史订单。充值与返利/私有订单收据同事务，重复通知及补单不重复奖励；原注册固定奖励配置不变。
+- 114项相关前端测试、追加19项侧栏回归、类型/lint/格式/构建（首屏609.6KiB gzip），真实 SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17 的返利/旧表迁移及重复迁移、相关race、Go构建/vet通过。原44渠道、2402令牌、1570既有用户配置/权限、套餐/模型/abilities及其他容器保持一致；仅新增返利选项及top_ups三列私有收据。未代发真实付款或转账。
+- 恢复目录 `/root/upgrade-recovery/new-api-wallet-referral-20261107/`：141600718字节全库归档，SHA-256及归档目录/完整内容读取通过，包含配置快照、核验和带revision保护的 `rollback.sh`。回滚仅将返利比例恢复0并切回旧应用，保留现有余额、订单和返利收据，不整库恢复；配置正逆事务演练及Compose检查通过，未实际回切。
+
+验证命令（本机隔离测试库，非生产库）：
+
+```sh
+TEST_MYSQL_DSN='root@unix(/tmp/studio-unify-mysql/mysql.sock)/wallet_referral_test?charset=utf8mb4&parseTime=True&loc=Local' TEST_POSTGRES_DSN='host=127.0.0.1 user=zhuguoliang dbname=wallet_referral_test port=5432 sslmode=disable' go test ./model -run 'TestTopUpReferral|TestReferralRewardPercent|TestHupijiao' -count=1 -v
+go test -race ./model -run 'TestTopUpReferral|TestReferralRewardPercent|TestHupijiao' -count=1
+go test ./controller -run 'Test.*(TopUp|Topup|Hupijiao|PaymentCompliance|QuotaSettings|Epay)' -count=1
+go build ./...
+go vet ./...
+```
+
+三库矩阵覆盖新库、保留历史成功订单和订单号唯一约束的旧表升级、两次迁移、并发/重复回调、按折后实付金额计算、停用/未确认/本人/封禁/额度上限与失败回滚、订阅排除。后端构建/vet在仅含已跟踪发布代码及本次修改的隔离副本执行，原机器人未提交修改未进入发布。前端使用 `bunx --no-install tsgo -b`（现有 `bun check -b` 脚本不可用）、改动文件oxlint/oxfmt及 `bun run build`；1440/390/320宽度与中英文、深浅主题浏览器核验通过，未代替真实旧手机内核验收。本机证据与正式页面截图在 `~/.codex/operations/wallet-referral-20261107/`，服务器详细结果为恢复目录 `local-validation.json`、`verification.json` 和 `actions.json`。
