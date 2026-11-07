@@ -165,6 +165,14 @@ it('keeps multiple subscriptions compact until keyboard expansion enables orderi
 it('keeps the empty subscription overview short and the catalog visible', async () => {
   await renderSubscriptions([])
   const note = screen.getByRole('note')
+  expect(note).toHaveClass(
+    'border-amber-200',
+    'bg-amber-50',
+    'text-amber-900',
+    'dark:border-amber-800',
+    'dark:bg-amber-950/30',
+    'dark:text-amber-200'
+  )
   expect(note).toHaveTextContent(
     /^GPT subscriptions only support GPT models\.$/
   )

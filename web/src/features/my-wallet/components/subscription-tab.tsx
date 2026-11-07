@@ -32,10 +32,10 @@ export function SubscriptionTab(props: SubscriptionTabProps) {
     >
       <Alert
         role='note'
-        className='text-muted-foreground border-border/60 bg-muted/30 flex items-center gap-2 px-3 py-2 [&>svg]:row-auto [&>svg]:translate-y-0'
+        className='flex items-center gap-2 border-amber-200 bg-amber-50 px-3 py-2 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200 [&>svg]:row-auto [&>svg]:translate-y-0'
       >
         <InfoIcon className='size-4 shrink-0' aria-hidden='true' />
-        <AlertDescription className='text-xs leading-5'>
+        <AlertDescription className='text-xs leading-5 text-amber-800 dark:text-amber-200'>
           {t('GPT subscriptions only support GPT models.')}
         </AlertDescription>
       </Alert>
