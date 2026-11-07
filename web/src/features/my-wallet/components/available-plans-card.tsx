@@ -205,7 +205,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
     <>
       <TitledCard
         title={t('Subscription Plans')}
-        className='border-0 bg-transparent shadow-none ring-0'
+        className='overflow-visible rounded-none border-0 bg-transparent shadow-none ring-0'
         titleClassName='text-base sm:text-lg'
         headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div>div:last-child]:w-auto'
         action={

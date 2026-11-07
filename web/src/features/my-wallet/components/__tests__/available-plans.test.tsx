@@ -480,3 +480,14 @@ it('highlights the localized sale countdown above the plan title and purchase ac
   ).toBeTruthy()
   expect(timer).toHaveAttribute('aria-live', 'off')
 })
+
+it('keeps the flush catalog heading outside any rounded clipping mask', async () => {
+  await renderPlans([plan()])
+  const catalog = screen
+    .getByText('Subscription Plans')
+    .closest('[data-slot="card"]')
+  expect(catalog).toHaveClass('rounded-none', 'overflow-visible')
+  expect(screen.getByRole('article', { name: '苍穹版' })).toHaveClass(
+    'overflow-hidden'
+  )
+})
