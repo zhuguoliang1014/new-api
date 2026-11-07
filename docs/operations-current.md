@@ -642,3 +642,14 @@ go vet ./...
 ```
 
 构建和vet在已跟踪发布代码的隔离副本运行，机器人既有未提交修改不在发布内。前端类型检查为 `bunx --no-install tsgo -b`，测试为 `bun run test src/features/my-wallet src/features/wallet src/hooks/__tests__/sidebar-config.test.tsx src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx`。服务端恢复目录保存 `new-api-subscription-v2-validation.json`、三库/race/controller测试日志、`verification.json`、`actions.json`；本次无配置写入，无需回滚返利比例。桌面浏览器响应式核验不替代真实旧手机内核验收。
+
+## 财务管理与微信社群上线（2026-11-07）
+
+- 用户确认后已提交并 push `main`，功能 revision `61497c9968004d4d57285502e03edbebe3f0688d`，携带已有 SVG 提交 `a58df6d86`。Actions `42382715931` 镜像构建和部署均 success；北京时间22:51—22:53核验应用 `v1.0.0-rc.48+61497c996800`、容器 healthy，主站/国内入口状态与定价正常，真实登录会话中的财务入口、十月月报和微信社群信息可见。
+- `/finance` 提供实际收付款月报、自动收入、微信补记、支出/退款、凭证、分类管理、费率/对账、月结及CSV导出。权限为 `finance:read/write/export/manage`，默认仅超管、管理员按需授权。付款人固定「西强、国良」；自定义分类可新增、重命名和停用。自动收入只读取成功外部订单，充值/订阅镜像按订单去重，余额购订阅及零金额虚拟订单排除；不修改原订单或用户余额。
+- 历史源按用户确认：2026年4—10月净到账取「工作表1」，不再扣手续费；支出取「朱西强」及主表gl，gl归入2026-10，姓名分别映射西强/国良。已正式导入339条（7条月收入、332条支出），每月及合计核对通过，本地重复导入339条均识别为重复。历史累计退款680元保留待分月说明，未擅自抵扣。46笔当期自动收款与直接SQL逐项核对，缺失/重复/金额/月归属/单笔手续费差异均0；后续新增订单正常增量归集。
+- 213项相关前端测试通过（财务最终8项）、native tsgo、改动lint/格式、619.6KiB首屏构建；SQLite3.50.4、MySQL8.4.11、PostgreSQL15.17真实三库新表/已有支付表升级、重复迁移、来源唯一、退款并发上限、分类停用和双付款人校验通过，相关race、路由/权限、Go vet/root build及SVG回归通过。浏览器本地实际接口录入及320/390宽度、中英文浅深主题通过，不代替旧手机内核验收。复用Dialog、ConfirmDialog、StaticDataTable及已有表单组件。
+- 恢复目录 `/root/upgrade-recovery/new-api-finance-20261107/`：全库143330929字节，SHA-256 `6f450f2ad1d1c94a10c0a497a0e2358834bdcc9a4d1f088c1ea4bfc46463cd94`，归档目录与完整读取校验通过；另含财务导入前局部归档、源输入/逐月核验、配置前后快照、Actions及线上核验。`rollback.sh` 带revision及Compose/.env保护，只切旧应用镜像 `ghcr.io/zhuguoliang1014/new-api:rollback-finance-20261107`，保留财务账本及后续业务数据，不整库恢复；Compose检查通过，未实际回切。原options/套餐/渠道/模型/既有令牌与用户设置一致，另6个容器ID和启动时间不变。
+- 官方社群已增加微信号及备注提示，复制使用共享组件。此次未发布TG公告。原机器人和运维未提交草稿保留。验证日志、私有历史CSV、转换脚本和实机截图在本机 `~/.codex/operations/finance-20261107/`，不入Git。
+
+验证命令：`TEST_MYSQL_DSN=<本机隔离库> TEST_POSTGRES_DSN=<本机隔离库> go test -race ./model -run '^TestFinance' -count=1 -v`；`go test ./controller -run '^TestFinance' -count=1 -v`；`go test ./router ./service/authz -count=1`；前端 `bun run test src/features/finance src/components/layout/__tests__/official-community.test.tsx src/hooks/__tests__/sidebar-config.test.tsx src/features/image-playground`，`bunx --no-install tsgo -b`、改动oxlint/oxfmt、`bun run build`。
