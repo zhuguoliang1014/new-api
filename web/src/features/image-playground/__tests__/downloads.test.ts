@@ -19,7 +19,12 @@ For commercial licensing, please contact support@quantumnous.com
 import { unzipSync } from 'fflate'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-import { downloadImagesArchive } from '../lib/images'
+import {
+  cacheImageRecord,
+  downloadImage,
+  downloadImagesArchive,
+} from '../lib/images'
+import { defaultImageParameters } from '../types'
 
 const images = [
   { id: 'first', src: 'https://images.example/first.png' },
@@ -131,7 +136,7 @@ it('rejects non-image responses instead of putting them in a ZIP', async () => {
       })
   )
   await expect(downloadImagesArchive(images, 'creation')).rejects.toThrow(
-    'Upload PNG, JPEG or WebP'
+    'The response is not a supported image.'
   )
   expect(URL.createObjectURL).not.toHaveBeenCalled()
 })
@@ -143,3 +148,61 @@ it('does not save an archive after the download is cancelled', async () => {
   await expect(download).rejects.toThrow('Aborted')
   expect(URL.createObjectURL).not.toHaveBeenCalled()
 })
+
+it('downloads GIF originals with a gif filename and preserves the animation bytes', async () => {
+  const response = new Response()
+  vi.spyOn(response, 'blob').mockResolvedValue(
+    new Blob(['original animated GIF'], { type: 'image/gif' })
+  )
+  vi.mocked(fetch).mockResolvedValue(response)
+  await downloadImage('https://images.example/cat.gif', 'cat')
+  expect(filename).toBe('new-api-image-cat.gif')
+  expect(saved?.type).toBe('image/gif')
+  const bytes = new Promise<string>((resolve) => {
+    const reader = new FileReader()
+    reader.addEventListener('load', () => resolve(String(reader.result)), {
+      once: true,
+    })
+    if (!saved) throw new Error('Expected the GIF to be saved')
+    reader.readAsText(saved)
+  })
+  await vi.runAllTimersAsync()
+  expect(await bytes).toBe('original animated GIF')
+})
+
+it.each(['auto', 'gif'] as const)(
+  'caches %s output as the actual GIF instead of keeping the static JPEG preview',
+  async (format) => {
+    vi.useRealTimers()
+    const response = new Response()
+    vi.spyOn(response, 'blob').mockResolvedValue(
+      new Blob(['GIF89a'], { type: 'image/gif' })
+    )
+    vi.mocked(fetch).mockResolvedValue(response)
+    const result = await cacheImageRecord(
+      {
+        id: 'gif-history',
+        ownerId: 1,
+        createdAt: 1,
+        parameters: {
+          ...defaultImageParameters,
+          model: 'gpt-image-2.6-basic',
+          format,
+        },
+        images: [
+          {
+            id: 'gif-1',
+            src: 'https://images.example/cat.gif',
+            previewSrc: 'data:image/jpeg;base64,cHJldmlldw==',
+          },
+        ],
+        referenceCount: 0,
+      },
+      new AbortController().signal
+    )
+    expect(result.localSaveStatus).toBe('saved')
+    expect(result.images[0].contentType).toBe('image/gif')
+    expect(result.images[0].src).toBe('data:image/gif;base64,R0lGODlh')
+    expect(result.images[0].previewSrc).toBeUndefined()
+  }
+)

@@ -80,7 +80,7 @@ export const imageParametersSchema = z.object({
   mj: midjourneyParametersSchema.optional(),
   quality: z.enum(['auto', 'low', 'medium', 'high', 'standard', 'hd']),
   count: z.number().int().min(1).max(4),
-  format: z.enum(['png', 'jpeg', 'webp']),
+  format: z.enum(['auto', 'png', 'jpeg', 'webp', 'gif']),
   background: z.enum(['auto', 'opaque', 'transparent']),
 })
 
@@ -94,6 +94,7 @@ export type ImageOutput = {
   width?: number
   height?: number
   bytes?: number
+  contentType?: string
 }
 export type ImageRecord = {
   id: string
@@ -146,6 +147,7 @@ export const defaultImageParameters: ImageParameters = {
 
 export function getImageModelOptions(model: string) {
   const isGptImage = /^gpt-image-/i.test(model)
+  const supportsGif = ['gpt-image-2.6', 'gpt-image-2.6-basic'].includes(model)
   const isBanana = /^gemini-.*(?:image|banana)/i.test(model)
   const isMidjourney = model === 'mj-v8.2'
   const supportsFlexibleSizes = /^gpt-image-2(?:[.-]|$)/i.test(model)
@@ -183,6 +185,15 @@ export function getImageModelOptions(model: string) {
     qualities = ['auto', 'standard', 'hd']
   }
   if (isDalle2) sizes = ['auto', '256x256', '512x512', '1024x1024']
+  const formats: ImageParameters['format'][] = ['png']
+  let defaultFormat: ImageParameters['format'] = 'png'
+  if (supportsGif) {
+    formats.unshift('auto')
+    formats.push('gif')
+    defaultFormat = 'auto'
+  } else if (isGptImage) {
+    formats.push('jpeg', 'webp')
+  }
   return {
     isGptImage,
     isBanana,
@@ -191,6 +202,8 @@ export function getImageModelOptions(model: string) {
     maxReferences: isMidjourney ? 5 : 4,
     sizes,
     qualities,
+    formats,
+    defaultFormat,
     maxCount: isDalle3 || isBanana || isMidjourney ? 1 : 4,
     supportsReferences: !isDalle2 && !isDalle3,
   }
@@ -217,7 +230,9 @@ export function normalizeImageParameters(
       ? parameters.quality
       : 'auto',
     count: Math.min(parameters.count, options.maxCount),
-    format: options.isGptImage ? parameters.format : 'png',
+    format: options.formats.includes(parameters.format)
+      ? parameters.format
+      : options.defaultFormat,
     background:
       options.isGptImage && parameters.format !== 'jpeg'
         ? parameters.background

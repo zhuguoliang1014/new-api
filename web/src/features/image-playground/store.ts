@@ -88,12 +88,20 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
     },
     setParameters: (values) => {
       const state = get()
-      const parameters = normalizeImageParameters({
-        ...state.parameters,
-        ...values,
-      })
       const modelChanged =
         values.model !== undefined && values.model !== state.parameters.model
+      const nextParameters = {
+        ...state.parameters,
+        ...values,
+      }
+      if (
+        modelChanged &&
+        values.format === undefined &&
+        getImageModelOptions(nextParameters.model).defaultFormat === 'auto'
+      ) {
+        nextParameters.format = 'auto'
+      }
+      const parameters = normalizeImageParameters(nextParameters)
       if (
         modelChanged &&
         !getImageModelOptions(parameters.model).supportsReferences

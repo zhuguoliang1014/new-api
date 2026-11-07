@@ -2,7 +2,7 @@ import { InfoIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 
 import type { PlanSavings } from '../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../types'
@@ -32,16 +32,11 @@ export function SubscriptionTab(props: SubscriptionTabProps) {
     >
       <Alert
         role='note'
-        className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200'
+        className='text-muted-foreground border-border/60 bg-muted/30 flex items-center gap-2 px-3 py-2 [&>svg]:row-auto [&>svg]:translate-y-0'
       >
-        <InfoIcon aria-hidden='true' />
-        <AlertTitle>
-          {t('Wallet for all models, subscription for GPT')}
-        </AlertTitle>
-        <AlertDescription className='leading-relaxed text-amber-800 dark:text-amber-200'>
-          {t(
-            'Wallet balance can be used for any model. Subscription quota is for GPT models only and follows the plan’s expiry and reset rules.'
-          )}
+        <InfoIcon className='size-4 shrink-0' aria-hidden='true' />
+        <AlertDescription className='text-xs leading-5'>
+          {t('GPT subscriptions only support GPT models.')}
         </AlertDescription>
       </Alert>
 

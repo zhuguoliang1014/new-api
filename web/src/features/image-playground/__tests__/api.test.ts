@@ -358,3 +358,73 @@ it('removes retired high-quality and 1K choices from a cached studio catalog', a
     post.mockRestore()
   }
 })
+
+it.each(['auto', 'gif'] as const)(
+  'submits 2.6 %s output as base64 and accepts completed GIF tasks',
+  async (format) => {
+    const input = {
+      ...parameters,
+      model: 'gpt-image-2.6-basic',
+      format,
+    }
+    const gifMetadata = { ...metadata, parameters: input }
+    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+      data: { success: true, data: { ...accepted, metadata: gifMetadata } },
+    })
+    await createStudioTask(
+      taskID,
+      input,
+      [],
+      gifMetadata,
+      new AbortController().signal
+    )
+    expect(post.mock.calls[0][1]).toMatchObject({
+      output_format: format,
+      response_format: 'b64_json',
+    })
+    vi.spyOn(imageRelayClient, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: [
+          {
+            ...accepted,
+            metadata: gifMetadata,
+            status: 'ready',
+            images: [
+              {
+                index: 0,
+                width: 1024,
+                height: 1024,
+                bytes: 1024,
+                content_type: 'image/gif',
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(
+      (await listStudioTasks(new AbortController().signal))[0].images[0]
+        .content_type
+    ).toBe('image/gif')
+  }
+)
+
+it('rejects GIF on unsupported routes before creating a paid task', async () => {
+  const post = vi.spyOn(imageRelayClient, 'post')
+  const input = {
+    ...parameters,
+    model: 'gpt-image-2-basic',
+    format: 'gif' as const,
+  }
+  await expect(
+    createStudioTask(
+      taskID,
+      input,
+      [],
+      { ...metadata, parameters: input },
+      new AbortController().signal
+    )
+  ).rejects.toThrow('This model does not support the selected file format.')
+  expect(post).not.toHaveBeenCalled()
+})

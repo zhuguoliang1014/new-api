@@ -16,10 +16,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, expect, it } from 'vitest'
 
+import { ImageActions } from '../components/studio-image'
 import { StudioParameters } from '../components/studio-parameters'
 import { useImagePlaygroundStore } from '../store'
 import { defaultImageParameters } from '../types'
@@ -173,4 +174,80 @@ it('caps resolution choices at 4K even when a cached profile still advertises 8K
   )
   expect(screen.queryByRole('button', { name: '6K' })).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: '8K' })).not.toBeInTheDocument()
+})
+
+it('offers GIF only for GPT Image 2.6 and clears the choice after switching models', async () => {
+  useImagePlaygroundStore
+    .getState()
+    .setParameters({ model: 'gpt-image-2.6-basic' })
+  render(<StudioParameters group={group} />)
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'File format' }),
+    'gif'
+  )
+  expect(useImagePlaygroundStore.getState().parameters.format).toBe('gif')
+  expect(
+    screen.getByText(
+      'GIF dimensions may be smaller than the requested resolution.'
+    )
+  ).toBeInTheDocument()
+  fireEvent.change(screen.getByRole('combobox', { name: 'Quality' }), {
+    target: { value: 'high' },
+  })
+  expect(useImagePlaygroundStore.getState().parameters.format).toBe('gif')
+  act(() =>
+    useImagePlaygroundStore
+      .getState()
+      .setParameters({ model: 'gpt-image-2-basic' })
+  )
+  expect(useImagePlaygroundStore.getState().parameters.format).toBe('png')
+  expect(screen.queryByRole('option', { name: 'GIF' })).not.toBeInTheDocument()
+})
+
+it.each(['auto', 'gif'] as const)(
+  'keeps GIF download available and disables an animated reference with %s output',
+  (format) => {
+    const image = { id: 'gif-image', src: 'data:image/gif;base64,R0lGODlh' }
+    render(
+      <ImageActions
+        image={image}
+        record={{
+          id: 'gif-record',
+          ownerId: 1,
+          createdAt: 1,
+          parameters: {
+            ...defaultImageParameters,
+            model: 'gpt-image-2.6-basic',
+            format,
+          },
+          images: [image],
+          referenceCount: 0,
+        }}
+      />
+    )
+    expect(screen.getByRole('button', { name: 'Download' })).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'Continue editing' })
+    ).toBeDisabled()
+  }
+)
+
+it('starts a newly selected 2.6 model in auto format and preserves an explicit PNG choice', () => {
+  useImagePlaygroundStore
+    .getState()
+    .setParameters({ model: 'gpt-image-2-basic' })
+  useImagePlaygroundStore
+    .getState()
+    .setParameters({ model: 'gpt-image-2.6-basic' })
+  expect(useImagePlaygroundStore.getState().parameters.format).toBe('auto')
+  render(<StudioParameters group={group} />)
+  const format = screen.getByRole('combobox', { name: 'File format' })
+  expect(format).toHaveValue('auto')
+  expect(screen.queryByRole('option', { name: 'JPEG' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: 'WEBP' })).not.toBeInTheDocument()
+  fireEvent.change(format, { target: { value: 'png' } })
+  fireEvent.change(screen.getByRole('combobox', { name: 'Quality' }), {
+    target: { value: 'high' },
+  })
+  expect(useImagePlaygroundStore.getState().parameters.format).toBe('png')
 })

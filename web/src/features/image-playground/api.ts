@@ -241,7 +241,12 @@ const studioTaskSchema = z.object({
         width: z.number().positive(),
         height: z.number().positive(),
         bytes: z.number().nonnegative(),
-        content_type: z.enum(['image/png', 'image/jpeg', 'image/webp']),
+        content_type: z.enum([
+          'image/png',
+          'image/jpeg',
+          'image/webp',
+          'image/gif',
+        ]),
       })
     )
     .max(4),
@@ -261,6 +266,9 @@ export async function createStudioTask(
 ): Promise<StudioTask> {
   const parsed = imageParametersSchema.parse(parameters)
   const options = getImageModelOptions(parsed.model)
+  if (!options.formats.includes(parsed.format)) {
+    throw new Error(t('This model does not support the selected file format.'))
+  }
   if (!options.sizes.includes(parsed.size)) {
     throw new Error(t('This model does not support the selected image size.'))
   }
@@ -277,7 +285,7 @@ export async function createStudioTask(
   parameters = normalizeImageParameters(parsed)
   const fields = {
     ...getImageRequestFields(parameters),
-    response_format: 'url',
+    response_format: options.formats.includes('gif') ? 'b64_json' : 'url',
   }
   let body: FormData | Record<string, unknown> = {
     ...fields,

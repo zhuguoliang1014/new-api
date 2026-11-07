@@ -41,3 +41,26 @@ func TestStudioVerifiedSizeBoundary(t *testing.T) {
 		})
 	}
 }
+
+func TestStudioGIFParameterValidation(t *testing.T) {
+	for _, tc := range []struct {
+		model string
+		valid bool
+	}{
+		{"gpt-image-2.6-basic", true}, {"gpt-image-2-basic", false}, {"gpt-image-2.5-flare-native", false}, {"gpt-image-2.6-native", false},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "/", strings.NewReader(`{"size":"1024x1024","output_format":"gif"}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Request.Header.Set("X-Studio-Model", tc.model)
+			profile, ok := service.GetImageStudioModelProfile(service.ImageStudioGroup, tc.model)
+			require.True(t, ok)
+			err := validateStudioImageParameters(c, profile)
+			if storage, ok := c.Get(common.KeyBodyStorage); ok {
+				storage.(common.BodyStorage).Close()
+			}
+			assert.Equal(t, tc.valid, err == nil, "error=%v", err)
+		})
+	}
+}

@@ -133,6 +133,11 @@ it('places a compact active subscription before the full-width plan catalog', as
   ).toBeTruthy()
   expect(within(overview).getByText('Plan 1')).toBeVisible()
   expect(
+    within(overview).queryByText(
+      'Matching subscriptions first, then wallet balance'
+    )
+  ).not.toBeInTheDocument()
+  expect(
     container.querySelector('[data-slot="subscription-layout"]')
   ).toHaveClass('flex-col')
   expect(
@@ -159,14 +164,23 @@ it('keeps multiple subscriptions compact until keyboard expansion enables orderi
 
 it('keeps the empty subscription overview short and the catalog visible', async () => {
   await renderSubscriptions([])
+  const note = screen.getByRole('note')
+  expect(note).toHaveTextContent(
+    /^GPT subscriptions only support GPT models\.$/
+  )
+  expect(note.querySelector('[data-slot="alert-title"]')).toBeNull()
+  const overview = screen.getByRole('region', { name: 'My Subscriptions' })
+  const title = within(overview).getByRole('heading', {
+    name: 'My Subscriptions',
+    level: 3,
+  })
+  expect(title).not.toHaveTextContent('No Active')
+  expect(within(overview).getByText('No Active')).toBeVisible()
   expect(
-    screen.getByText('Wallet for all models, subscription for GPT')
-  ).toBeVisible()
-  expect(
-    screen.getByText(
-      'Wallet balance can be used for any model. Subscription quota is for GPT models only and follows the plan’s expiry and reset rules.'
+    within(overview).queryByText(
+      'Matching subscriptions first, then wallet balance'
     )
-  ).toBeVisible()
+  ).not.toBeInTheDocument()
   expect(screen.getByText('No subscription records')).toBeVisible()
   expect(screen.getByText('No subscription records')).not.toHaveClass(
     'bg-muted/30'
@@ -191,6 +205,11 @@ it('returns to the compact overview when a refresh leaves only one subscription'
   )
   expect(await within(overview).findByText('1 active')).toBeVisible()
   expect(within(overview).getByText('Plan 1')).toBeVisible()
+  expect(
+    within(overview).queryByText(
+      'Matching subscriptions first, then wallet balance'
+    )
+  ).not.toBeInTheDocument()
   expect(
     screen.queryByRole('button', { name: 'Drag to reorder' })
   ).not.toBeInTheDocument()

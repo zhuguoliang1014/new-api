@@ -1,11 +1,13 @@
 package service
 
 import (
+	"bufio"
 	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"image"
+	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
 	"io"
@@ -22,6 +24,8 @@ import (
 
 const studioMaxImageBytes int64 = 128 << 20
 const studioMaxResponseBytes int64 = 700 << 20
+
+var errStudioGIFNotAnimated = errors.New("The upstream did not return an animated GIF. Try a prompt that describes motion.")
 
 type studioResponseWriter struct {
 	file    *os.File
@@ -142,6 +146,14 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 	if len(payload.Data) == 0 || len(payload.Data) > 4 {
 		return errors.New("invalid image response")
 	}
+	var metadata struct {
+		Parameters struct {
+			Format string `json:"format"`
+		} `json:"parameters"`
+	}
+	if err := common.Unmarshal(e.Task.Metadata, &metadata); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	e.Task.DownloadedBytes = 0
 	e.Task.TotalBytes = 0
@@ -206,6 +218,15 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 		if err != nil {
 			return err
 		}
+		if metadata.Parameters.Format == "gif" {
+			if info.ContentType != "image/gif" {
+				return errStudioGIFNotAnimated
+			}
+			animated, err := studioGIFHasAnimation(target + ".tmp")
+			if err != nil || !animated {
+				return errStudioGIFNotAnimated
+			}
+		}
 		info.Index = i
 		info.Bytes = count
 		if err = os.Rename(target+".tmp", target); err != nil {
@@ -227,6 +248,78 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 	}
 	// The caller removes the source response only after persisting ready status.
 	return nil
+}
+
+// Count framed image blocks without decoding all frames into memory. The
+// original bytes remain untouched; the normal decoder validates the first
+// frame and creates only the temporary JPEG loading preview.
+func studioGIFHasAnimation(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	r := bufio.NewReader(file)
+	var header [13]byte
+	if _, err = io.ReadFull(r, header[:]); err != nil {
+		return false, err
+	}
+	if string(header[:6]) != "GIF89a" && string(header[:6]) != "GIF87a" {
+		return false, errors.New("invalid GIF header")
+	}
+	skipPalette := func(packed byte) error {
+		if packed&0x80 == 0 {
+			return nil
+		}
+		_, err := io.CopyN(io.Discard, r, int64(3*(1<<((packed&7)+1))))
+		return err
+	}
+	skipBlocks := func() error {
+		for {
+			length, err := r.ReadByte()
+			if err != nil || length == 0 {
+				return err
+			}
+			if _, err = io.CopyN(io.Discard, r, int64(length)); err != nil {
+				return err
+			}
+		}
+	}
+	if err = skipPalette(header[10]); err != nil {
+		return false, err
+	}
+	frames := 0
+	for {
+		tag, err := r.ReadByte()
+		if err != nil {
+			return false, err
+		}
+		switch tag {
+		case 0x3b: // Trailer.
+			return frames > 1, nil
+		case 0x21: // Extension label, followed by data sub-blocks.
+			if _, err = r.ReadByte(); err != nil {
+				return false, err
+			}
+		case 0x2c: // Image descriptor and optional local palette.
+			var descriptor [9]byte
+			if _, err = io.ReadFull(r, descriptor[:]); err != nil {
+				return false, err
+			}
+			if err = skipPalette(descriptor[8]); err != nil {
+				return false, err
+			}
+			if _, err = r.ReadByte(); err != nil { // LZW minimum code size.
+				return false, err
+			}
+			frames++
+		default:
+			return false, errors.New("invalid GIF block")
+		}
+		if err = skipBlocks(); err != nil {
+			return false, err
+		}
+	}
 }
 
 type studioDownloadWriter struct {
@@ -262,7 +355,7 @@ func (s *StudioTaskStore) prepareImage(source, target string) (StudioTaskImage, 
 	if config.Width <= 0 || config.Height <= 0 || config.Width > 8192 || config.Height > 8192 || int64(config.Width)*int64(config.Height) > 67108864 {
 		return StudioTaskImage{}, errors.New("invalid image dimensions")
 	}
-	if format != "png" && format != "jpeg" && format != "webp" {
+	if format != "png" && format != "jpeg" && format != "webp" && format != "gif" {
 		return StudioTaskImage{}, errors.New("invalid image format")
 	}
 	if _, err = file.Seek(0, io.SeekStart); err != nil {

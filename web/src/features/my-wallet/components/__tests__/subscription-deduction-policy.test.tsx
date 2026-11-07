@@ -33,11 +33,11 @@ afterEach(async () => {
 test.each([
   {
     language: 'en',
-    expected: 'Matching subscriptions first, then wallet balance',
+    expected: 'No subscription records',
   },
-  { language: 'zh', expected: '优先使用匹配的订阅，均不满足时使用余额' },
+  { language: 'zh', expected: '暂无订阅记录' },
 ])(
-  'shows the fixed fallback policy with a legacy preference in $language',
+  'keeps the empty overview simple with a legacy preference in $language',
   async ({ language, expected }) => {
     i18next.addResourceBundle('zh', 'translation', zh.translation)
     await i18next.changeLanguage(language)

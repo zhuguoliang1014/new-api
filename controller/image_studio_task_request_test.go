@@ -194,3 +194,34 @@ func TestStudioMJReferencesUseGenerationJSONAndPinHDTier(t *testing.T) {
 	fields["cref"] = "file:///etc/passwd"
 	require.Equal(t, 400, post("studio-mj-json-test-0005").Code)
 }
+
+func TestStudioGIFOutputIsLimitedToGPTImage26(t *testing.T) {
+	previous := imageStudioTasks
+	t.Cleanup(func() { imageStudioTasks = previous })
+	store, err := service.NewStudioTaskStore(t.TempDir(), nil)
+	require.NoError(t, err)
+	imageStudioTasks = store
+	router := gin.New()
+	router.Use(middleware.BodyStorageCleanup(), func(c *gin.Context) { c.Set("id", 1) })
+	router.POST("/:kind", CreateImageStudioTask)
+	for _, tc := range []struct {
+		model, format string
+		status        int
+	}{
+		{"gpt-image-2.6-basic", "gif", 202}, {"gpt-image-2.6-basic", "auto", 202}, {"gpt-image-2.6-basic", "png", 202}, {"gpt-image-2.6-basic", "jpeg", 400}, {"gpt-image-2-basic", "gif", 400}, {"gpt-image-2.5-flare-basic", "gif", 400}, {"gemini-3-pro-image", "gif", 400}, {"gpt-image-2.6-native", "gif", 400},
+	} {
+		t.Run(tc.model+tc.format, func(t *testing.T) {
+			metadata := map[string]any{"parameters": map[string]any{"prompt": "A blinking cat", "model": tc.model, "group": service.ImageStudioGroup, "size": "1024x1024", "quality": "high", "format": tc.format, "background": "auto", "count": 1}, "referenceCount": 0}
+			body, err := common.Marshal(map[string]any{"prompt": "A blinking cat", "n": 1, "size": "1024x1024", "quality": "high", "output_format": tc.format, "response_format": "b64_json", "studio_metadata": metadata})
+			require.NoError(t, err)
+			request := httptest.NewRequest("POST", "/generations", bytes.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Studio-Group", url.QueryEscape(service.ImageStudioGroup))
+			request.Header.Set("X-Studio-Model", tc.model)
+			request.Header.Set("X-Studio-Task-ID", "format-test-"+strings.ReplaceAll(tc.model, ".", "-")+"-"+tc.format)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, request)
+			require.Equal(t, tc.status, rec.Code, rec.Body.String())
+		})
+	}
+}

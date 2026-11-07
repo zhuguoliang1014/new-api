@@ -227,7 +227,7 @@ func validateStudioImageParameters(c *gin.Context, profile service.ImageStudioPr
 		}
 		return nil
 	}
-	if !slices.Contains([]string{"", "auto", "low", "medium", "high"}, input.Quality) || !slices.Contains([]string{"", "png", "jpeg", "webp"}, input.Format) || !slices.Contains([]string{"", "auto", "opaque", "transparent"}, input.Background) {
+	if !slices.Contains([]string{"", "auto", "low", "medium", "high"}, input.Quality) || !service.IsImageStudioOutputFormatSupported(c.GetHeader("X-Studio-Model"), input.Format) || !slices.Contains([]string{"", "auto", "opaque", "transparent"}, input.Background) {
 		return common.NewMessage("invalid image studio parameters")
 	}
 	if input.Format == "jpeg" && input.Background == "transparent" {

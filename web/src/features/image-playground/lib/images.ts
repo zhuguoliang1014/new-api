@@ -124,8 +124,10 @@ export async function getImageBlob(
     )
   }
   const blob = await response.blob()
-  if (!['image/png', 'image/jpeg', 'image/webp'].includes(blob.type)) {
-    throw new Error(t('Upload PNG, JPEG or WebP images.'))
+  if (
+    !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(blob.type)
+  ) {
+    throw new Error(t('The response is not a supported image.'))
   }
   onProgress?.(blob.size, blob.size)
   return blob
@@ -171,7 +173,7 @@ export async function downloadImagesArchive(
     ),
   ])
   if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
-  // Original PNG/JPEG/WebP bytes are already compressed; preserve them verbatim.
+  // Preserve the original compressed bytes, including every GIF animation frame.
   const archive = zipSync(
     Object.fromEntries(files.map((file) => [file.name, file.data])),
     { level: 0 }
@@ -239,7 +241,15 @@ export async function cacheImageRecord(
           )
           reader.readAsDataURL(blob)
         })
-        return { ...image, src, bytes: blob.size }
+        return {
+          ...image,
+          src,
+          // The JPEG thumbnail is only a loading preview. Show the animated
+          // original once cached, including when reopening browser history.
+          previewSrc: blob.type === 'image/gif' ? undefined : image.previewSrc,
+          bytes: blob.size,
+          contentType: blob.type,
+        }
       } catch {
         // Keep usable links and the other images if this host rejects CORS,
         // the link expired, or the browser cannot read the original bytes.

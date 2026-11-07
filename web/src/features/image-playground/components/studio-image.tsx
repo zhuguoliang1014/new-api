@@ -128,6 +128,10 @@ export function ImageActions(props: {
 }) {
   const { t } = useTranslation()
   const [working, setWorking] = useState(false)
+  const isGif =
+    props.image.contentType === 'image/gif' ||
+    props.image.src.startsWith('data:image/gif;') ||
+    props.record.parameters.format === 'gif'
   const editWithReference = async () => {
     const scope = getImageAuthScope()
     setWorking(true)
@@ -181,7 +185,14 @@ export function ImageActions(props: {
       <Button
         variant='ghost'
         size='sm'
-        disabled={working || /^dall-e-/i.test(props.record.parameters.model)}
+        disabled={
+          working || /^dall-e-/i.test(props.record.parameters.model) || isGif
+        }
+        title={
+          isGif
+            ? t('GIF outputs cannot be used as reference images.')
+            : undefined
+        }
         onClick={() => void editWithReference()}
       >
         {working ? (

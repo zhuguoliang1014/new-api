@@ -392,7 +392,10 @@ func (s *StudioTaskStore) runNext(ctx context.Context) {
 	defer s.mu.Unlock()
 	selected.busy = false
 	if err != nil {
-		if selected.Task.Status == "downloading" {
+		if errors.Is(err, errStudioGIFNotAnimated) {
+			selected.Task.Status = "failed"
+			selected.Task.Error = errStudioGIFNotAnimated.Error()
+		} else if selected.Task.Status == "downloading" {
 			selected.Task.Status = "download_failed"
 			selected.Task.Error = "Could not download the generated image. Retry the download without generating again."
 		} else {

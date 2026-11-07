@@ -130,6 +130,9 @@ func CreateImageStudioTask(c *gin.Context) {
 	}
 	contentType := c.GetHeader("Content-Type")
 	size, quality, format, background, prompt := "auto", "auto", "png", "auto", ""
+	if service.IsImageStudioOutputFormatSupported(c.GetHeader("X-Studio-Model"), "auto") {
+		format = "auto"
+	}
 	if strings.Contains(c.ContentType(), "multipart/form-data") {
 		if profile.SizeMode == "ratio" {
 			writePlaygroundError(c, 400, "invalid image task request")
@@ -318,7 +321,7 @@ func CreateImageStudioTask(c *gin.Context) {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}
-	if !slices.Contains([]string{"auto", "low", "medium", "high"}, quality) || !slices.Contains([]string{"png", "jpeg", "webp"}, format) || !slices.Contains([]string{"auto", "opaque", "transparent"}, background) {
+	if !slices.Contains([]string{"auto", "low", "medium", "high"}, quality) || !service.IsImageStudioOutputFormatSupported(meta.Parameters.Model, format) || !slices.Contains([]string{"auto", "opaque", "transparent"}, background) {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
 	}

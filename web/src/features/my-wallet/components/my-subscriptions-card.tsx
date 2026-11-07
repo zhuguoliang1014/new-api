@@ -477,12 +477,24 @@ export function MySubscriptionsCard({
     <section aria-label={t('My Subscriptions')}>
       <Collapsible open={showAllSubscriptions} onOpenChange={setExpanded}>
         <TitledCard
-          title={
-            <span className='flex flex-wrap items-center gap-2'>
-              {t('My Subscriptions')}
+          title={<h3>{t('My Subscriptions')}</h3>}
+          className='rounded-xl'
+          titleClassName='text-sm font-semibold sm:text-sm'
+          disableHoverEffect
+          headerClassName={cn(
+            'border-b-0 px-4 pt-4 !pb-3 sm:px-5 sm:pt-4 sm:!pb-3',
+            !draggable &&
+              inactiveCount === 0 &&
+              '[&>div]:flex-row [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
+          )}
+          contentClassName='px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
+          action={
+            <div className='flex flex-wrap items-center gap-2'>
               {(activeCount > 0 || frozenSubscriptions.length === 0) && (
                 <StatusBadge
                   copyable={false}
+                  type='text'
+                  className='text-xs font-normal whitespace-nowrap'
                   variant={activeCount > 0 ? 'success' : 'neutral'}
                   label={
                     activeCount > 0
@@ -494,53 +506,15 @@ export function MySubscriptionsCard({
               {frozenSubscriptions.length > 0 && (
                 <StatusBadge
                   copyable={false}
+                  type='text'
+                  className='text-xs font-normal whitespace-nowrap'
                   variant='info'
                   label={t('{{count}} frozen', {
                     count: frozenSubscriptions.length,
                   })}
                 />
               )}
-            </span>
-          }
-          className={
-            !firstSubscription && frozenSubscriptions.length === 0
-              ? 'rounded-[12px]'
-              : undefined
-          }
-          titleClassName={
-            !firstSubscription && frozenSubscriptions.length === 0
-              ? 'text-sm sm:text-sm'
-              : undefined
-          }
-          descriptionClassName={
-            !firstSubscription && frozenSubscriptions.length === 0
-              ? 'text-xs sm:text-xs'
-              : undefined
-          }
-          description={t('Matching subscriptions first, then wallet balance')}
-          icon={
-            firstSubscription || frozenSubscriptions.length > 0 ? (
-              <Layers className='h-4 w-4' aria-hidden='true' />
-            ) : undefined
-          }
-          disableHoverEffect
-          headerClassName={cn(
-            'border-b-0 !pb-3 sm:!pb-3',
-            !firstSubscription &&
-              frozenSubscriptions.length === 0 &&
-              'p-3! pb-2!',
-            !draggable &&
-              inactiveCount === 0 &&
-              '[&>div]:flex-row [&>div>div:last-child]:w-auto'
-          )}
-          contentClassName={cn(
-            'pt-0 sm:pt-0',
-            !firstSubscription &&
-              frozenSubscriptions.length === 0 &&
-              'px-3 pb-3 sm:px-3 sm:pb-3'
-          )}
-          action={
-            <div className='flex flex-wrap items-center gap-1'>
+
               {draggable && (
                 <CollapsibleTrigger
                   render={<Button variant='outline' className='h-9 gap-2' />}
@@ -656,7 +630,7 @@ export function MySubscriptionsCard({
             </div>
           )}
           {!firstSubscription && frozenSubscriptions.length === 0 && (
-            <p className='text-muted-foreground text-xs'>
+            <p className='text-muted-foreground py-3 text-center text-sm'>
               {allSubscriptions.length > 0
                 ? t('No Active')
                 : t('No subscription records')}

@@ -119,3 +119,57 @@ it.each([
     }).success
   ).toBe(false)
 })
+
+it('accepts GIF for GPT Image 2.6 and resets it when changing to an unsupported model', () => {
+  const input = {
+    ...defaultImageParameters,
+    prompt: 'A blinking cat',
+    model: 'gpt-image-2.6-basic',
+    format: 'gif',
+  }
+  expect(imageParametersSchema.safeParse(input).success).toBe(true)
+  const parameters = normalizeImageParameters(
+    imageParametersSchema.parse(input)
+  )
+  expect(parameters.format).toBe('gif')
+  expect(getImageRequestFields(parameters)).toHaveProperty(
+    'output_format',
+    'gif'
+  )
+  for (const model of [
+    'gpt-image-2-basic',
+    'gpt-image-2.5-flare-basic',
+    'gpt-image-2.6-native',
+    'gemini-3-pro-image',
+    'mj-v8.2',
+  ]) {
+    expect(normalizeImageParameters({ ...parameters, model }).format).toBe(
+      'png'
+    )
+  }
+})
+
+it('uses the documented 2.6 formats and defaults unsupported formats to auto', () => {
+  expect(getImageModelOptions('gpt-image-2.6-basic').formats).toEqual([
+    'auto',
+    'png',
+    'gif',
+  ])
+  const input = {
+    ...defaultImageParameters,
+    prompt: 'A blinking cat',
+    model: 'gpt-image-2.6-basic',
+    format: 'auto',
+  }
+  expect(imageParametersSchema.safeParse(input).success).toBe(true)
+  expect(
+    normalizeImageParameters(imageParametersSchema.parse(input)).format
+  ).toBe('auto')
+  expect(
+    normalizeImageParameters({
+      ...defaultImageParameters,
+      model: 'gpt-image-2.6-basic',
+      format: 'jpeg',
+    }).format
+  ).toBe('auto')
+})

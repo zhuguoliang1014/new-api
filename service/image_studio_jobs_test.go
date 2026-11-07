@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/gif"
 	"image/png"
 	"io"
 	"net/http"
@@ -205,5 +206,79 @@ func TestStudioTaskRejectsPathTraversal(t *testing.T) {
 	for _, id := range []string{"../../outside", strings.Repeat("a", 65), "short"} {
 		_, err := store.Submit(id, StudioTaskRequest{OwnerID: 1}, []byte(`{}`), []byte(`{}`))
 		require.Error(t, err)
+	}
+}
+
+func TestStudioTaskPreservesGIFAnimationAndThumbnailAfterRestart(t *testing.T) {
+	for _, requestedFormat := range []string{"auto", "gif"} {
+		t.Run(requestedFormat, func(t *testing.T) {
+			palette := color.Palette{color.Black, color.White}
+			first := image.NewPaletted(image.Rect(0, 0, 32, 16), palette)
+			second := image.NewPaletted(first.Rect, palette)
+			second.SetColorIndex(0, 0, 1)
+			animation := &gif.GIF{Image: []*image.Paletted{first, second}, Delay: []int{10, 20}, LoopCount: 0}
+			var encoded bytes.Buffer
+			require.NoError(t, gif.EncodeAll(&encoded, animation))
+			original := encoded.Bytes()
+			store := studioTestStore(t, func(_ context.Context, _ StudioTaskRequest, _ io.Reader, w http.ResponseWriter) error {
+				_, err := fmt.Fprintf(w, `{"data":[{"b64_json":"%s"}]}`, base64.StdEncoding.EncodeToString(original))
+				return err
+			})
+			_, err := store.Submit(studioTestID, StudioTaskRequest{OwnerID: 1, Group: ImageStudioGroup, Model: "gpt-image-2.6-basic"}, []byte(fmt.Sprintf(`{"parameters":{"format":"%s"}}`, requestedFormat)), []byte(`{"prompt":"test"}`))
+			require.NoError(t, err)
+			store.runNext(context.Background())
+			task, err := store.Get(1, studioTestID)
+			require.NoError(t, err)
+			require.Equal(t, "ready", task.Status)
+			require.Equal(t, "image/gif", task.Images[0].ContentType)
+			reloaded, err := NewStudioTaskStore(store.root, store.relay)
+			require.NoError(t, err)
+			file, info, err := reloaded.Image(1, studioTestID, 0, false)
+			require.NoError(t, err)
+			data, err := io.ReadAll(file)
+			file.Close()
+			require.NoError(t, err)
+			require.Equal(t, original, data)
+			require.Equal(t, "image/gif", info.ContentType)
+			actual, err := gif.DecodeAll(bytes.NewReader(data))
+			require.NoError(t, err)
+			require.Len(t, actual.Image, 2)
+			require.Equal(t, animation.Delay, actual.Delay)
+			require.Equal(t, 0, actual.LoopCount)
+			thumbnail, _, err := reloaded.Image(1, studioTestID, 0, true)
+			require.NoError(t, err)
+			defer thumbnail.Close()
+			_, format, err := image.DecodeConfig(thumbnail)
+			require.NoError(t, err)
+			require.Equal(t, "jpeg", format)
+		})
+	}
+}
+func TestStudioGIFRequestRejectsStaticOutputWithoutRegeneration(t *testing.T) {
+	for _, format := range []string{"png", "gif"} {
+		t.Run(format, func(t *testing.T) {
+			original := studioTestPNG(t)
+			if format == "gif" {
+				var encoded bytes.Buffer
+				require.NoError(t, gif.Encode(&encoded, image.NewPaletted(image.Rect(0, 0, 32, 16), color.Palette{color.Black, color.White}), nil))
+				original = encoded.Bytes()
+			}
+			calls := 0
+			store := studioTestStore(t, func(_ context.Context, _ StudioTaskRequest, _ io.Reader, w http.ResponseWriter) error {
+				calls++
+				_, err := fmt.Fprintf(w, `{"data":[{"b64_json":"%s"}]}`, base64.StdEncoding.EncodeToString(original))
+				return err
+			})
+			_, err := store.Submit(studioTestID, StudioTaskRequest{OwnerID: 1, Group: ImageStudioGroup, Model: "gpt-image-2.6-basic"}, []byte(`{"parameters":{"format":"gif"}}`), []byte(`{"output_format":"gif"}`))
+			require.NoError(t, err)
+			store.runNext(context.Background())
+			task, err := store.Get(1, studioTestID)
+			require.NoError(t, err)
+			require.Equal(t, "failed", task.Status)
+			require.Contains(t, task.Error, "animated GIF")
+			require.Empty(t, task.Images)
+			store.runNext(context.Background())
+			require.Equal(t, 1, calls)
+		})
 	}
 }

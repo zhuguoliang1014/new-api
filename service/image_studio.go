@@ -7,6 +7,19 @@ const (
 	ImageStudioDefaultModel = "gpt-image-2.5-flare-basic"
 )
 
+// GIF output is a documented capability of the 2.6 route, not all GPT models.
+func IsImageStudioOutputFormatSupported(model, format string) bool {
+	if model == "gpt-image-2.6-basic" || model == "gpt-image-2.6" {
+		return format == "" || format == "auto" || format == "png" || format == "gif"
+	}
+	switch format {
+	case "", "png", "jpeg", "webp":
+		return true
+	default:
+		return false
+	}
+}
+
 // Legacy aliases remain available, with studio generation capped at 4K.
 // Model-specific profiles retain native pixel limits; prices stay live.
 type ImageStudioProfile struct {

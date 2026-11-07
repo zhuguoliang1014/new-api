@@ -203,9 +203,9 @@ export function StudioParameters(props: { group?: StudioGroup }) {
               id='studio-format'
               label={t('File format')}
               value={parameters.format}
-              options={['png', 'jpeg', 'webp'].map((value) => ({
+              options={options.formats.map((value) => ({
                 value,
-                label: value.toUpperCase(),
+                label: labels[value] ?? value.toUpperCase(),
               }))}
               onChange={(format) =>
                 setParameters({ format: format as ImageParameters['format'] })
@@ -230,6 +230,11 @@ export function StudioParameters(props: { group?: StudioGroup }) {
         )}
       </div>
       {options.isMidjourney && <StudioMidjourneyParameters />}
+      {parameters.format === 'gif' && (
+        <p className='studio-field-hint'>
+          {t('GIF dimensions may be smaller than the requested resolution.')}
+        </p>
+      )}
       {options.isBanana && (
         <p className='studio-field-hint'>
           {t(

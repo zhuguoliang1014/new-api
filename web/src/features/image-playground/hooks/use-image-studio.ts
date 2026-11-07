@@ -275,6 +275,7 @@ export function useImageStudio() {
             width: image.width,
             height: image.height,
             bytes: image.bytes,
+            contentType: image.content_type,
           }
         })
       )
