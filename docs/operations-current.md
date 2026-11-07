@@ -618,3 +618,23 @@ go vet ./...
 ```
 
 三库矩阵覆盖新库、保留历史成功订单和订单号唯一约束的旧表升级、两次迁移、并发/重复回调、按折后实付金额计算、停用/未确认/本人/封禁/额度上限与失败回滚、订阅排除。后端构建/vet在仅含已跟踪发布代码及本次修改的隔离副本执行，原机器人未提交修改未进入发布。前端使用 `bunx --no-install tsgo -b`（现有 `bun check -b` 脚本不可用）、改动文件oxlint/oxfmt及 `bun run build`；1440/390/320宽度与中英文、深浅主题浏览器核验通过，未代替真实旧手机内核验收。本机证据与正式页面截图在 `~/.codex/operations/wallet-referral-20261107/`，服务器详细结果为恢复目录 `local-validation.json`、`verification.json` 和 `actions.json`。
+
+## 订阅返利与方案卡片重排上线（2026-11-07）
+
+- 历史复核：`c86151e8d` 于2026-05-12加入虎皮椒充值与订阅付费返利及设置入口；`e4344907b` 于2026-10-01合并rc.41时明确删除相关后端逻辑、测试和前端入口。当前库仍有旧参数 `HupijiaoInviteRewardRatio=0.03`，新代码不使用它；保持旧记录，不叠加或改写为新比例。
+- 按用户追加要求，人民币实付购买订阅也纳入既有 `ReferralRewardPercent=5`；虎皮椒及易支付订阅结算复用同一返利事务与TopUp私有收据，重复/并发通知只奖励一次，不增加购买者钱包余额。钱包余额兑换订阅及兑换码不重复返利，不追补历史成功订单；推广奖励仍先到 `aff_quota`，用户手动转入钱包后使用，最低0.01刀。原“待确认”已改为“待转入余额”，后台设置改称“付费邀请返利（%）”。
+- 方案卡移除外层套框和大圆角，价格/额度并排，优惠一行可展开详情，顶部中文倒计时保留；无订阅占位缩小。本机样例中文卡片约357px高，1440/390/320宽度、中英文及深浅主题检查通过。115项相关前端测试、类型/lint/格式与610.0KiB首屏构建通过；SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17真实三库的充值/订阅并发结算、既有订单镜像、失败回滚及余额兑换排除、race、Go构建/vet和相关controller测试通过。未代发真实付款或转账，无新增数据库结构。
+- 发布应用 revision `2be5d4e873c31d3f2e4513b79161502f5216798b`，Actions `42335535622` 构建及部署success；北京时间 **11:53** 核验healthy，三入口状态/定价及初始资源完整读取通过。配置options（含5%）、套餐、模型、abilities及既有渠道/令牌/用户权限与发布前一致，其他容器及Compose/.env/Nginx一致。
+- 恢复目录 `/root/upgrade-recovery/new-api-subscription-referral-20261107/`：142348044字节全库归档、SHA-256及目录/完整内容读取通过；含快照、验证与带revision保护的 `rollback.sh`，回退旧应用 `f309aa428`、保留5%配置、现有余额/订单/返利收据，不整库恢复。回滚镜像 `ghcr.io/zhuguoliang1014/new-api:rollback-subscription-referral-20261107` 保留，Compose检查通过，未实际回切。
+
+本机证据与线上截图：`~/.codex/operations/subscription-referral-20261107/`。真实三库命令（隔离测试库）：
+
+```sh
+TEST_MYSQL_DSN='root@unix(/tmp/studio-unify-mysql/mysql.sock)/wallet_referral_v2_test?charset=utf8mb4&parseTime=True&loc=Local' TEST_POSTGRES_DSN='host=127.0.0.1 user=zhuguoliang dbname=wallet_referral_v2_test port=5432 sslmode=disable' go test ./model -run 'TestTopUpReferral|TestReferralRewardPercent|TestHupijiao' -count=1 -v
+go test -race ./model -run 'TestTopUpReferral|TestReferralRewardPercent|TestHupijiao' -count=1
+go test ./controller -run 'Test.*(Subscription|TopUp|Topup|Hupijiao|Epay|PaymentCompliance)' -count=1
+go build ./...
+go vet ./...
+```
+
+构建和vet在已跟踪发布代码的隔离副本运行，机器人既有未提交修改不在发布内。前端类型检查为 `bunx --no-install tsgo -b`，测试为 `bun run test src/features/my-wallet src/features/wallet src/hooks/__tests__/sidebar-config.test.tsx src/features/system-settings/general/__tests__/pre-consume-settings.test.tsx`。服务端恢复目录保存 `new-api-subscription-v2-validation.json`、三库/race/controller测试日志、`verification.json`、`actions.json`；本次无配置写入，无需回滚返利比例。桌面浏览器响应式核验不替代真实旧手机内核验收。
