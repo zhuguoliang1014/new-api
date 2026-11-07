@@ -7,6 +7,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import type { UserSubscriptionRecord } from '@/features/subscriptions/types'
 import { api } from '@/lib/api'
 
+import { AffiliateTab } from '../affiliate-tab'
 import { RechargeTab } from '../recharge-tab'
 import { SubscriptionTab } from '../subscription-tab'
 
@@ -167,6 +168,9 @@ it('keeps the empty subscription overview short and the catalog visible', async 
     )
   ).toBeVisible()
   expect(screen.getByText('No subscription records')).toBeVisible()
+  expect(screen.getByText('No subscription records')).not.toHaveClass(
+    'bg-muted/30'
+  )
   expect(screen.getByText('No plans available')).toBeVisible()
   expect(
     screen.queryByRole('button', { name: /Manage subscriptions/ })
@@ -190,4 +194,45 @@ it('returns to the compact overview when a refresh leaves only one subscription'
   expect(
     screen.queryByRole('button', { name: 'Drag to reorder' })
   ).not.toBeInTheDocument()
+})
+
+it('explains that payment referral rewards need manual transfer and opens the transfer action', async () => {
+  const onTransfer = vi.fn()
+  render(
+    <TooltipProvider>
+      <AffiliateTab
+        user={{
+          id: 1,
+          username: 'inviter',
+          quota: 0,
+          used_quota: 0,
+          request_count: 0,
+          group: 'default',
+          aff_quota: 2500000,
+          aff_history_quota: 2500000,
+          aff_count: 1,
+        }}
+        affiliateLink='https://example.com/sign-up?aff=demo'
+        rewardPercent={5}
+        complianceConfirmed
+        onTransfer={onTransfer}
+      />
+    </TooltipProvider>
+  )
+  expect(screen.getByText('Rewards to transfer')).toBeVisible()
+  expect(
+    screen.getByText(
+      'Rewards arrive here first. Transfer them to your wallet balance before using them. Minimum transfer: USD 0.01.'
+    )
+  ).toBeVisible()
+  expect(
+    screen.getAllByText(
+      /CNY payments for wallet recharges and subscriptions/
+    )[0]
+  ).toBeVisible()
+  expect(screen.queryByText('Pending')).not.toBeInTheDocument()
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Transfer to Balance' })
+  )
+  expect(onTransfer).toHaveBeenCalledOnce()
 })

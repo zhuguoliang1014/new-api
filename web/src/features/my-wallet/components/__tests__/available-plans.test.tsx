@@ -151,10 +151,7 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
     'xl:grid-cols-4'
   )
   const card = screen.getByRole('article', { name: '苍穹版' })
-  expect(card.querySelector('[data-slot=card-content]')).toHaveClass(
-    'p-3',
-    'sm:p-4'
-  )
+  expect(card.querySelector('[data-slot=card-content]')).toHaveClass('p-4')
   expect(within(card).getByText('¥2,000')).toBeVisible()
   expect(within(card).getByText('$7,800')).toBeVisible()
   expect(within(card).getByText('/ 1 months')).toHaveClass('whitespace-nowrap')
@@ -162,6 +159,9 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
     within(card).getByRole('button', { name: 'Subscribe Now' })
   ).toHaveClass('min-h-11')
   expect(within(card).getByText('Available Quota')).toBeVisible()
+  expect(card.querySelector('[data-slot=plan-price-quota]')).toHaveClass(
+    'grid-cols-2'
+  )
   expect(within(card).getByText('Recommended')).toBeVisible()
   expect(
     within(screen.getByRole('article', { name: '凌云版' })).queryByText(

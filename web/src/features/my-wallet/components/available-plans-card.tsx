@@ -205,9 +205,9 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
     <>
       <TitledCard
         title={t('Subscription Plans')}
-        description={t('Subscribe to a plan for model access')}
-        headerClassName='[&>div]:flex-row [&>div>div:last-child]:w-auto'
-        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
+        className='border-0 bg-transparent shadow-none ring-0'
+        titleClassName='text-base sm:text-lg'
+        headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div>div:last-child]:w-auto'
         action={
           <Button
             variant='ghost'
@@ -224,7 +224,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
           </Button>
         }
         disableHoverEffect
-        contentClassName='bg-muted/15 sm:p-4'
+        contentClassName='p-0 sm:p-0'
       >
         <div
           data-slot='subscription-plan-grid'
@@ -314,13 +314,13 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                 aria-labelledby={`subscription-plan-${plan.id}`}
                 data-card-hover='false'
                 className={cn(
-                  'relative min-w-0 gap-0 rounded-xl border py-0 shadow-sm ring-0 transition-[border-color,box-shadow] duration-200',
+                  'relative min-w-0 gap-0 rounded-[12px] border py-0 shadow-none ring-0 transition-colors duration-200',
                   isRecommended
-                    ? 'border-primary/30 from-primary/5 to-card bg-gradient-to-b before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary'
-                    : 'border-border/80 hover:border-foreground/20 hover:shadow-md'
+                    ? 'border-primary/50'
+                    : 'border-border hover:border-foreground/25'
                 )}
               >
-                <CardContent className='flex h-full min-w-0 flex-col p-3 sm:p-4'>
+                <CardContent className='flex h-full min-w-0 flex-col p-4'>
                   {saleHint && (
                     <div
                       data-slot='plan-sale-notice'
@@ -328,9 +328,9 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                       aria-label={saleHintLabel}
                       aria-live='off'
                       className={cn(
-                        'mb-3 flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-xs leading-snug font-semibold tabular-nums',
+                        '-mx-4 -mt-4 mb-3 flex items-center gap-1.5 border-b px-4 py-2 text-[11px] leading-snug font-semibold tabular-nums',
                         sale.status === 'live'
-                          ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+                          ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
                           : 'border-border bg-muted/50 text-muted-foreground'
                       )}
                     >
@@ -338,26 +338,37 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                       <span>{saleHint}</span>
                     </div>
                   )}
-                  <div className='flex items-start gap-2'>
+                  <div className='flex items-start justify-between gap-2'>
                     <div className='flex min-w-0 flex-1 items-start gap-2'>
                       <span
                         data-slot='plan-provider-icon'
                         aria-hidden='true'
                         className={cn(
-                          'mt-0.5 flex size-6 shrink-0 items-center justify-center',
+                          'mt-0.5 flex size-5 shrink-0 items-center justify-center',
                           isRecommended ? 'text-primary' : 'text-foreground/80'
                         )}
                       >
-                        {getLobeIcon('OpenAI', 24)}
+                        {getLobeIcon('OpenAI', 20)}
                       </span>
-                      <div className='min-w-0'>
-                        <h3
-                          id={`subscription-plan-${plan.id}`}
-                          title={plan.title || t('Subscription Plans')}
-                          className='text-base leading-snug font-semibold tracking-tight break-words'
-                        >
-                          {plan.title || t('Subscription Plans')}
-                        </h3>
+                      <div className='min-w-0 flex-1'>
+                        <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+                          <h3
+                            id={`subscription-plan-${plan.id}`}
+                            title={plan.title || t('Subscription Plans')}
+                            className='text-base leading-snug font-semibold tracking-tight break-words'
+                          >
+                            {plan.title || t('Subscription Plans')}
+                          </h3>
+                          {isRecommended && (
+                            <StatusBadge
+                              label={t('Recommended')}
+                              variant='info'
+                              type='text'
+                              copyable={false}
+                              className='text-primary text-[10px]'
+                            />
+                          )}
+                        </div>
                         {plan.subtitle && (
                           <p
                             title={plan.subtitle}
@@ -370,43 +381,52 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     </div>
                   </div>
 
-                  <div className='mt-3 flex flex-wrap items-baseline gap-x-2 gap-y-1'>
-                    <p className='text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
-                      {priceLabel}
-                    </p>
-                    <p className='text-muted-foreground text-xs whitespace-nowrap'>
-                      / {duration}
-                    </p>
-                  </div>
-
-                  <div className='bg-muted/40 mt-3 rounded-lg p-2.5'>
-                    <div className='flex min-h-5 flex-wrap items-center justify-between gap-2'>
-                      <p className='text-muted-foreground text-xs'>
+                  <div
+                    data-slot='plan-price-quota'
+                    className='mt-3 grid grid-cols-2 gap-3 border-y py-2.5'
+                  >
+                    <div className='min-w-0'>
+                      <p className='text-muted-foreground text-[11px]'>
+                        {t('Price')}
+                      </p>
+                      <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                        {priceLabel}
+                      </p>
+                      <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
+                        / {duration}
+                      </p>
+                    </div>
+                    <div className='min-w-0 border-l pl-3'>
+                      <p className='text-muted-foreground text-[11px]'>
                         {t('Available Quota')}
                       </p>
-                      {isRecommended && (
-                        <StatusBadge
-                          label={t('Recommended')}
-                          variant='info'
-                          copyable={false}
-                          className='bg-primary text-primary-foreground rounded-md px-2 text-xs'
-                        />
-                      )}
-                    </div>
-                    <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
-                      {quotaLabel}
-                    </p>
-                    {savings && (
-                      <div data-slot='plan-savings' className='mt-2 space-y-1'>
-                        <p className='text-xs font-semibold text-green-700 dark:text-green-400'>
-                          {t('Save about {{percent}}% vs wallet payment', {
-                            percent: Math.floor(savings.savings * 100),
+                      <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                        {quotaLabel}
+                      </p>
+                      {soldCount > 0 && (
+                        <p className='text-muted-foreground mt-1 text-[11px]'>
+                          {t('Sold {{count}}', {
+                            count: formatNumber(soldCount, locale),
                           })}
                         </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className='min-w-0'>
+                    {savings && (
+                      <div data-slot='plan-savings' className='mt-2'>
                         <Accordion>
                           <AccordionItem value='savings-details'>
-                            <AccordionTrigger className='text-muted-foreground gap-2 py-1 text-xs font-normal'>
-                              {t('How savings are calculated')}
+                            <AccordionTrigger
+                              aria-label={t('How savings are calculated')}
+                              className='gap-2 py-1 text-xs font-semibold text-green-700 dark:text-green-400'
+                            >
+                              <span>
+                                {t(
+                                  'Save about {{percent}}% vs wallet payment',
+                                  { percent: Math.floor(savings.savings * 100) }
+                                )}
+                              </span>
                             </AccordionTrigger>
                             <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
                               <dl className='space-y-1'>
@@ -443,32 +463,25 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                         </Accordion>
                       </div>
                     )}
-                    {soldCount > 0 && (
-                      <p className='text-muted-foreground mt-1 text-xs'>
-                        {t('Sold {{count}}', {
-                          count: formatNumber(soldCount, locale),
-                        })}
-                      </p>
-                    )}
                   </div>
 
-                  <dl className='mt-3 divide-y border-t'>
+                  <dl className='mt-2 grid grid-cols-2 gap-2 border-t pt-2'>
                     {details.map((detail) => (
                       <div
                         key={detail.label}
-                        className='flex items-start justify-between gap-2 py-1.5 text-xs'
+                        className='min-w-0 space-y-1 text-[11px]'
                       >
                         <dt className='text-muted-foreground min-w-0 break-words'>
                           {detail.label}
                         </dt>
-                        <dd className='max-w-[65%] text-right font-medium break-words'>
+                        <dd className='font-medium break-words'>
                           {detail.value}
                         </dd>
                       </div>
                     ))}
                   </dl>
 
-                  <div className='mt-auto pt-3'>
+                  <div className='mt-auto pt-4'>
                     {!onlinePaymentEnabled && isSaleable && !reached ? (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
@@ -490,7 +503,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                       <Button
                         variant={isRecommended ? 'default' : 'outline'}
                         className={cn(
-                          'h-auto min-h-11 w-full justify-between gap-3 px-3 py-2 text-sm font-medium whitespace-normal',
+                          'h-auto min-h-11 w-full justify-between gap-3 rounded-[8px] px-3 py-2 text-sm font-medium whitespace-normal',
                           sale.status === 'upcoming' && 'tabular-nums'
                         )}
                         disabled={!purchasable}

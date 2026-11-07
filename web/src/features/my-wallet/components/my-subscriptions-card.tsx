@@ -502,16 +502,43 @@ export function MySubscriptionsCard({
               )}
             </span>
           }
+          className={
+            !firstSubscription && frozenSubscriptions.length === 0
+              ? 'rounded-[12px]'
+              : undefined
+          }
+          titleClassName={
+            !firstSubscription && frozenSubscriptions.length === 0
+              ? 'text-sm sm:text-sm'
+              : undefined
+          }
+          descriptionClassName={
+            !firstSubscription && frozenSubscriptions.length === 0
+              ? 'text-xs sm:text-xs'
+              : undefined
+          }
           description={t('Matching subscriptions first, then wallet balance')}
-          icon={<Layers className='h-4 w-4' aria-hidden='true' />}
+          icon={
+            firstSubscription || frozenSubscriptions.length > 0 ? (
+              <Layers className='h-4 w-4' aria-hidden='true' />
+            ) : undefined
+          }
           disableHoverEffect
           headerClassName={cn(
             'border-b-0 !pb-3 sm:!pb-3',
+            !firstSubscription &&
+              frozenSubscriptions.length === 0 &&
+              'p-3! pb-2!',
             !draggable &&
               inactiveCount === 0 &&
               '[&>div]:flex-row [&>div>div:last-child]:w-auto'
           )}
-          contentClassName='pt-0 sm:pt-0'
+          contentClassName={cn(
+            'pt-0 sm:pt-0',
+            !firstSubscription &&
+              frozenSubscriptions.length === 0 &&
+              'px-3 pb-3 sm:px-3 sm:pb-3'
+          )}
           action={
             <div className='flex flex-wrap items-center gap-1'>
               {draggable && (
@@ -629,7 +656,7 @@ export function MySubscriptionsCard({
             </div>
           )}
           {!firstSubscription && frozenSubscriptions.length === 0 && (
-            <p className='text-muted-foreground bg-muted/30 rounded-lg px-4 py-3 text-sm'>
+            <p className='text-muted-foreground text-xs'>
               {allSubscriptions.length > 0
                 ? t('No Active')
                 : t('No subscription records')}

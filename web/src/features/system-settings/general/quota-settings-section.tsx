@@ -233,7 +233,7 @@ export function QuotaSettingsSection({
               name='ReferralRewardPercent'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Recharge referral reward (%)')}</FormLabel>
+                  <FormLabel>{t('Payment referral reward (%)')}</FormLabel>
                   <FormControl>
                     <Input
                       type='number'
@@ -248,7 +248,7 @@ export function QuotaSettingsSection({
                   </FormControl>
                   <FormDescription>
                     {t(
-                      'Reward the inviter based on actual CNY wallet payments. At 5%, CNY 100 earns USD 5 in quota. Subscriptions and redemption codes are excluded. Set to 0 to disable.'
+                      'Reward the inviter on actual CNY payments for wallet recharges and subscriptions. At 5%, CNY 100 earns USD 5 in quota. Balance purchases and redemption codes are excluded. Set to 0 to disable.'
                     )}
                   </FormDescription>
                   <FormMessage />

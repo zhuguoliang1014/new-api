@@ -9,13 +9,21 @@ import (
 	"gorm.io/gorm"
 )
 
-// creditPaidTopUp settles quota and the CNY referral reward in the order's
-// existing transaction. The locked order and its status make replay harmless;
-// the private receipt fields retain the exact reward after settings change.
-// Subscription purchases and redemption codes never enter this function.
+// creditPaidTopUp settles wallet quota and its referral reward together.
 func creditPaidTopUp(tx *gorm.DB, topUp *TopUp, creditedQuota int, updates map[string]any) error {
 	if err := creditTopUpQuota(tx, topUp.UserId, creditedQuota, updates); err != nil {
 		return err
+	}
+	return creditPaymentReferralTx(tx, topUp)
+}
+
+// creditPaymentReferralTx rewards an external CNY payment in the existing
+// locked-order transaction. Subscription payments use their mirrored TopUp
+// solely as the receipt; they must not credit wallet quota. Balance purchases
+// and redemption codes are excluded to avoid rewarding the same money twice.
+func creditPaymentReferralTx(tx *gorm.DB, topUp *TopUp) error {
+	if topUp.ReferralQuota > 0 {
+		return nil
 	}
 	percent := operation_setting.GetReferralRewardPercent()
 	if percent <= 0 || !operation_setting.IsPaymentComplianceConfirmed() ||

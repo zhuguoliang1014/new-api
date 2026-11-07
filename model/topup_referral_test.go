@@ -132,16 +132,72 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 				require.NoError(t, db.First(order, order.Id).Error)
 				assert.Equal(t, 2000000, order.ReferralQuota)
 			})
-			t.Run("subscription purchase does not reward inviter when referral rewards are enabled", func(t *testing.T) {
+			for _, provider := range []string{SubscriptionPaymentProviderHupijiao, PaymentProviderEpay} {
+				t.Run("subscription purchase rewards once through "+provider, func(t *testing.T) {
+					require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
+					plan := &SubscriptionPlan{Title: "Referral subscription", PriceCNY: 100, PriceAmount: 100, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, Enabled: true, TotalAmount: 50000000}
+					require.NoError(t, db.Create(plan).Error)
+					order := &SubscriptionOrder{UserId: invitee.Id, PlanId: plan.Id, Money: 100, TradeNo: "subscription-reward-" + provider, PaymentMethod: "alipay", PaymentProvider: provider, Status: common.TopUpStatusPending}
+					require.NoError(t, order.Insert())
+					if provider == PaymentProviderEpay {
+						require.NoError(t, db.Create(&TopUp{UserId: invitee.Id, Money: 100, TradeNo: order.TradeNo, PaymentProvider: provider, Status: common.TopUpStatusPending}).Error)
+					}
+					var buyerBefore User
+					require.NoError(t, db.First(&buyerBefore, invitee.Id).Error)
+					var wg sync.WaitGroup
+					results := make(chan error, 2)
+					for range 2 {
+						wg.Go(func() {
+							if provider == SubscriptionPaymentProviderHupijiao {
+								results <- CompleteHupijiaoSubscriptionOrder(order.TradeNo, 100, "{}")
+							} else {
+								results <- CompleteSubscriptionOrder(order.TradeNo, "{}", provider, "alipay")
+							}
+						})
+					}
+					wg.Wait()
+					close(results)
+					for err := range results {
+						require.NoError(t, err)
+					}
+					require.NoError(t, db.First(inviter, inviter.Id).Error)
+					assert.Equal(t, 2500000, inviter.AffQuota)
+					assert.Equal(t, 2500000, inviter.AffHistoryQuota)
+					var receipt TopUp
+					require.NoError(t, db.Where("trade_no = ?", order.TradeNo).First(&receipt).Error)
+					assert.Equal(t, 2500000, receipt.ReferralQuota)
+					assert.Equal(t, inviter.Id, receipt.ReferralUserId)
+					assert.Zero(t, receipt.Amount)
+					var buyerAfter User
+					require.NoError(t, db.First(&buyerAfter, invitee.Id).Error)
+					assert.Equal(t, buyerBefore.Quota, buyerAfter.Quota, "subscription must not credit the wallet")
+					var count int64
+					require.NoError(t, db.Model(&UserSubscription{}).Where("user_id = ? AND plan_id = ?", invitee.Id, plan.Id).Count(&count).Error)
+					assert.Equal(t, int64(1), count)
+				})
+			}
+			t.Run("balance subscription does not reward twice after a wallet recharge", func(t *testing.T) {
 				require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
-				plan := &SubscriptionPlan{Title: "No referral for subscriptions", PriceCNY: 100, PriceAmount: 100, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, Enabled: true, TotalAmount: 50000000}
+				plan := &SubscriptionPlan{Title: "Balance subscription", PriceAmount: 1, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, Enabled: true, TotalAmount: 500000}
 				require.NoError(t, db.Create(plan).Error)
-				order := &SubscriptionOrder{UserId: invitee.Id, PlanId: plan.Id, Money: 100, TradeNo: "subscription-no-reward", PaymentMethod: "alipay", PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending}
-				require.NoError(t, order.Insert())
-				require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 100, "{}"))
+				require.NoError(t, PurchaseSubscriptionWithBalance(invitee.Id, plan.Id))
 				require.NoError(t, db.First(inviter, inviter.Id).Error)
 				assert.Zero(t, inviter.AffQuota)
 			})
+			t.Run("failed subscription payment rolls back receipt and rewards", func(t *testing.T) {
+				require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
+				order := &SubscriptionOrder{UserId: invitee.Id, PlanId: 999999, Money: 100, TradeNo: "subscription-invalid-plan", PaymentMethod: "alipay", PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending}
+				require.NoError(t, order.Insert())
+				require.Error(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 100, "{}"))
+				require.NoError(t, db.First(inviter, inviter.Id).Error)
+				assert.Zero(t, inviter.AffQuota)
+				require.NoError(t, db.First(order, order.Id).Error)
+				assert.Equal(t, common.TopUpStatusPending, order.Status)
+				var receiptCount int64
+				require.NoError(t, db.Model(&TopUp{}).Where("trade_no = ?", order.TradeNo).Count(&receiptCount).Error)
+				assert.Zero(t, receiptCount)
+			})
+
 			for _, name := range []string{"disabled", "compliance", "self", "banned", "overflow", "rollback"} {
 				t.Run(name, func(t *testing.T) {
 					require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0, "status": common.UserStatusEnabled}).Error)

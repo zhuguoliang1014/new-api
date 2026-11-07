@@ -46,7 +46,7 @@ export function AffiliateTab({
   const rechargeRewardsEnabled = complianceConfirmed && rewardPercent > 0
   const rewardDescription = rechargeRewardsEnabled
     ? t(
-        'Earn {{percent}}% of your invitees’ CNY wallet payments as quota. CNY 100 at 5% earns USD 5. Subscription purchases and redemption codes are excluded.',
+        'Earn {{percent}}% of your invitees’ CNY payments for wallet recharges and subscriptions as quota. CNY 100 at 5% earns USD 5. Balance purchases and redemption codes are excluded.',
         { percent: rewardPercent }
       )
     : t(
@@ -61,7 +61,7 @@ export function AffiliateTab({
     accent: string
   }> = [
     {
-      label: t('Pending'),
+      label: t('Rewards to transfer'),
       value: formatQuota(pending),
       description: t('Available to transfer'),
       icon: Coins,
@@ -91,6 +91,11 @@ export function AffiliateTab({
         icon={<Share2 className='h-4 w-4' />}
         contentClassName='space-y-3'
       >
+        <p className='text-muted-foreground text-xs leading-relaxed'>
+          {t(
+            'Rewards arrive here first. Transfer them to your wallet balance before using them. Minimum transfer: USD 0.01.'
+          )}
+        </p>
         <div className='grid grid-cols-3 gap-2 sm:gap-3'>
           {stats.map((item) => {
             const Icon = item.icon

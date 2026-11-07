@@ -150,7 +150,7 @@ test.each(['', '-1'])(
 test('saves the recharge referral percentage separately from fixed signup rewards', async () => {
   await renderSettings()
   const input = screen.getByRole('spinbutton', {
-    name: 'Recharge referral reward (%)',
+    name: 'Payment referral reward (%)',
   })
   fireEvent.change(input, { target: { value: '5' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
@@ -164,7 +164,7 @@ test('saves the recharge referral percentage separately from fixed signup reward
 test('prevents saving a recharge reward above 100 percent', async () => {
   await renderSettings()
   const input = screen.getByRole('spinbutton', {
-    name: 'Recharge referral reward (%)',
+    name: 'Payment referral reward (%)',
   })
   fireEvent.change(input, { target: { value: '101' } })
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
