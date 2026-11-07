@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next'
-import { Megaphone, Receipt, ScrollText, Wallet } from 'lucide-react'
+import { Megaphone, Receipt, ScrollText, Wallet, Landmark } from 'lucide-react'
 
 import type {
   NavItem,
@@ -36,6 +36,11 @@ function getLocalAdminItems(t: TFunction): NavItem[] {
       title: t('Order History'),
       url: '/all-orders',
       icon: ScrollText,
+    },
+    {
+      title: t('Financial management'),
+      url: '/finance',
+      icon: Landmark,
     },
   ]
 }

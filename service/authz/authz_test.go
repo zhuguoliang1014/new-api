@@ -51,6 +51,16 @@ func TestInitSeedsBuiltInRolesAndPoliciesOnce(t *testing.T) {
 	assert.True(t, Can(2, common.RoleAdminUser, ChannelWrite))
 	assert.False(t, Can(2, common.RoleAdminUser, ChannelSensitiveWrite))
 	assert.False(t, Can(3, common.RoleCommonUser, ChannelRead))
+	for _, permission := range []Permission{FinanceRead, FinanceWrite, FinanceExport, FinanceManage} {
+		assert.True(t, Can(1, common.RoleRootUser, permission))
+		assert.False(t, Can(2, common.RoleAdminUser, permission), "finance is opt-in for administrators")
+		assert.False(t, Can(3, common.RoleCommonUser, permission))
+	}
+	require.NoError(t, SetUserPermissions(2, PermissionsMap{ResourceFinance: {ActionRead: true}}))
+	assert.True(t, Can(2, common.RoleAdminUser, FinanceRead))
+	assert.False(t, Can(2, common.RoleAdminUser, FinanceWrite))
+	assert.False(t, Can(2, common.RoleAdminUser, FinanceExport))
+	assert.False(t, Can(2, common.RoleAdminUser, FinanceManage))
 }
 
 func TestInitOnSlaveOnlyLoadsPolicies(t *testing.T) {
@@ -157,7 +167,8 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		ResourceTaskPlugin: {
 			ActionBind: false,
 		},
-		ResourceAudit: {ActionRead: false},
+		ResourceAudit:   {ActionRead: false},
+		ResourceFinance: {ActionRead: false, ActionWrite: false, "export": false, "manage": false},
 	}, ExplicitUserPermissions(42))
 	assert.Equal(t, PermissionsMap{
 		ResourceChannel: {
@@ -189,7 +200,8 @@ func TestSetUserPermissionsStoresOnlyOverrides(t *testing.T) {
 		ResourceTaskPlugin: {
 			ActionBind: false,
 		},
-		ResourceAudit: {ActionRead: false},
+		ResourceAudit:   {ActionRead: false},
+		ResourceFinance: {ActionRead: false, ActionWrite: false, "export": false, "manage": false},
 	}, ExplicitUserPermissions(42))
 	assert.Empty(t, ExplicitUserOverrides(42))
 }

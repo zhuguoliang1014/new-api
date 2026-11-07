@@ -378,6 +378,13 @@ func migrateDB() error {
 		&AuthzRole{},
 		&UserAccessToken{},
 		&TelegramAnnouncement{},
+		&FinanceEntry{},
+		&FinanceAudit{},
+		&FinanceRule{},
+		&FinancePeriod{},
+		&FinanceState{},
+		&FinanceAttachment{},
+		&FinanceCategory{},
 	)
 	if err != nil {
 		return err

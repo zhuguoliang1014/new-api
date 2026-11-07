@@ -20,12 +20,16 @@ import { ArrowUpRight, Users } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { IconTelegram } from '@/assets/brand-icons/icon-telegram'
+import { IconWeChat } from '@/assets/brand-icons/icon-wechat'
 import { CopyButton } from '@/components/copy-button'
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
+import { Separator } from '@/components/ui/separator'
 
 const TELEGRAM_BOT_USERNAME = '@aiproxy92_bot'
 const TELEGRAM_BOT_URL = 'https://t.me/aiproxy92_bot'
+const WECHAT_ID = 'ls587657'
+const WECHAT_NOTE = 'aiproxy'
 
 export function OfficialCommunity() {
   const { t } = useTranslation()
@@ -45,9 +49,7 @@ export function OfficialCommunity() {
         </Button>
       }
       title={t('Join the official community')}
-      description={t(
-        'Message our Telegram bot and send your order number to get a community invitation.'
-      )}
+      description={t('Join via our Telegram bot, or add us on WeChat.')}
       contentClassName='gap-5 rounded-3xl p-6 shadow-xl sm:max-w-[480px] sm:p-8'
       headerClassName='gap-3 pr-4'
       titleClassName='text-2xl leading-tight font-semibold tracking-tight'
@@ -86,9 +88,46 @@ export function OfficialCommunity() {
           <ArrowUpRight className='size-4' aria-hidden='true' />
         </Button>
         <p className='text-muted-foreground text-center text-xs leading-5'>
-          {t('You can also search for this username in Telegram.')}
+          {t(
+            'Message our Telegram bot and send your order number to get a community invitation.'
+          )}
         </p>
       </div>
+
+      <Separator />
+
+      <section aria-label={t('WeChat')} className='flex flex-col gap-3'>
+        <div className='flex min-w-0 items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950'>
+          <div className='flex size-12 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-sm'>
+            <IconWeChat className='size-7' aria-hidden='true' />
+          </div>
+          <div className='flex min-w-0 flex-1 flex-col gap-1'>
+            <p className='text-muted-foreground text-xs font-medium'>
+              {t('WeChat')}
+            </p>
+            <p className='truncate text-base font-semibold tracking-tight sm:text-lg'>
+              {WECHAT_ID}
+            </p>
+          </div>
+          <CopyButton
+            value={WECHAT_ID}
+            aria-label={t('Copy WeChat ID')}
+            className='size-8'
+            notify
+          />
+        </div>
+        <p className='text-center text-sm font-medium'>
+          {t(
+            'When adding on WeChat, include {{note}} in your verification message.',
+            {
+              note: WECHAT_NOTE,
+            }
+          )}
+        </p>
+        <p className='text-muted-foreground text-center text-xs leading-5'>
+          {t('In WeChat, open Add Contacts and search for the ID above.')}
+        </p>
+      </section>
     </Dialog>
   )
 }

@@ -28,6 +28,7 @@ import type {
 } from '@/components/layout/types'
 import { useSubscriptionSavings } from '@/features/my-wallet/hooks/use-subscription-savings'
 import { useModelPricingIssueBadge } from '@/features/system-settings/models/pricing-issues'
+import { hasPermission } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
 import { useAuthStore } from '@/stores/auth-store'
 
@@ -54,6 +55,9 @@ export function useSidebarView(): ResolvedSidebarView {
   const { t } = useTranslation()
   const pathname = useLocation({ select: (l) => l.pathname })
   const userRole = useAuthStore((s) => s.auth.user?.role)
+  const financeAccess = useAuthStore((s) =>
+    hasPermission(s.auth.user, 'finance', 'read')
+  )
   const modelPricingBadge = useModelPricingIssueBadge()
   const savings = useSubscriptionSavings()
   const savingsPercent = Math.floor(savings.maxSavings * 100)
@@ -74,11 +78,13 @@ export function useSidebarView(): ResolvedSidebarView {
       .filter((group) => (group.id === 'admin' ? isAdmin : true))
       .map((group) => {
         const items = group.items.filter(
-          (item) => item.requiredRole === undefined || role >= item.requiredRole
+          (item) =>
+            (item.url !== '/finance' || financeAccess) &&
+            (item.requiredRole === undefined || role >= item.requiredRole)
         )
         return items.length === group.items.length ? group : { ...group, items }
       })
-  }, [configFilteredRoot, userRole])
+  }, [configFilteredRoot, userRole, financeAccess])
 
   const view = resolveSidebarView(pathname)
 

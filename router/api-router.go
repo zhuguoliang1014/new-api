@@ -21,6 +21,7 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	setFinanceRouter(apiRouter)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	studioTasks := apiRouter.Group("/image-playground/tasks", middleware.UserAuth(), controller.ImageStudioTasksAvailable)
 	studioTasks.GET("", controller.ListImageStudioTasks)
