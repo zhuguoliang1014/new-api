@@ -3,6 +3,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -208,9 +210,12 @@ func TestStudioGIFOutputIsLimitedToGPTImage26(t *testing.T) {
 		model, format string
 		status        int
 	}{
-		{"gpt-image-2.6-basic", "gif", 202}, {"gpt-image-2.6-basic", "auto", 202}, {"gpt-image-2.6-basic", "png", 202}, {"gpt-image-2.6-basic", "jpeg", 400}, {"gpt-image-2-basic", "gif", 400}, {"gpt-image-2.5-flare-basic", "gif", 400}, {"gemini-3-pro-image", "gif", 400}, {"gpt-image-2.6-native", "gif", 400},
+		{"gpt-image-2.6-basic", "gif", 202}, {"gpt-image-2.6-basic", "auto", 202}, {"gpt-image-2.6-basic", "png", 202}, {"gpt-image-2.6-basic", "jpeg", 202}, {"gpt-image-2-basic", "gif", 400}, {"gpt-image-2.5-flare-basic", "gif", 400}, {"gemini-3-pro-image", "gif", 400}, {"gpt-image-2.6-flare-native", "gif", 202}, {"gpt-image-2.6-flare-basic", "svg", 202}, {"gpt-image-2.6-sunburst-native", "svg", 202},
 	} {
 		t.Run(tc.model+tc.format, func(t *testing.T) {
+			store, err := service.NewStudioTaskStore(t.TempDir(), nil)
+			require.NoError(t, err)
+			imageStudioTasks = store
 			metadata := map[string]any{"parameters": map[string]any{"prompt": "A blinking cat", "model": tc.model, "group": service.ImageStudioGroup, "size": "1024x1024", "quality": "high", "format": tc.format, "background": "auto", "count": 1}, "referenceCount": 0}
 			body, err := common.Marshal(map[string]any{"prompt": "A blinking cat", "n": 1, "size": "1024x1024", "quality": "high", "output_format": tc.format, "response_format": "b64_json", "studio_metadata": metadata})
 			require.NoError(t, err)
@@ -223,5 +228,40 @@ func TestStudioGIFOutputIsLimitedToGPTImage26(t *testing.T) {
 			router.ServeHTTP(rec, request)
 			require.Equal(t, tc.status, rec.Code, rec.Body.String())
 		})
+	}
+}
+
+func TestStudioSVGDownloadUsesVectorMIMEAndSandbox(t *testing.T) {
+	previous := imageStudioTasks
+	t.Cleanup(func() { imageStudioTasks = previous })
+	original := `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="48"><circle cx="20" cy="20" r="10"/></svg>`
+	store, err := service.NewStudioTaskStore(t.TempDir(), func(_ context.Context, _ service.StudioTaskRequest, _ io.Reader, w http.ResponseWriter) error {
+		_, err := fmt.Fprintf(w, `{"data":[{"b64_json":"%s"}]}`, base64.StdEncoding.EncodeToString([]byte(original)))
+		return err
+	})
+	require.NoError(t, err)
+	imageStudioTasks = store
+	id := "studio-svg-header-test-0001"
+	_, err = store.Submit(id, service.StudioTaskRequest{OwnerID: 1, Model: "gpt-image-2.6-flare-basic", Group: service.ImageStudioGroup}, []byte(`{"parameters":{"format":"svg"}}`), []byte(`{}`))
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() { defer close(done); store.Run(ctx) }()
+	require.Eventually(t, func() bool { task, err := store.Get(1, id); return err == nil && task.Status == "ready" }, 5*time.Second, 10*time.Millisecond)
+	cancel()
+	<-done
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("id", 1) })
+	router.GET("/:id/images/:index", DownloadImageStudioImage)
+	for _, suffix := range []string{"", "?thumbnail=1"} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/"+id+"/images/0"+suffix, nil)
+		router.ServeHTTP(rec, req)
+		require.Equal(t, 200, rec.Code)
+		require.Equal(t, "image/svg+xml", rec.Header().Get("Content-Type"))
+		require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
+		require.Contains(t, rec.Header().Get("Content-Security-Policy"), "sandbox; default-src 'none'")
+		require.Equal(t, original, rec.Body.String())
 	}
 }

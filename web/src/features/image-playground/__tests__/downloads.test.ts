@@ -206,3 +206,34 @@ it.each(['auto', 'gif'] as const)(
     expect(result.images[0].previewSrc).toBeUndefined()
   }
 )
+
+it('preserves SVG original bytes and uses the svg extension for download and ZIP', async () => {
+  const original =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480"><path d="M0 0h100v100H0z"/></svg>'
+  const response = new Response()
+  vi.spyOn(response, 'blob').mockResolvedValue(
+    new Blob([original], { type: 'image/svg+xml' })
+  )
+  vi.mocked(fetch).mockResolvedValue(response)
+  await downloadImage('https://images.example/vector.svg', 'vector')
+  expect(filename).toBe('new-api-image-vector.svg')
+  expect(saved?.type).toBe('image/svg+xml')
+  await downloadImagesArchive(
+    [{ id: 'vector', src: 'https://images.example/vector.svg' }],
+    'vectors'
+  )
+  const bytes = new Promise<ArrayBuffer>((resolve) => {
+    const r = new FileReader()
+    r.addEventListener('load', () => resolve(r.result as ArrayBuffer), {
+      once: true,
+    })
+    if (!saved) throw new Error('Expected SVG archive')
+    r.readAsArrayBuffer(saved)
+  })
+  await vi.runAllTimersAsync()
+  const archive = unzipSync(new Uint8Array(await bytes))
+  expect(Object.keys(archive)).toEqual(['new-api-image-1.svg'])
+  expect(new TextDecoder().decode(archive['new-api-image-1.svg'])).toBe(
+    original
+  )
+})

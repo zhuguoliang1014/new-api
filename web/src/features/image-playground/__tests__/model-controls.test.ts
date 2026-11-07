@@ -139,7 +139,6 @@ it('accepts GIF for GPT Image 2.6 and resets it when changing to an unsupported 
   for (const model of [
     'gpt-image-2-basic',
     'gpt-image-2.5-flare-basic',
-    'gpt-image-2.6-native',
     'gemini-3-pro-image',
     'mj-v8.2',
   ]) {
@@ -153,7 +152,9 @@ it('uses the documented 2.6 formats and defaults unsupported formats to auto', (
   expect(getImageModelOptions('gpt-image-2.6-basic').formats).toEqual([
     'auto',
     'png',
+    'jpeg',
     'gif',
+    'svg',
   ])
   const input = {
     ...defaultImageParameters,
@@ -169,7 +170,31 @@ it('uses the documented 2.6 formats and defaults unsupported formats to auto', (
     normalizeImageParameters({
       ...defaultImageParameters,
       model: 'gpt-image-2.6-basic',
-      format: 'jpeg',
+      format: 'webp',
     }).format
   ).toBe('auto')
+})
+
+it.each([
+  'gpt-image-2.6-basic',
+  'gpt-image-2.6-flare-basic',
+  'gpt-image-2.6-sunburst-basic',
+  'gpt-image-2.6-flare-native',
+  'gpt-image-2.6-sunburst-native',
+])('supports documented GIF and SVG formats for %s', (model) => {
+  expect(getImageModelOptions(model).formats).toEqual([
+    'auto',
+    'png',
+    'jpeg',
+    'gif',
+    'svg',
+  ])
+  const p = imageParametersSchema.parse({
+    ...defaultImageParameters,
+    prompt: 'Vector cat',
+    model,
+    format: 'svg',
+  })
+  expect(normalizeImageParameters(p).format).toBe('svg')
+  expect(getImageRequestFields(p)).toHaveProperty('output_format', 'svg')
 })

@@ -243,7 +243,7 @@ it('starts a newly selected 2.6 model in auto format and preserves an explicit P
   render(<StudioParameters group={group} />)
   const format = screen.getByRole('combobox', { name: 'File format' })
   expect(format).toHaveValue('auto')
-  expect(screen.queryByRole('option', { name: 'JPEG' })).not.toBeInTheDocument()
+  expect(screen.getByRole('option', { name: 'JPEG' })).toBeInTheDocument()
   expect(screen.queryByRole('option', { name: 'WEBP' })).not.toBeInTheDocument()
   fireEvent.change(format, { target: { value: 'png' } })
   fireEvent.change(screen.getByRole('combobox', { name: 'Quality' }), {
@@ -251,3 +251,25 @@ it('starts a newly selected 2.6 model in auto format and preserves an explicit P
   })
   expect(useImagePlaygroundStore.getState().parameters.format).toBe('png')
 })
+
+it.each(['gpt-image-2.6-flare-basic', 'gpt-image-2.6-sunburst-native'])(
+  'offers SVG for %s and resets it on switching to an older model',
+  async (model) => {
+    useImagePlaygroundStore.getState().setParameters({ model })
+    render(<StudioParameters group={group} />)
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'File format' }),
+      'svg'
+    )
+    expect(useImagePlaygroundStore.getState().parameters.format).toBe('svg')
+    act(() =>
+      useImagePlaygroundStore
+        .getState()
+        .setParameters({ model: 'gpt-image-2.5-flare-basic' })
+    )
+    expect(useImagePlaygroundStore.getState().parameters.format).toBe('png')
+    expect(
+      screen.queryByRole('option', { name: 'SVG' })
+    ).not.toBeInTheDocument()
+  }
+)

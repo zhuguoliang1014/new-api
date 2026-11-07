@@ -1758,6 +1758,10 @@ it('uses one image group and changes size limits and pricing controls with the m
         'gemini-nano-banana-2.1',
         'gpt-image-2.5-sunburst-native',
         'gpt-image-2.6-basic',
+        'gpt-image-2.6-flare-basic',
+        'gpt-image-2.6-sunburst-basic',
+        'gpt-image-2.6-flare-native',
+        'gpt-image-2.6-sunburst-native',
         'gpt-image-2-basic',
         'gpt-image-2-native',
         'gpt-image-2.5-flare-basic',
@@ -1818,13 +1822,17 @@ it('uses one image group and changes size limits and pricing controls with the m
       'gpt-image-2.5-flare-basic',
       'gpt-image-2.5-sunburst-basic',
       'gpt-image-2.6-basic',
+      'gpt-image-2.6-flare-basic',
+      'gpt-image-2.6-sunburst-basic',
       'gpt-image-2-native',
       'gpt-image-2.5-flare-native',
       'gpt-image-2.5-sunburst-native',
+      'gpt-image-2.6-flare-native',
+      'gpt-image-2.6-sunburst-native',
     ]
   )
   const options = within(screen.getByRole('listbox')).getAllByRole('option')
-  expect(options.slice(0, 7)).toEqual(gptOptions)
+  expect(options.slice(0, 11)).toEqual(gptOptions)
   expect(options.at(-1)).toHaveAttribute('data-value', 'mj-v8.2')
   const headings = within(screen.getByRole('listbox')).getAllByRole('heading')
   expect(headings.map((heading) => heading.textContent)).toEqual([
@@ -1835,7 +1843,7 @@ it('uses one image group and changes size limits and pricing controls with the m
     'Midjourney',
   ])
   expect(gptOptions[0]).toHaveTextContent('Upscaled · up to 4K')
-  expect(gptOptions[4]).toHaveTextContent('Native · up to 4K')
+  expect(gptOptions[6]).toHaveTextContent('Native · up to 4K')
   expect(screen.getByText('Midjourney')).toBeInTheDocument()
   expect(
     within(screen.getByRole('option', { name: /Midjourney v8.2/ })).getByText(

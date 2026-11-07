@@ -26,6 +26,9 @@ const ImageStudioRetention = 10 * time.Hour
 // Five MJ references can occupy about 67 MiB after base64 encoding.
 const ImageStudioMaxBody = 72 << 20
 
+// Request count stays capped at four; providers can return additional images.
+const ImageStudioMaxResults = 128
+
 var studioTaskID = regexp.MustCompile(`^[a-zA-Z0-9_-]{20,64}$`)
 var ErrStudioTaskNotFound = errors.New("image task not found")
 
@@ -128,6 +131,18 @@ func NewStudioTaskStore(root string, relay StudioTaskRelay) (*StudioTaskStore, e
 			}
 			if err = s.save(&entry); err != nil {
 				return nil, err
+			}
+		}
+		// Recover old mixed GIF/static responses using their saved response.
+		// This is download-only recovery; no upstream generation is replayed.
+		if entry.Task.Status == "failed" && entry.Task.Error == errStudioGIFNotAnimated.Error() &&
+			slices.ContainsFunc(entry.Task.Images, func(image StudioTaskImage) bool { return image.ContentType == "image/gif" }) {
+			if _, err := os.Stat(filepath.Join(root, dir.Name(), "response.json")); err == nil {
+				entry.Task.Status = "downloading"
+				entry.Task.Error = ""
+				if err := s.save(&entry); err != nil {
+					return nil, err
+				}
 			}
 		}
 		s.entries[entry.Task.ID] = &entry
@@ -316,7 +331,7 @@ func (s *StudioTaskStore) Image(owner int, id string, index int, thumbnail bool)
 		return nil, StudioTaskImage{}, ErrStudioTaskNotFound
 	}
 	name := fmt.Sprintf("image-%d", index)
-	if thumbnail {
+	if thumbnail && e.Task.Images[index].ContentType != studioSVGContentType {
 		name += ".jpg"
 	}
 	f, err := os.Open(filepath.Join(s.root, id, name))
@@ -392,9 +407,9 @@ func (s *StudioTaskStore) runNext(ctx context.Context) {
 	defer s.mu.Unlock()
 	selected.busy = false
 	if err != nil {
-		if errors.Is(err, errStudioGIFNotAnimated) {
+		if errors.Is(err, errStudioGIFNotAnimated) || errors.Is(err, errStudioSVGNotReturned) {
 			selected.Task.Status = "failed"
-			selected.Task.Error = errStudioGIFNotAnimated.Error()
+			selected.Task.Error = err.Error()
 		} else if selected.Task.Status == "downloading" {
 			selected.Task.Status = "download_failed"
 			selected.Task.Error = "Could not download the generated image. Retry the download without generating again."

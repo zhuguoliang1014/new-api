@@ -237,7 +237,7 @@ const studioTaskSchema = z.object({
   images: z
     .array(
       z.object({
-        index: z.number().int().min(0).max(3),
+        index: z.number().int().min(0).max(127),
         width: z.number().positive(),
         height: z.number().positive(),
         bytes: z.number().nonnegative(),
@@ -246,10 +246,11 @@ const studioTaskSchema = z.object({
           'image/jpeg',
           'image/webp',
           'image/gif',
+          'image/svg+xml',
         ]),
       })
     )
-    .max(4),
+    .max(128),
   download_image_index: z.number().int().nonnegative().optional(),
   downloaded_bytes: z.number().nonnegative(),
   total_bytes: z.number().nonnegative(),

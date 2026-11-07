@@ -47,7 +47,7 @@ func TestStudioGIFParameterValidation(t *testing.T) {
 		model string
 		valid bool
 	}{
-		{"gpt-image-2.6-basic", true}, {"gpt-image-2-basic", false}, {"gpt-image-2.5-flare-native", false}, {"gpt-image-2.6-native", false},
+		{"gpt-image-2.6-basic", true}, {"gpt-image-2-basic", false}, {"gpt-image-2.5-flare-native", false}, {"gpt-image-2.6-flare-native", true},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())

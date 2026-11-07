@@ -132,6 +132,10 @@ export function ImageActions(props: {
     props.image.contentType === 'image/gif' ||
     props.image.src.startsWith('data:image/gif;') ||
     props.record.parameters.format === 'gif'
+  const isSvg =
+    props.image.contentType === 'image/svg+xml' ||
+    props.image.src.startsWith('data:image/svg+xml;') ||
+    props.record.parameters.format === 'svg'
   const editWithReference = async () => {
     const scope = getImageAuthScope()
     setWorking(true)
@@ -186,11 +190,14 @@ export function ImageActions(props: {
         variant='ghost'
         size='sm'
         disabled={
-          working || /^dall-e-/i.test(props.record.parameters.model) || isGif
+          working ||
+          /^dall-e-/i.test(props.record.parameters.model) ||
+          isGif ||
+          isSvg
         }
         title={
-          isGif
-            ? t('GIF outputs cannot be used as reference images.')
+          isGif || isSvg
+            ? t('GIF and SVG outputs cannot be used as reference images.')
             : undefined
         }
         onClick={() => void editWithReference()}

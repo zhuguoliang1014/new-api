@@ -7,10 +7,15 @@ const (
 	ImageStudioDefaultModel = "gpt-image-2.5-flare-basic"
 )
 
-// GIF output is a documented capability of the 2.6 route, not all GPT models.
+// Formats follow the 2.6 family before channel mappings strip the route suffix.
+func IsImageStudioModel26(model string) bool {
+	name := strings.TrimSuffix(strings.TrimSuffix(model, "-basic"), "-native")
+	return name == "gpt-image-2.6" || name == "gpt-image-2.6-flare" || name == "gpt-image-2.6-sunburst"
+}
+
 func IsImageStudioOutputFormatSupported(model, format string) bool {
-	if model == "gpt-image-2.6-basic" || model == "gpt-image-2.6" {
-		return format == "" || format == "auto" || format == "png" || format == "gif"
+	if IsImageStudioModel26(model) {
+		return format == "" || format == "auto" || format == "png" || format == "jpeg" || format == "gif" || format == "svg"
 	}
 	switch format {
 	case "", "png", "jpeg", "webp":

@@ -497,7 +497,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		assert.Empty(t, token.ModelLimits)
 		// Models added after a user's first visit must appear without
 		// changing their key or erasing explicit user restrictions.
-		for _, name := range []string{"gpt-image-2.5-sunburst-basic", "gpt-image-2.6-basic"} {
+		for _, name := range []string{"gpt-image-2.5-sunburst-basic", "gpt-image-2.6-basic", "gpt-image-2.6-flare-basic", "gpt-image-2.6-sunburst-basic", "gpt-image-2.6-flare-native", "gpt-image-2.6-sunburst-native"} {
 			require.NoError(t, db.Create(&model.Ability{Group: service.ImageStudioGroup, Model: name, ChannelId: 2, Enabled: true}).Error)
 		}
 		response = request("/bootstrap", "", "", "{}", false)
@@ -505,6 +505,9 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payload))
 		assert.Contains(t, payload.Data[0].Models, "gpt-image-2.5-sunburst-basic")
 		assert.Contains(t, payload.Data[0].Models, "gpt-image-2.6-basic")
+		for _, name := range []string{"gpt-image-2.6-flare-basic", "gpt-image-2.6-sunburst-basic", "gpt-image-2.6-flare-native", "gpt-image-2.6-sunburst-native"} {
+			assert.Contains(t, payload.Data[0].Models, name)
+		}
 		assert.Equal(t, 200, request("/image", service.ImageStudioGroup, "gpt-image-2.6-basic", `{"size":"4096x4096"}`, false).Code)
 		require.NoError(t, db.Model(token).Updates(map[string]any{"model_limits_enabled": true, "model_limits": "gpt-image-2-hq"}).Error)
 		response = request("/bootstrap", "", "", "{}", false)

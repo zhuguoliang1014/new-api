@@ -932,4 +932,5 @@ export const STATIC_I18N_KEYS = [
   'Channel priority is outside the sortable range',
   // Image studio task errors returned by the server.
   'The upstream did not return an animated GIF. Try a prompt that describes motion.',
+  'The upstream did not return an SVG image.',
 ] as const

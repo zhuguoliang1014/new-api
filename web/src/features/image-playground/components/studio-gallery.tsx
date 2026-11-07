@@ -173,6 +173,13 @@ export function StudioGallery() {
                 <p className='studio-card-prompt'>{record.parameters.prompt}</p>
                 <div className='studio-card-meta'>
                   <span>{record.parameters.model}</span>
+                  {record.images.length !== record.parameters.count && (
+                    <span>
+                      {t('{{count}} images returned', {
+                        count: record.images.length,
+                      })}
+                    </span>
+                  )}
                   <span>
                     {record.parameters.size === 'auto'
                       ? t('Auto')

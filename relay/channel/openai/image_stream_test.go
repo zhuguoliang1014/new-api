@@ -2,6 +2,8 @@ package openai
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -638,4 +640,24 @@ func TestMJImageResponseRejectsEmptyResultsWithoutForwardingSuccess(t *testing.T
 	_, err := OpenaiImageHandler(c, info, resp)
 	require.NotNil(t, err)
 	require.Empty(t, recorder.Body.String())
+}
+
+func TestStudioGIFResponseBillsAllReturnedImages(t *testing.T) {
+	gif := base64.StdEncoding.EncodeToString([]byte("GIF89a-original"))
+	png := base64.StdEncoding.EncodeToString([]byte("\x89PNG-static"))
+	body := fmt.Sprintf(`{"data":[{"b64_json":"%s","output_format":"gif"},{"b64_json":"%s","output_format":"png"}],"usage":{"input_tokens":426,"output_tokens":1825,"total_tokens":2251}}`, gif, png)
+	c, rec, resp, info := newImageTestContext(t, body, "application/json", false)
+	info.OriginModelName = "gpt-image-2.6-basic"
+	info.ImageRequestCount = 1
+	info.Request = &dto.ImageRequest{Model: "gpt-image-2.6-basic", OutputFormat: json.RawMessage(`"gif"`)}
+	requested := 1
+	info.TieredBillingSnapshot = &billingexpr.BillingSnapshot{EstimatedImageCount: &requested}
+	usage, err := OpenaiImageHandler(c, info, resp)
+	require.Nil(t, err)
+	require.Equal(t, 2251, usage.TotalTokens)
+	require.NotNil(t, info.BillingImageCount)
+	require.Equal(t, 2, *info.BillingImageCount)
+	var actual struct{ Data []json.RawMessage }
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &actual))
+	require.Len(t, actual.Data, 2)
 }

@@ -26,6 +26,7 @@ const studioMaxImageBytes int64 = 128 << 20
 const studioMaxResponseBytes int64 = 700 << 20
 
 var errStudioGIFNotAnimated = errors.New("The upstream did not return an animated GIF. Try a prompt that describes motion.")
+var errStudioSVGNotReturned = errors.New("The upstream did not return an SVG image.")
 
 type studioResponseWriter struct {
 	file    *os.File
@@ -143,7 +144,7 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 	if err != nil {
 		return err
 	}
-	if len(payload.Data) == 0 || len(payload.Data) > 4 {
+	if len(payload.Data) == 0 || len(payload.Data) > ImageStudioMaxResults {
 		return errors.New("invalid image response")
 	}
 	var metadata struct {
@@ -154,10 +155,13 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 	if err := common.Unmarshal(e.Task.Metadata, &metadata); err != nil {
 		return err
 	}
+
 	s.mu.Lock()
 	e.Task.DownloadedBytes = 0
 	e.Task.TotalBytes = 0
 	s.mu.Unlock()
+	var totalOriginalBytes int64
+	hasRequestedFormat := metadata.Parameters.Format != "gif" && metadata.Parameters.Format != "svg"
 	for i, item := range payload.Data {
 		var source io.ReadCloser
 		var length int64
@@ -218,17 +222,22 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 		if err != nil {
 			return err
 		}
-		if metadata.Parameters.Format == "gif" {
-			if info.ContentType != "image/gif" {
-				return errStudioGIFNotAnimated
-			}
+		if metadata.Parameters.Format == "gif" && info.ContentType == "image/gif" {
 			animated, err := studioGIFHasAnimation(target + ".tmp")
-			if err != nil || !animated {
-				return errStudioGIFNotAnimated
+			if err != nil {
+				return err
 			}
+			hasRequestedFormat = hasRequestedFormat || animated
+		}
+		if metadata.Parameters.Format == "svg" && info.ContentType == studioSVGContentType {
+			hasRequestedFormat = true
 		}
 		info.Index = i
 		info.Bytes = count
+		totalOriginalBytes += count
+		if totalOriginalBytes > 4*studioMaxImageBytes {
+			return errors.New("image originals exceed storage limit")
+		}
 		if err = os.Rename(target+".tmp", target); err != nil {
 			return err
 		}
@@ -245,6 +254,12 @@ func (s *StudioTaskStore) process(parent context.Context, e *studioTaskEntry, ge
 		if err != nil {
 			return err
 		}
+	}
+	if !hasRequestedFormat {
+		if metadata.Parameters.Format == "gif" {
+			return errStudioGIFNotAnimated
+		}
+		return errStudioSVGNotReturned
 	}
 	// The caller removes the source response only after persisting ready status.
 	return nil
@@ -348,6 +363,17 @@ func (s *StudioTaskStore) prepareImage(source, target string) (StudioTaskImage, 
 		return StudioTaskImage{}, err
 	}
 	defer file.Close()
+	var prefix [512]byte
+	n, err := file.Read(prefix[:])
+	if err != nil && err != io.EOF {
+		return StudioTaskImage{}, err
+	}
+	if _, err = file.Seek(0, io.SeekStart); err != nil {
+		return StudioTaskImage{}, err
+	}
+	if strings.HasPrefix(strings.TrimSpace(strings.TrimPrefix(string(prefix[:n]), "\xef\xbb\xbf")), "<") {
+		return prepareStudioSVG(file)
+	}
 	config, format, err := image.DecodeConfig(file)
 	if err != nil {
 		return StudioTaskImage{}, err

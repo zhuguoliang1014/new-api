@@ -428,3 +428,88 @@ it('rejects GIF on unsupported routes before creating a paid task', async () => 
   ).rejects.toThrow('This model does not support the selected file format.')
   expect(post).not.toHaveBeenCalled()
 })
+
+it.each(['gpt-image-2.6-flare-basic', 'gpt-image-2.6-sunburst-native'])(
+  'submits SVG and restores SVG metadata for %s',
+  async (model) => {
+    const input = { ...parameters, model, format: 'svg' as const }
+    const meta = { ...metadata, parameters: input }
+    const post = vi.spyOn(imageRelayClient, 'post').mockResolvedValue({
+      data: { success: true, data: { ...accepted, metadata: meta } },
+    })
+    await createStudioTask(
+      taskID,
+      input,
+      [],
+      meta,
+      new AbortController().signal
+    )
+    expect(post.mock.calls[0][1]).toMatchObject({
+      output_format: 'svg',
+      response_format: 'b64_json',
+    })
+    vi.spyOn(imageRelayClient, 'get').mockResolvedValue({
+      data: {
+        success: true,
+        data: [
+          {
+            ...accepted,
+            status: 'ready',
+            metadata: meta,
+            images: [
+              {
+                index: 0,
+                width: 640,
+                height: 480,
+                bytes: 4000,
+                content_type: 'image/svg+xml',
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(
+      (await listStudioTasks(new AbortController().signal))[0].images[0]
+        .content_type
+    ).toBe('image/svg+xml')
+  }
+)
+
+it('keeps every mixed GIF and static result even when the provider exceeds requested count', async () => {
+  const input = {
+    ...parameters,
+    model: 'gpt-image-2.6-basic',
+    format: 'gif' as const,
+    count: 1,
+  }
+  const images = Array.from({ length: 5 }, (_, index) => ({
+    index,
+    width: 1024,
+    height: 1024,
+    bytes: 1000,
+    content_type: index === 0 ? 'image/gif' : 'image/png',
+  }))
+  vi.spyOn(imageRelayClient, 'get').mockResolvedValue({
+    data: {
+      success: true,
+      data: [
+        {
+          ...accepted,
+          status: 'ready',
+          metadata: { ...metadata, parameters: input },
+          images,
+        },
+      ],
+    },
+  })
+  const tasks = await listStudioTasks(new AbortController().signal)
+  expect(tasks[0].images).toHaveLength(5)
+  expect(tasks[0].images.map((image) => image.content_type)).toEqual([
+    'image/gif',
+    'image/png',
+    'image/png',
+    'image/png',
+    'image/png',
+  ])
+})

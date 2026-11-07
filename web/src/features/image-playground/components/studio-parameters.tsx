@@ -230,6 +230,11 @@ export function StudioParameters(props: { group?: StudioGroup }) {
         )}
       </div>
       {options.isMidjourney && <StudioMidjourneyParameters />}
+      {options.formats.includes('svg') && (
+        <p className='studio-field-hint'>
+          {t('Charged for every image returned by the provider.')}
+        </p>
+      )}
       {parameters.format === 'gif' && (
         <p className='studio-field-hint'>
           {t('GIF dimensions may be smaller than the requested resolution.')}

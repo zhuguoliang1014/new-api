@@ -276,7 +276,7 @@ func TestStudioGIFRequestRejectsStaticOutputWithoutRegeneration(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, "failed", task.Status)
 			require.Contains(t, task.Error, "animated GIF")
-			require.Empty(t, task.Images)
+			require.Len(t, task.Images, 1) // Preserve the billed original even when the requested format is absent.
 			store.runNext(context.Background())
 			require.Equal(t, 1, calls)
 		})

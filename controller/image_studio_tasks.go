@@ -396,8 +396,12 @@ func DownloadImageStudioImage(c *gin.Context) {
 	}
 	defer file.Close()
 	contentType := info.ContentType
-	if thumbnail {
+	if thumbnail && info.ContentType != "image/svg+xml" {
 		contentType = "image/jpeg"
+	}
+	if contentType == "image/svg+xml" {
+		c.Header("Content-Security-Policy", "sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+		c.Header("Content-Disposition", "inline; filename=\"image.svg\"")
 	}
 	c.Header("Content-Type", contentType)
 	c.Header("X-Content-Type-Options", "nosniff")

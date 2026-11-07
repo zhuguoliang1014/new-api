@@ -125,12 +125,22 @@ export async function getImageBlob(
   }
   const blob = await response.blob()
   if (
-    !['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(blob.type)
+    ![
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+      'image/svg+xml',
+    ].includes(blob.type)
   ) {
     throw new Error(t('The response is not a supported image.'))
   }
   onProgress?.(blob.size, blob.size)
   return blob
+}
+
+export function getImageExtension(contentType: string): string {
+  return contentType === 'image/svg+xml' ? 'svg' : contentType.split('/')[1]
 }
 
 function saveImageDownload(blob: Blob, filename: string): void {
@@ -149,7 +159,7 @@ function saveImageDownload(blob: Blob, filename: string): void {
 
 export async function downloadImage(src: string, id: string): Promise<void> {
   const blob = await getImageBlob(src)
-  saveImageDownload(blob, `new-api-image-${id}.${blob.type.split('/')[1]}`)
+  saveImageDownload(blob, `new-api-image-${id}.${getImageExtension(blob.type)}`)
 }
 
 export async function downloadImagesArchive(
@@ -157,8 +167,10 @@ export async function downloadImagesArchive(
   id: string,
   signal?: AbortSignal
 ): Promise<void> {
-  if (!images.length || images.length > 4) {
-    throw new Error(t('Use up to 4 images per download.'))
+  if (!images.length || images.length > 128) {
+    throw new Error(
+      t('Use up to {{count}} images per download.', { count: 128 })
+    )
   }
   const [{ zipSync }, files] = await Promise.all([
     import('fflate'),
@@ -166,7 +178,7 @@ export async function downloadImagesArchive(
       images.map(async (image, index) => {
         const blob = await getImageBlob(image.src, signal)
         return {
-          name: `new-api-image-${index + 1}.${blob.type.split('/')[1]}`,
+          name: `new-api-image-${index + 1}.${getImageExtension(blob.type)}`,
           data: new Uint8Array(await blob.arrayBuffer()),
         }
       })
@@ -246,7 +258,9 @@ export async function cacheImageRecord(
           src,
           // The JPEG thumbnail is only a loading preview. Show the animated
           // original once cached, including when reopening browser history.
-          previewSrc: blob.type === 'image/gif' ? undefined : image.previewSrc,
+          previewSrc: ['image/gif', 'image/svg+xml'].includes(blob.type)
+            ? undefined
+            : image.previewSrc,
           bytes: blob.size,
           contentType: blob.type,
         }
