@@ -40,6 +40,7 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   display_sold_count: z.number().optional(),
+  sales_limit: z.number().optional(),
   total_amount: z.number(),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
@@ -58,6 +59,11 @@ export interface PlanRecord {
   plan: SubscriptionPlan
   total_amount_usd?: number
   sold_count?: number
+  paid_count?: number
+  reserved_count?: number
+  remaining_count?: number
+  sold_out?: boolean
+  sales_unavailable?: boolean
 }
 
 // ============================================================================

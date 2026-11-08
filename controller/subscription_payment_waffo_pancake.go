@@ -91,7 +91,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	}
 	if err := order.Insert(); err != nil {
 		logger.LogError(c.Request.Context(), common.LogText("Waffo Pancake failed to create subscription order user_id=%d plan_id=%d trade_no=%s error=%q", userId, plan.Id, tradeNo, err.Error()))
-		paymentError(c, common.NewMessage("Failed to create order"))
+		paymentError(c, subscriptionOrderCreationError(err))
 		return
 	}
 
@@ -109,8 +109,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	})
 	if err != nil {
 		logger.LogError(c.Request.Context(), common.LogText("Waffo Pancake failed to create subscription checkout session user_id=%d plan_id=%d trade_no=%s error=%q", userId, plan.Id, tradeNo, err.Error()))
-		order.Status = common.TopUpStatusFailed
-		_ = order.Update()
+		// Transport failure may still have created a payable session. Keep its reservation.
 		paymentError(c, common.NewMessage("Failed to start payment"))
 		return
 	}

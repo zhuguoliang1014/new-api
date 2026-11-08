@@ -100,7 +100,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		paymentError(c, common.NewMessage("Failed to create order"))
+		paymentError(c, subscriptionOrderCreationError(err))
 		return
 	}
 

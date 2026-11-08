@@ -23,11 +23,14 @@ import {
   paySubscriptionEpay,
   paySubscriptionHupijiao,
 } from '@/features/subscriptions/api'
+import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type { PlanRecord } from '@/features/subscriptions/types'
 import { submitPaymentForm } from '@/features/wallet/lib'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
 
 interface Props {
   open: boolean
@@ -64,6 +67,7 @@ export function LocalSubscriptionPurchaseDialog({
   const plan = planRecord?.plan
   if (!plan) return null
 
+  const sales = getPlanSalesState(planRecord)
   const priceCNY = Number(plan.price_cny || 0)
   const totalAmount = Number(plan.total_amount || 0)
   const hasOnlinePayment = (!!enableEpay || !!enableHupijiao) && priceCNY > 0
@@ -77,6 +81,7 @@ export function LocalSubscriptionPurchaseDialog({
   })
 
   const handleOnlinePayment = async () => {
+    if (sales.unavailable) return
     setPaying(true)
     try {
       if (enableEpay) {
@@ -85,7 +90,7 @@ export function LocalSubscriptionPurchaseDialog({
           payment_method: 'alipay',
         })
         if (res.message !== 'success' || !res.url) {
-          toast.error(res.message || t('Payment request failed'))
+          handleServerError(res, t('Payment request failed'))
           return
         }
         submitPaymentForm(res.url, res.data || {})
@@ -105,14 +110,10 @@ export function LocalSubscriptionPurchaseDialog({
         setHupijiaoPaymentOpen(true)
         toast.success(t('Payment initiated'))
       } else {
-        toast.error(
-          res.message && res.message !== 'success'
-            ? res.message
-            : t('Payment request failed')
-        )
+        handleServerError(res, t('Payment request failed'))
       }
-    } catch {
-      toast.error(t('Payment request failed'))
+    } catch (error) {
+      handleServerError(error, t('Payment request failed'))
     } finally {
       setPaying(false)
     }
@@ -182,6 +183,14 @@ export function LocalSubscriptionPurchaseDialog({
               </div>
             </div>
 
+            <PlanSalesStatus record={planRecord} />
+            {sales.unavailable && (
+              <Alert>
+                <AlertDescription>
+                  {sales.soldOut ? t('Sold Out') : t('Places reserved')}
+                </AlertDescription>
+              </Alert>
+            )}
             {limitReached && (
               <Alert variant='destructive'>
                 <AlertDescription>
@@ -196,7 +205,7 @@ export function LocalSubscriptionPurchaseDialog({
                 variant='outline'
                 className='w-full gap-2'
                 onClick={handleOnlinePayment}
-                disabled={paying || limitReached}
+                disabled={paying || limitReached || sales.unavailable}
               >
                 <SiAlipay className='h-4 w-4' style={{ color: '#1677FF' }} />
                 {hupijiaoPaymentMethodName || t('Alipay')}

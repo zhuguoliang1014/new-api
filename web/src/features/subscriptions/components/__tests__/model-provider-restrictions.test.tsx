@@ -79,6 +79,12 @@ test.each([
         </SubscriptionsProvider>
       </QueryClientProvider>
     )
+    const salesLimit = await screen.findByRole('spinbutton', {
+      name: 'Total Sales Limit',
+    })
+    expect(salesLimit).toHaveValue(0)
+    await user.clear(salesLimit)
+    await user.type(salesLimit, '30')
     const multiplier = await screen.findByRole('spinbutton', {
       name: 'Plan billing multiplier',
     })
@@ -113,6 +119,7 @@ test.each([
           plan: expect.objectContaining({
             allowed_channel_types: expected,
             billing_ratio: ratio,
+            sales_limit: 30,
           }),
         })
       )
@@ -153,5 +160,43 @@ test.each([0, -1, Infinity, Number.NaN])(
     expect(
       getPlanFormSchema(t).shape.billing_ratio.safeParse(billing_ratio).success
     ).toBe(false)
+  }
+)
+
+test.each([-1, 1.5, 2147483648, Infinity, Number.NaN])(
+  'both editors reject invalid total sales limit %s',
+  (sales_limit) => {
+    expect(
+      getPlanCreateFormSchema(t).shape.sales_limit.safeParse(sales_limit)
+        .success
+    ).toBe(false)
+    expect(
+      getPlanFormSchema(t).shape.sales_limit.safeParse(sales_limit).success
+    ).toBe(false)
+  }
+)
+
+test.each([0, 30])(
+  'both editors preserve total sales limit %s',
+  (sales_limit) => {
+    const plan = subscriptionPlanSchema.parse({
+      ...createFormValuesToPayload(
+        {
+          ...PLAN_CREATE_FORM_DEFAULTS,
+          title: 'Limited plan',
+          price_cny: 7,
+          sales_limit,
+        },
+        500000
+      ).plan,
+      id: 7,
+    })
+    expect(
+      createFormValuesToPayload(planToCreateFormValues(plan), 500000).plan
+        .sales_limit
+    ).toBe(sales_limit)
+    expect(
+      formValuesToPlanPayload(planToFormValues(plan)).plan.sales_limit
+    ).toBe(sales_limit)
   }
 )

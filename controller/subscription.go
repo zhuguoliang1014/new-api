@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"strconv"
 	"strings"
 
@@ -29,12 +30,26 @@ func saleWindowErrorMessage(plan *model.SubscriptionPlan) string {
 	}
 }
 
+// Preserve inventory messages without exposing database errors to the purchaser.
+func subscriptionOrderCreationError(err error) error {
+	var message *common.Message
+	if errors.As(err, &message) {
+		return message
+	}
+	return common.NewMessage("Failed to create order")
+}
+
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan           model.SubscriptionPlan `json:"plan"`
-	TotalAmountUSD float64                `json:"total_amount_usd"`
-	SoldCount      int64                  `json:"sold_count"`
+	Plan             model.SubscriptionPlan `json:"plan"`
+	TotalAmountUSD   float64                `json:"total_amount_usd"`
+	SoldCount        int64                  `json:"sold_count"`
+	PaidCount        int64                  `json:"paid_count"`
+	ReservedCount    int64                  `json:"reserved_count"`
+	RemainingCount   int64                  `json:"remaining_count"`
+	SoldOut          bool                   `json:"sold_out"`
+	SalesUnavailable bool                   `json:"sales_unavailable"`
 }
 
 func newSubscriptionPlanDTO(plan model.SubscriptionPlan, soldCount int64) SubscriptionPlanDTO {
@@ -76,9 +91,22 @@ func buildSubscriptionPlanDTOs(plans []model.SubscriptionPlan) ([]SubscriptionPl
 		}
 	}
 
+	salesCounts, err := model.GetSubscriptionSalesCounts(planIds)
+	if err != nil {
+		return nil, err
+	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		result = append(result, newSubscriptionPlanDTO(p, soldCounts[p.Id]))
+		record := newSubscriptionPlanDTO(p, soldCounts[p.Id])
+		sales := salesCounts[p.Id]
+		record.PaidCount = sales.Sold
+		record.ReservedCount = sales.Reserved
+		if p.SalesLimit > 0 {
+			record.RemainingCount = max(0, int64(p.SalesLimit)-sales.Sold-sales.Reserved)
+			record.SoldOut = sales.Sold >= int64(p.SalesLimit)
+			record.SalesUnavailable = record.RemainingCount == 0
+		}
+		result = append(result, record)
 	}
 	return result, nil
 }
@@ -303,6 +331,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
+	if req.Plan.SalesLimit < 0 || req.Plan.SalesLimit > 2147483647 {
+		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
+		return
+	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorT(c, "Purchase limit cannot be negative")
 		return
@@ -395,6 +427,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	if req.Plan.DurationValue <= 0 && req.Plan.DurationUnit != model.SubscriptionDurationCustom {
 		req.Plan.DurationValue = 1
 	}
+	if req.Plan.SalesLimit < 0 || req.Plan.SalesLimit > 2147483647 {
+		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
+		return
+	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorT(c, "Purchase limit cannot be negative")
 		return
@@ -434,6 +470,9 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := model.ValidateSubscriptionSalesLimitTx(tx, id, req.Plan.SalesLimit); err != nil {
+			return err
+		}
 		// update plan (allow zero values updates with map)
 		updateMap := map[string]any{
 			"title":                      req.Plan.Title,
@@ -450,6 +489,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"creem_product_id":           req.Plan.CreemProductId,
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
+			"sales_limit":                req.Plan.SalesLimit,
 			"allowed_channel_types":      req.Plan.AllowedChannelTypes,
 			"billing_ratio":              req.Plan.BillingRatio,
 			"total_amount":               req.Plan.TotalAmount,

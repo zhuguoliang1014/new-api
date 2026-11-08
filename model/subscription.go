@@ -177,6 +177,8 @@ type SubscriptionPlan struct {
 
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
+	// Lifetime paid sales cap; pending checkouts reserve a place. 0 = unlimited.
+	SalesLimit int `json:"sales_limit" gorm:"type:int;not null;default:0"`
 
 	// AllowedChannelTypes stores model-provider identifiers using legacy channel-type IDs.
 	// It matches the requested model family, never the selected transport (1=OpenAI, 14=Anthropic).
@@ -299,7 +301,16 @@ func (o *SubscriptionOrder) Insert() error {
 	if o.CreateTime == 0 {
 		o.CreateTime = common.GetTimestamp()
 	}
-	return DB.Create(o).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := lockSubscriptionSalePlanTx(tx, o.PlanId)
+		if err != nil {
+			return err
+		}
+		if err := checkSubscriptionSaleCapacityTx(tx, plan); err != nil {
+			return err
+		}
+		return tx.Create(o).Error
+	})
 }
 
 func (o *SubscriptionOrder) Update() error {
@@ -653,7 +664,23 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	var orderInfo SubscriptionOrder
+	if err := DB.Select("plan_id", "status", "payment_provider").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
+		return ErrSubscriptionOrderNotFound
+	}
+	if expectedPaymentProvider != "" && orderInfo.PaymentProvider != expectedPaymentProvider {
+		return ErrPaymentMethodMismatch
+	}
+	if orderInfo.Status == common.TopUpStatusSuccess {
+		return nil
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		// All sales paths acquire the plan before order/user locks. Completion
+		// converts an existing reservation; it must not reserve a second place.
+		plan, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId)
+		if err != nil {
+			return err
+		}
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
@@ -666,10 +693,6 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		}
 		if order.Status != common.TopUpStatusPending && !(expectedPaymentProvider == PaymentProviderEpay && (order.Status == common.TopUpStatusExpired || order.Status == common.TopUpStatusCanceled)) {
 			return ErrSubscriptionOrderStatusInvalid
-		}
-		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
-		if err != nil {
-			return err
 		}
 		if !plan.Enabled {
 			// still allow completion for already purchased orders
@@ -877,7 +900,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	var chargedQuota int
 	var upgradeGroup string
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		plan, err := lockSubscriptionSalePlanTx(tx, planId)
 		if err != nil {
 			return err
 		}
@@ -889,6 +912,9 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		}
 		if plan.AllowBalancePay != nil && !*plan.AllowBalancePay {
 			return common.NewMessage("This plan does not allow balance redemption")
+		}
+		if err := checkSubscriptionSaleCapacityTx(tx, plan); err != nil {
+			return err
 		}
 
 		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)

@@ -41,7 +41,9 @@ import {
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -132,7 +134,7 @@ export function SubscriptionPlansCard({
   const handleRefresh = async () => {
     setRefreshing(true)
     try {
-      await fetchSelfSubscription()
+      await Promise.all([fetchPlans(), fetchSelfSubscription()])
     } finally {
       setRefreshing(false)
     }
@@ -255,6 +257,7 @@ export function SubscriptionPlansCard({
                 variant='ghost'
                 size='icon'
                 className='h-8 w-8'
+                aria-label={t('Refresh')}
                 onClick={handleRefresh}
                 disabled={refreshing}
               >
@@ -405,6 +408,13 @@ export function SubscriptionPlansCard({
               const limit = Number(plan.max_purchase_per_user || 0)
               const count = planPurchaseCountMap.get(plan.id) || 0
               const reached = limit > 0 && count >= limit
+              const sales = getPlanSalesState(p)
+              let unavailableLabel = t('Limit Reached')
+              if (sales.soldOut) {
+                unavailableLabel = t('Sold Out')
+              } else if (sales.unavailable) {
+                unavailableLabel = t('Places reserved')
+              }
 
               const benefits = [
                 `${t('Validity Period')}: ${formatDuration(plan, t)}`,
@@ -468,17 +478,20 @@ export function SubscriptionPlansCard({
                       ))}
                     </div>
 
+                    <PlanSalesStatus record={p} />
                     <Separator className='mb-3' />
 
-                    {reached ? (
+                    {sales.unavailable || reached ? (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
                           <Button variant='outline' className='w-full' disabled>
-                            {t('Limit Reached')}
+                            {unavailableLabel}
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {t('Purchase limit reached')} ({count}/{limit})
+                          {sales.unavailable
+                            ? unavailableLabel
+                            : `${t('Purchase limit reached')} (${count}/${limit})`}
                         </TooltipContent>
                       </Tooltip>
                     ) : (
@@ -510,7 +523,7 @@ export function SubscriptionPlansCard({
         onOpenChange={(open) => {
           setPurchaseOpen(open)
           if (!open) {
-            fetchSelfSubscription()
+            void Promise.all([fetchPlans(), fetchSelfSubscription()])
           }
         }}
         plan={selectedPlan}

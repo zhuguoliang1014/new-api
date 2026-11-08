@@ -31,9 +31,23 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 		refCol = `"trade_no"`
 	}
 
+	var orderInfo SubscriptionOrder
+	if err := DB.Select("plan_id", "status", "payment_provider").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
+		return ErrSubscriptionOrderNotFound
+	}
+	if orderInfo.PaymentProvider != SubscriptionPaymentProviderHupijiao {
+		return ErrPaymentMethodMismatch
+	}
+	if orderInfo.Status == common.TopUpStatusSuccess {
+		return nil
+	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		plan, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId)
+		if err != nil {
+			return err
+		}
 		// 锁定订单记录
-		err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error
+		err = lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrSubscriptionOrderNotFound
@@ -72,12 +86,6 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 
 		if err := tx.Save(&order).Error; err != nil {
 			return fmt.Errorf("更新订单失败: %w", err)
-		}
-
-		// 获取套餐信息
-		plan, err := getSubscriptionPlanByIdTx(tx, order.PlanId)
-		if err != nil {
-			return fmt.Errorf("套餐不存在: %w", err)
 		}
 
 		// 创建用户订阅

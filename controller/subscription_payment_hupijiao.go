@@ -89,10 +89,7 @@ func SubscriptionRequestHupijiao(c *gin.Context) {
 	err = order.Insert()
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒订阅订单创建失败 user_id=%d err=%v", userId, err))
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "创建订单失败",
-		})
+		common.ApiError(c, subscriptionOrderCreationError(err))
 		return
 	}
 
@@ -107,6 +104,8 @@ func SubscriptionRequestHupijiao(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := topUp.Insert(); err != nil {
+		// No upstream checkout has been requested, so this place can be released.
+		_ = model.DB.Model(order).Where("status = ?", common.TopUpStatusPending).Update("status", common.TopUpStatusFailed).Error
 		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒订阅账单订单创建失败 user_id=%d trade_no=%s err=%v", userId, tradeNo, err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,

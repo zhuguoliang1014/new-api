@@ -37,6 +37,8 @@ import {
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { createPlan, getGroups, updatePlan } from '../api'
@@ -144,22 +146,24 @@ export function SubscriptionCreateDrawer({
         currentRow?.plan
       )
       if (isEdit && currentRow?.plan?.id) {
-        const res = await updatePlan(currentRow.plan.id, payload)
+        const res = requireServerSuccess(
+          await updatePlan(currentRow.plan.id, payload)
+        )
         if (res.success) {
           toast.success(t('Update succeeded'))
           onOpenChange(false)
           triggerRefresh()
         }
       } else {
-        const res = await createPlan(payload)
+        const res = requireServerSuccess(await createPlan(payload))
         if (res.success) {
           toast.success(t('Create succeeded'))
           onOpenChange(false)
           triggerRefresh()
         }
       }
-    } catch {
-      toast.error(t('Request failed'))
+    } catch (error) {
+      handleServerError(error, t('Request failed'))
     } finally {
       setIsSubmitting(false)
     }
@@ -371,6 +375,36 @@ export function SubscriptionCreateDrawer({
               </div>
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+                <FormField
+                  control={form.control}
+                  name='sales_limit'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Total Sales Limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          max={2147483647}
+                          step={1}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === '' ? 0 : Number(e.target.value)
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          '0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
                 <FormField
                   control={form.control}
                   name='max_purchase_per_user'

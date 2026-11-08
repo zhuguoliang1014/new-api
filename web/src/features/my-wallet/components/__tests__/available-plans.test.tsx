@@ -491,3 +491,54 @@ it('keeps the flush catalog heading outside any rounded clipping mask', async ()
     'overflow-hidden'
   )
 })
+
+it.each([true, false])(
+  'shows sold out with online payments enabled=%s when all 30 places are sold',
+  async (paymentEnabled) => {
+    await renderPlans(
+      [
+        {
+          ...plan({ sales_limit: 30 }),
+          paid_count: 30,
+          remaining_count: 0,
+          sold_out: true,
+          sales_unavailable: true,
+        },
+      ],
+      { language: 'zhCN', paymentEnabled }
+    )
+    expect(screen.getByRole('button', { name: '售罄' })).toBeDisabled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  }
+)
+
+it('shows temporary unavailability when pending payments reserve the remaining places', async () => {
+  await renderPlans([
+    {
+      ...plan({ sales_limit: 30 }),
+      paid_count: 29,
+      reserved_count: 1,
+      remaining_count: 0,
+      sold_out: false,
+      sales_unavailable: true,
+    },
+  ])
+  expect(screen.getByRole('button', { name: 'Places reserved' })).toBeDisabled()
+  expect(screen.getByText('Limited to 30 · 0 available')).toBeVisible()
+})
+
+it('uses real stock rather than display sales to keep remaining places purchasable', async () => {
+  await renderPlans([
+    {
+      ...plan({ sales_limit: 30, display_sold_count: 999 }),
+      sold_count: 999,
+      paid_count: 5,
+      reserved_count: 2,
+      remaining_count: 23,
+      sold_out: false,
+      sales_unavailable: false,
+    },
+  ])
+  expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
+  expect(screen.getByText('Limited to 30 · 23 available')).toBeVisible()
+})

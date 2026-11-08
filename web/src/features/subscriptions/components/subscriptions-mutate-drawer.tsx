@@ -467,6 +467,36 @@ export function SubscriptionsMutateDrawer({
 
                 <FormField
                   control={form.control}
+                  name='sales_limit'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Total Sales Limit')}</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type='number'
+                          min={0}
+                          max={2147483647}
+                          step={1}
+                          onChange={(e) =>
+                            field.onChange(
+                              e.target.value === '' ? 0 : Number(e.target.value)
+                            )
+                          }
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          '0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name='max_purchase_per_user'
                   render={({ field }) => (
                     <FormItem>

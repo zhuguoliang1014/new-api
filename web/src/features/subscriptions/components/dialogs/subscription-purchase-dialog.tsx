@@ -27,6 +27,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Combobox } from '@/components/ui/combobox'
 import { Separator } from '@/components/ui/separator'
+import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
+import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
 import { formatQuota } from '@/lib/format'
@@ -135,6 +137,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const userQuota = Math.max(0, Number(props.userQuota || 0))
   const allowBalancePay = plan.allow_balance_pay !== false
   const insufficientBalance = userQuota < balanceCost
+  const sales = getPlanSalesState(props.plan)
   const limitReached =
     (props.purchaseLimit || 0) > 0 &&
     (props.purchaseCount || 0) >= (props.purchaseLimit || 0)
@@ -328,6 +331,14 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
         </div>
 
+        <PlanSalesStatus record={props.plan} />
+        {sales.unavailable && (
+          <Alert>
+            <AlertDescription>
+              {sales.soldOut ? t('Sold Out') : t('Places reserved')}
+            </AlertDescription>
+          </Alert>
+        )}
         {limitReached && (
           <Alert variant='destructive'>
             <AlertDescription>
@@ -363,7 +374,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
             variant='outline'
             onClick={handlePayBalance}
             disabled={
-              paying || limitReached || !allowBalancePay || insufficientBalance
+              paying ||
+              sales.unavailable ||
+              limitReached ||
+              !allowBalancePay ||
+              insufficientBalance
             }
           >
             {t('Pay with Balance')}
@@ -382,7 +397,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     variant='outline'
                     className='flex-1'
                     onClick={handlePayStripe}
-                    disabled={paying || limitReached}
+                    disabled={paying || sales.unavailable || limitReached}
                   >
                     Stripe
                   </Button>
@@ -392,7 +407,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     variant='outline'
                     className='flex-1'
                     onClick={handlePayCreem}
-                    disabled={paying || limitReached}
+                    disabled={paying || sales.unavailable || limitReached}
                   >
                     Creem
                   </Button>
@@ -402,7 +417,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                     variant='outline'
                     className='flex-1'
                     onClick={handlePayWaffoPancake}
-                    disabled={paying || limitReached}
+                    disabled={paying || sales.unavailable || limitReached}
                   >
                     Waffo Pancake
                   </Button>
@@ -419,12 +434,17 @@ export function SubscriptionPurchaseDialog(props: Props) {
                   }))}
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
-                  disabled={limitReached}
+                  disabled={sales.unavailable || limitReached}
                   className='flex-1'
                 />
                 <Button
                   onClick={handlePayEpay}
-                  disabled={paying || !selectedEpayMethod || limitReached}
+                  disabled={
+                    paying ||
+                    sales.unavailable ||
+                    !selectedEpayMethod ||
+                    limitReached
+                  }
                 >
                   {t('Pay')}
                 </Button>

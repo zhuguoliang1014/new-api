@@ -82,7 +82,7 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 		common.RedisEnabled, common.BatchUpdateEnabled, common.MemoryCacheEnabled = oldRedis, oldBatch, oldMemory
 		require.NoError(t, sqlDB.Close())
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.Channel{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.SubscriptionOrder{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.Channel{}, &model.Log{}))
 	if useTransaction {
 		db = db.Begin()
 		require.NoError(t, db.Error)
@@ -1189,5 +1189,64 @@ func TestNativeEpayQueryNormalizesGatewayStatesWithoutAcceptingMalformedPaidOrde
 			assert.Equal(t, "provider-query", result.ProviderID)
 			assert.Equal(t, "10.00", result.Money)
 		})
+	}
+}
+
+func TestSubscriptionSalesLimitAPI(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	confirmPaymentComplianceForTest(t)
+	plan := model.SubscriptionPlan{Title: "Limited", PriceAmount: 1, PriceCNY: 7, SalesLimit: 30, DisplaySoldCount: 999}
+	request := func(create bool) *httptest.ResponseRecorder {
+		body, err := common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: plan})
+		require.NoError(t, err)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/admin/plans", bytes.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		if create {
+			AdminCreateSubscriptionPlan(c)
+		} else {
+			c.Params = gin.Params{{Key: "id", Value: fmt.Sprint(plan.Id)}}
+			AdminUpdateSubscriptionPlan(c)
+		}
+		return recorder
+	}
+	require.Contains(t, request(true).Body.String(), `"success":true`)
+	require.NoError(t, db.First(&plan).Error)
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+	require.Equal(t, 30, plan.SalesLimit)
+	for i := range 30 {
+		status := common.TopUpStatusSuccess
+		if i == 29 {
+			status = common.TopUpStatusPending
+		}
+		require.NoError(t, db.Create(&model.SubscriptionOrder{PlanId: plan.Id, TradeNo: fmt.Sprintf("stock-%d", i), Status: status}).Error)
+	}
+	checkCatalog := func(soldOut bool) {
+		records, err := buildSubscriptionPlanDTOs([]model.SubscriptionPlan{plan})
+		require.NoError(t, err)
+		require.Len(t, records, 1)
+		assert.Equal(t, soldOut, records[0].SoldOut)
+		assert.True(t, records[0].SalesUnavailable)
+		assert.Zero(t, records[0].RemainingCount)
+		assert.EqualValues(t, 999, records[0].SoldCount, "display sales never determine stock")
+	}
+	checkCatalog(false)
+	plan.SalesLimit = 29
+	require.Contains(t, request(false).Body.String(), `"success":false`)
+	var saved model.SubscriptionPlan
+	require.NoError(t, db.First(&saved, plan.Id).Error)
+	assert.Equal(t, 30, saved.SalesLimit)
+	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Where("plan_id = ?", plan.Id).Update("status", common.TopUpStatusSuccess).Error)
+	plan.SalesLimit = 30
+	checkCatalog(true)
+	plan.SalesLimit = 0
+	require.Contains(t, request(false).Body.String(), `"success":true`)
+	require.NoError(t, db.First(&saved, plan.Id).Error)
+	assert.Zero(t, saved.SalesLimit)
+	for _, limit := range []int{-1, 2147483648} {
+		plan.SalesLimit = limit
+		require.Contains(t, request(true).Body.String(), `"success":false`)
+		require.Contains(t, request(false).Body.String(), `"success":false`)
 	}
 }

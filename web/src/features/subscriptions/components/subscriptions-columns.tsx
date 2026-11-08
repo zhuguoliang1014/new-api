@@ -30,6 +30,7 @@ import { formatQuota } from '@/lib/format'
 import { formatDuration, formatResetPeriod } from '../lib'
 import type { PlanRecord } from '../types'
 import { DataTableRowActions } from './data-table-row-actions'
+import { PlanSalesStatus } from './plan-sales-status'
 
 export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
   const { t } = useTranslation()
@@ -63,6 +64,18 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
           )
         },
         size: 200,
+      },
+      {
+        id: 'sales_limit',
+        accessorFn: (row) => row.plan.sales_limit || 0,
+        header: t('Total Sales Limit'),
+        cell: ({ row }) =>
+          row.original.plan.sales_limit ? (
+            <PlanSalesStatus record={row.original} />
+          ) : (
+            t('Unlimited')
+          ),
+        size: 180,
       },
       {
         accessorFn: (row) => row.plan.price_cny,

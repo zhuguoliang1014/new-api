@@ -106,7 +106,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		Status:          common.TopUpStatusPending,
 	}
 	if err := order.Insert(); err != nil {
-		common.ApiErrorT(c, "Failed to create order")
+		common.ApiError(c, subscriptionOrderCreationError(err))
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
@@ -119,7 +119,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
+		_ = model.DB.Model(order).Where("status = ?", common.TopUpStatusPending).Update("status", common.TopUpStatusFailed).Error
 		common.ApiErrorT(c, "Failed to start payment")
 		return
 	}

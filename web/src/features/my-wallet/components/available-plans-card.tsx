@@ -22,11 +22,13 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
+import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
 import {
   formatDuration,
   formatResetPeriod,
   formatTimestamp,
 } from '@/features/subscriptions/lib'
+import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type {
   PlanRecord,
   SubscriptionPlan,
@@ -252,6 +254,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
             const limit = Number(plan.max_purchase_per_user || 0)
             const count = planPurchaseCountMap.get(plan.id) || 0
             const reached = limit > 0 && count >= limit
+            const sales = getPlanSalesState(p)
             const soldCount = Number(p.sold_count || 0)
             const resetPeriod = formatResetPeriod(plan, t)
             const savings = props.planSavings?.get(plan.id)
@@ -259,7 +262,11 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
             const sale = computeSaleWindow(plan, nowSec)
             const isSaleable =
               sale.status !== 'upcoming' && sale.status !== 'ended'
-            const purchasable = isSaleable && !reached && onlinePaymentEnabled
+            const purchasable =
+              isSaleable &&
+              !reached &&
+              !sales.unavailable &&
+              onlinePaymentEnabled
             const isRecommended = isPopular && purchasable
 
             const quotaLabel =
@@ -299,7 +306,11 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
             }
 
             let buttonLabel = t('Subscribe Now')
-            if (reached) {
+            if (sales.soldOut) {
+              buttonLabel = t('Sold Out')
+            } else if (sales.unavailable) {
+              buttonLabel = t('Places reserved')
+            } else if (reached) {
               buttonLabel = t('Limit Reached')
             } else if (sale.status === 'upcoming') {
               buttonLabel = t('Not Started')
@@ -381,6 +392,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                     </div>
                   </div>
 
+                  <PlanSalesStatus record={p} />
                   <div
                     data-slot='plan-price-quota'
                     className='mt-3 grid grid-cols-2 gap-3 border-y py-2.5'
@@ -482,7 +494,10 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                   </dl>
 
                   <div className='mt-auto pt-4'>
-                    {!onlinePaymentEnabled && isSaleable && !reached ? (
+                    {!onlinePaymentEnabled &&
+                    isSaleable &&
+                    !reached &&
+                    !sales.unavailable ? (
                       <Tooltip>
                         <TooltipTrigger render={<div />}>
                           <Button
