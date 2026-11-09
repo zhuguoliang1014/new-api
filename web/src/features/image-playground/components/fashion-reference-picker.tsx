@@ -198,16 +198,19 @@ export function FashionReferencePicker(props: {
       </div>
       <div className='shoot-picker-sources'>
         <span>{t('{{count}} references', { count: assets.length })}</span>
-        {role === 'pose' && (
-          <Button
-            size='sm'
-            variant='outline'
-            aria-pressed={depth}
-            onClick={() => setDepth((value) => !value)}
-          >
-            {t('Depth map')}
-          </Button>
-        )}
+        {role === 'pose' &&
+          assets.some((asset) =>
+            asset.views.some((view) => Boolean(view.depth))
+          ) && (
+            <Button
+              size='sm'
+              variant='outline'
+              aria-pressed={depth}
+              onClick={() => setDepth((value) => !value)}
+            >
+              {t('Depth map')}
+            </Button>
+          )}
         {canUpload && (
           <Button
             variant='outline'

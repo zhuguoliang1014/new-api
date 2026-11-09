@@ -48,3 +48,6 @@ go.work
 go.work.sum
 
 /image-studio/
+
+# Hosted image studio originals and previews are provisioned outside Git.
+/image-studio-assets
