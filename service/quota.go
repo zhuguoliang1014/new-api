@@ -474,9 +474,9 @@ func postConsumeQuotaWithResult(relayInfo *relaycommon.RelayInfo, quota int, pre
 	} else {
 		// Wallet
 		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
+			_, err = model.ConsumeWalletQuota(relayInfo.UserId, relayInfo.RequestId, quota, false)
 		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+			err = model.RefundWalletQuota(relayInfo.UserId, relayInfo.RequestId, -quota)
 		}
 		if err != nil {
 			return result, err

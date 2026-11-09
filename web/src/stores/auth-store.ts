@@ -36,6 +36,9 @@ export interface AuthUser {
   role: number
   status?: number
   group?: string
+  balance_quota?: number
+  gift_quota?: number
+  next_gift_expiry?: number
   quota?: number
   used_quota?: number
   request_count?: number

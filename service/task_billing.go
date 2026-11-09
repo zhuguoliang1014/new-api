@@ -119,9 +119,10 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
 	if delta > 0 {
-		return model.DecreaseUserQuota(task.UserId, delta, false)
+		_, err := model.ConsumeWalletQuota(task.UserId, task.PrivateData.WalletRequestID, delta, false)
+		return err
 	}
-	return model.IncreaseUserQuota(task.UserId, -delta, false)
+	return model.RefundWalletQuota(task.UserId, task.PrivateData.WalletRequestID, -delta)
 }
 
 // taskAdjustTokenQuota 调整任务的令牌额度，delta > 0 表示扣费，delta < 0 表示退还。

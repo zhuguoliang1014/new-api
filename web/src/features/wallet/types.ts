@@ -224,6 +224,9 @@ export interface AffiliateTransferRequest {
  * User wallet data
  */
 export interface UserWalletData {
+  balance_quota?: number
+  gift_quota?: number
+  next_gift_expiry?: number
   /** User ID */
   id: number
   /** Username */

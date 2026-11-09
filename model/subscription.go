@@ -926,13 +926,13 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		if err := lockForUpdate(tx).Where("id = ?", userId).First(&user).Error; err != nil {
 			return err
 		}
-		if requiredQuota > 0 && user.Quota < requiredQuota {
-			return common.NewMessage("Insufficient balance")
-		}
 		if requiredQuota > 0 {
-			if err := tx.Model(&User{}).Where("id = ?", userId).
-				Update("quota", gorm.Expr("quota - ?", requiredQuota)).Error; err != nil {
+			ok, err := consumeWalletQuotaTx(tx, &user, "", requiredQuota, true)
+			if err != nil {
 				return err
+			}
+			if !ok {
+				return common.NewMessage("Insufficient balance")
 			}
 		}
 

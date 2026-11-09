@@ -103,7 +103,7 @@ func TestTryReserveQuotaWithoutRedis(t *testing.T) {
 	assert.Equal(t, 55, getTokenFromDB(t, token.Id).RemainQuota)
 }
 
-func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
+func TestWalletReserveCommitsImmediatelyEvenWithBatchAndStaleRedis(t *testing.T) {
 	truncateTables(t)
 	resetBatchUpdateTestState(t)
 	useUserCacheMiniRedis(t)
@@ -113,11 +113,14 @@ func TestRedisBatchReserveNeverFallsBackToStaleDatabaseBalance(t *testing.T) {
 	reserved, err := TryReserveUserQuota(user.Id, 8)
 	require.NoError(t, err)
 	assert.True(t, reserved)
-	assert.Equal(t, 10, getUserQuotaFromDB(t, user.Id), "batch delta is not flushed yet")
+	assert.Equal(t, 2, getUserQuotaFromDB(t, user.Id), "wallet deductions must commit with gift allocations before returning")
+	// Cached balances are a hint only; even a stale larger value cannot authorize a spend.
+	require.NoError(t, populateUserCache(user))
+	require.NoError(t, cacheIncrUserQuota(user.Id, 8))
 
 	reserved, err = TryReserveUserQuota(user.Id, 3)
 	require.NoError(t, err)
-	assert.False(t, reserved, "stale DB balance must not authorize a second spend")
+	assert.False(t, reserved, "stale Redis balance must not authorize a second spend")
 	cachedUser, err := GetUserCache(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, 2, cachedUser.Quota)

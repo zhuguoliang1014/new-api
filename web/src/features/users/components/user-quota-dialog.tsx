@@ -42,6 +42,7 @@ interface UserQuotaDialogProps {
 
 export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const { t } = useTranslation()
+  const [quotaType, setQuotaType] = useState<'balance' | 'gift'>('gift')
   const [mode, setMode] = useState<QuotaAdjustMode>('add')
   const [amount, setAmount] = useState('')
   const [loading, setLoading] = useState(false)
@@ -54,6 +55,9 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   const quotaValue = parseQuotaFromDollars(Math.abs(amountValue))
 
   const getPreviewText = () => {
+    if (quotaType === 'gift') {
+      return `${t('Gift balance')}: +${formatQuota(quotaValue)}`
+    }
     const current = props.currentQuota
     const val = quotaValue
     switch (mode) {
@@ -81,6 +85,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
       const result = await adjustUserQuota({
         id: props.userId,
         action: 'add_quota',
+        quota_type: quotaType,
         mode,
         value: mode === 'override' ? value : Math.abs(value),
       })
@@ -101,6 +106,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
   }
 
   const handleCancel = () => {
+    setQuotaType('gift')
     setAmount('')
     setMode('add')
     props.onOpenChange(false)
@@ -130,6 +136,35 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
       }
     >
       <div className='space-y-4'>
+        <div className='space-y-2'>
+          <Label>{t('Quota type')}</Label>
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              variant={quotaType === 'gift' ? 'default' : 'outline'}
+              aria-pressed={quotaType === 'gift'}
+              onClick={() => {
+                setQuotaType('gift')
+                setMode('add')
+              }}
+            >
+              {t('Gift balance')}
+            </Button>
+            <Button
+              type='button'
+              variant={quotaType === 'balance' ? 'default' : 'outline'}
+              aria-pressed={quotaType === 'balance'}
+              onClick={() => setQuotaType('balance')}
+            >
+              {t('Account balance')}
+            </Button>
+          </div>
+          <p className='text-muted-foreground text-sm'>
+            {quotaType === 'gift'
+              ? t('Expires 30 days after grant')
+              : t('Purchased balance never expires')}
+          </p>
+        </div>
         <div className='text-muted-foreground text-sm'>{getPreviewText()}</div>
 
         <div className='space-y-2'>
@@ -138,6 +173,7 @@ export function UserQuotaDialog(props: UserQuotaDialogProps) {
             {(['add', 'subtract', 'override'] as const).map((m) => (
               <Button
                 key={m}
+                disabled={quotaType === 'gift' && m !== 'add'}
                 type='button'
                 variant='outline'
                 size='sm'

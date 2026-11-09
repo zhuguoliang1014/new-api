@@ -410,11 +410,25 @@ func GetUser(c *gin.Context) {
 		common.ApiErrorT(c, "No permission to access users of same or higher level")
 		return
 	}
+	balance, err := model.GetWalletBalance(user.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	user.Quota = balance.Quota
+	user.BalanceQuota = balance.BalanceQuota
+	user.GiftQuota = balance.GiftQuota
+	user.NextGiftExpiry = balance.NextGiftExpiry
 	user.AdminPermissions = authz.Capabilities(user.Id, user.Role)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
-		"data":    user,
+		"data": struct {
+			*model.User
+			BalanceQuota   int   `json:"balance_quota"`
+			GiftQuota      int   `json:"gift_quota"`
+			NextGiftExpiry int64 `json:"next_gift_expiry"`
+		}{user, balance.BalanceQuota, balance.GiftQuota, balance.NextGiftExpiry},
 	})
 	return
 }
@@ -550,6 +564,9 @@ func GetSelf(c *gin.Context) {
 // administrator-only remarks.
 func buildSelfUserData(user *model.User) map[string]any {
 	userSetting := user.GetSetting()
+	if !user.GiftWalletEnabled {
+		user.BalanceQuota = user.Quota
+	}
 	permissions := calculateUserPermissions(user.Role)
 	permissions["admin_permissions"] = authz.Capabilities(user.Id, user.Role)
 	return map[string]any{
@@ -567,6 +584,9 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"telegram_id":       user.TelegramId,
 		"group":             user.Group,
 		"quota":             user.Quota,
+		"balance_quota":     user.BalanceQuota,
+		"gift_quota":        user.GiftQuota,
+		"next_gift_expiry":  user.NextGiftExpiry,
 		"used_quota":        user.UsedQuota,
 		"request_count":     user.RequestCount,
 		"aff_code":          user.AffCode,
@@ -1140,10 +1160,11 @@ func updateAdminPermissionsForUserInTx(c *gin.Context, tx *gorm.DB, userID int, 
 }
 
 type ManageRequest struct {
-	Id     int    `json:"id"`
-	Action string `json:"action"`
-	Value  int    `json:"value"`
-	Mode   string `json:"mode"`
+	Id        int    `json:"id"`
+	Action    string `json:"action"`
+	Value     int    `json:"value"`
+	Mode      string `json:"mode"`
+	QuotaType string `json:"quota_type"`
 }
 
 // ManageUser Only admin user can do this

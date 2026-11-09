@@ -96,6 +96,10 @@ type User struct {
 	VerificationCode     string                     `json:"verification_code" gorm:"-:all"`                         // this field is only for Email verification, don't save it to database!
 	AccessToken          *string                    `json:"-" gorm:"type:char(32);column:access_token;uniqueIndex"` // Deprecated: 旧版面板访问令牌，仅在升级后的过渡期内使用；删除 users.access_token 列时一并移除。
 	AccessTokenCreatedAt *int64                     `json:"-" gorm:"type:bigint;column:access_token_created_at"`    // Deprecated: 旧版面板访问令牌，仅在升级后的过渡期内使用；删除 users.access_token 列时一并移除。
+	GiftWalletEnabled    bool                       `json:"-" gorm:"not null;default:false"`
+	BalanceQuota         int                        `json:"-" gorm:"-"`
+	GiftQuota            int                        `json:"-" gorm:"-"`
+	NextGiftExpiry       int64                      `json:"-" gorm:"-"`
 	Quota                int                        `json:"quota" gorm:"type:int;default:0"`
 	UsedQuota            int                        `json:"used_quota" gorm:"type:int;default:0;column:used_quota"` // used quota
 	RequestCount         int                        `json:"request_count" gorm:"type:int;default:0;"`               // request number
@@ -539,10 +543,20 @@ func GetSelfUserById(id int) (*User, error) {
 		"github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id",
 		"group", "quota", "used_quota", "request_count", "aff_code", "aff_count",
 		"aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting",
-		"stripe_customer", "auth_version",
+		"stripe_customer", "auth_version", "gift_wallet_enabled",
 		"CASE WHEN password <> '' THEN 1 ELSE 0 END AS has_password",
 	}).First(&profile, "id = ?", id).Error
 	profile.User.HasPassword = profile.HasPassword
+	if err == nil {
+		balance := WalletBalance{Quota: profile.User.Quota, BalanceQuota: profile.User.Quota}
+		if profile.User.GiftWalletEnabled {
+			balance, err = GetWalletBalance(id)
+		}
+		profile.User.Quota = balance.Quota
+		profile.User.BalanceQuota = balance.BalanceQuota
+		profile.User.GiftQuota = balance.GiftQuota
+		profile.User.NextGiftExpiry = balance.NextGiftExpiry
+	}
 	return &profile.User, err
 }
 
@@ -622,13 +636,15 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		Where("id = ? AND aff_quota >= ? AND quota <= ?", user.Id, quota, common.MaxWalletQuota-quota).
 		Updates(map[string]any{
 			"aff_quota": gorm.Expr("aff_quota - ?", quota),
-			"quota":     gorm.Expr("quota + ?", quota),
 		})
 	if result.Error != nil {
 		return result.Error
 	}
 	if result.RowsAffected != 1 {
 		return errors.New("邀请额度转移失败！")
+	}
+	if _, err := GrantGiftQuotaTx(tx, user.Id, quota, "referral", "referral:"+common.NewRequestId(), common.GetTimestamp()); err != nil {
+		return err
 	}
 	user.AffQuota -= quota
 	user.Quota += quota
@@ -638,7 +654,7 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return err
 	}
 
-	return updateUserCache(*user)
+	return invalidateUserCache(user.Id)
 }
 
 func minTransferAffQuota() int {
@@ -719,7 +735,17 @@ func (user *User) Insert(inviterId int) error {
 				user.SetSetting(defaultSetting)
 			}
 
-			return tx.Create(user).Error
+			if user.Quota > 0 {
+				user.GiftWalletEnabled = true
+			}
+			if err := tx.Create(user).Error; err != nil {
+				return err
+			}
+			if user.Quota > 0 {
+				now := common.GetTimestamp()
+				return tx.Create(&GiftQuota{UserID: user.Id, Source: "signup", Reference: fmt.Sprintf("signup:%d", user.Id), Granted: user.Quota, Remaining: user.Quota, GrantedAt: now, ExpiresAt: now + GiftQuotaLifetime}).Error
+			}
+			return nil
 		})
 	}); err != nil {
 		return err
@@ -750,7 +776,7 @@ func (user *User) finishInsert(inviterId int) {
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_, _ = GrantGiftQuota(user.Id, common.QuotaForInvitee, "invitation", fmt.Sprintf("invitation:%d", user.Id))
 			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
@@ -781,7 +807,17 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			user.SetSetting(defaultSetting)
 		}
 
-		return tx.Create(user).Error
+		if user.Quota > 0 {
+			user.GiftWalletEnabled = true
+		}
+		if err := tx.Create(user).Error; err != nil {
+			return err
+		}
+		if user.Quota > 0 {
+			now := common.GetTimestamp()
+			return tx.Create(&GiftQuota{UserID: user.Id, Source: "signup", Reference: fmt.Sprintf("signup:%d", user.Id), Granted: user.Quota, Remaining: user.Quota, GrantedAt: now, ExpiresAt: now + GiftQuotaLifetime}).Error
+		}
+		return nil
 	})
 }
 
@@ -806,7 +842,7 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	}
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
-			_ = IncreaseUserQuota(user.Id, common.QuotaForInvitee, true)
+			_, _ = GrantGiftQuota(user.Id, common.QuotaForInvitee, "invitation", fmt.Sprintf("invitation:%d", user.Id))
 			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
@@ -865,6 +901,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 	if err = tx.Model(&current).Omit(
 		"access_token",
 		"quota",
+		"gift_wallet_enabled",
 		"used_quota",
 		"request_count",
 		"aff_count",
@@ -1278,17 +1315,10 @@ func ValidateAccessToken(token string) (*User, error) {
 	return user, nil
 }
 
-// GetUserQuota gets quota from Redis first, falls back to DB if needed
-func GetUserQuota(id int, fromDB bool) (quota int, err error) {
-	if !fromDB && common.RedisEnabled {
-		return getUserQuotaCache(id)
-	}
-	err = DB.Model(&User{}).Where("id = ?", id).Select("quota").Find(&quota).Error
-	if err != nil {
-		return 0, err
-	}
-
-	return quota, nil
+// GetUserQuota reads the committed spendable wallet, expiring gifts first.
+func GetUserQuota(id int, fromDB bool) (int, error) {
+	balance, err := GetWalletBalance(id)
+	return balance.Quota, err
 }
 
 func GetUserUsedQuota(id int) (quota int, err error) {
@@ -1367,30 +1397,17 @@ func GetUserSetting(id int, fromDB bool) (settingMap dto.UserSetting, err error)
 	return userBase.GetSetting(), nil
 }
 
-func IncreaseUserQuota(id int, quota int, db bool) (err error) {
+func IncreaseUserQuota(id int, quota int, db bool) error {
 	if quota < 0 {
 		return errors.New("quota cannot be negative")
 	}
 	if err := common.ValidateWalletQuota(quota); err != nil {
 		return err
 	}
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, quota)
-		gopool.Go(func() {
-			if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-				common.SysLog(common.LogText("failed to increase user quota: %s", err.Error()))
-			}
-		})
-		return nil
-	}
 	if err := increaseUserQuota(id, quota); err != nil {
 		return err
 	}
-	gopool.Go(func() {
-		if err := cacheIncrUserQuota(id, int64(quota)); err != nil {
-			common.SysLog(common.LogText("failed to increase user quota: %s", err.Error()))
-		}
-	})
+	_ = invalidateUserCache(id)
 	return nil
 }
 
@@ -1414,30 +1431,12 @@ func increaseUserQuota(id int, quota int) (err error) {
 	return ErrWalletQuotaLimitExceeded
 }
 
-func DecreaseUserQuota(id int, quota int, db bool) (err error) {
-	if quota < 0 {
-		return errors.New("quota cannot be negative")
-	}
-	gopool.Go(func() {
-		err := cacheDecrUserQuota(id, int64(quota))
-		if err != nil {
-			common.SysLog(common.LogText("failed to decrease user quota: %s", err.Error()))
-		}
-	})
-	if !db && common.BatchUpdateEnabled {
-		addNewRecord(BatchUpdateTypeUserQuota, id, -quota)
-		return nil
-	}
-	return decreaseUserQuota(id, quota)
-}
-
-func decreaseUserQuota(id int, quota int) (err error) {
-	err = DB.Model(&User{}).Where("id = ?", id).Update("quota", gorm.Expr("quota - ?", quota)).Error
-	if err != nil {
-		return err
-	}
+func DecreaseUserQuota(id int, quota int, db bool) error {
+	_, err := ConsumeWalletQuota(id, "", quota, false)
 	return err
 }
+
+func decreaseUserQuota(id int, quota int) error { return DecreaseUserQuota(id, quota, true) }
 
 func DeltaUpdateUserQuota(id int, delta int) (err error) {
 	if delta == 0 {

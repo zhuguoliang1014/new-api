@@ -22,7 +22,7 @@ type UserQuotaAdjustment struct {
 	After    int
 }
 
-func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuotaAdjustment, error) {
+func AdjustUserQuota(userID, operatorRole int, mode string, value int, quotaTypes ...string) (*UserQuotaAdjustment, error) {
 	if userID <= 0 || (mode != "add" && mode != "subtract" && mode != "override") {
 		return nil, ErrInvalidUserQuotaAdjustment
 	}
@@ -33,6 +33,16 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		return nil, ErrWalletQuotaLimitExceeded
 	}
 
+	quotaType := "balance"
+	if len(quotaTypes) > 0 && quotaTypes[0] != "" {
+		quotaType = quotaTypes[0]
+	}
+	if quotaType != "balance" && quotaType != "gift" {
+		return nil, ErrInvalidUserQuotaAdjustment
+	}
+	if quotaType == "gift" && mode != "add" {
+		return nil, ErrInvalidUserQuotaAdjustment
+	}
 	var adjustment UserQuotaAdjustment
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var user User
@@ -42,6 +52,20 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		if operatorRole != common.RoleRootUser && operatorRole <= user.Role {
 			return ErrUserQuotaPermission
 		}
+		now := common.GetTimestamp()
+		if err := expireGiftQuotaTx(tx, &user, now); err != nil {
+			return err
+		}
+		balance, err := giftBalanceTx(tx, &user, now)
+		if err != nil {
+			return err
+		}
+		if quotaType == "gift" {
+			_, err := GrantGiftQuotaTx(tx, userID, value, "admin", "admin:"+common.NewRequestId(), now)
+			adjustment = UserQuotaAdjustment{UserID: user.Id, Username: user.Username, Before: balance.GiftQuota, After: balance.GiftQuota + value}
+			return err
+		}
+		user.Quota = balance.BalanceQuota
 		if user.Quota > common.MaxWalletQuota || user.Quota < -common.MaxWalletQuota {
 			return ErrWalletQuotaLimitExceeded
 		}
@@ -58,8 +82,11 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		}
 		// An unchanged override is a successful operation, including on MySQL
 		// configurations that count only changed rows in RowsAffected.
+		if after+balance.GiftQuota > common.MaxWalletQuota {
+			return ErrWalletQuotaLimitExceeded
+		}
 		if after != user.Quota {
-			result := tx.Model(&User{}).Where("id = ?", userID).Update("quota", after)
+			result := tx.Model(&User{}).Where("id = ?", userID).Update("quota", after+balance.GiftQuota)
 			if result.Error != nil {
 				return result.Error
 			}
@@ -74,11 +101,10 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int) (*UserQuo
 		return nil, err
 	}
 
-	// Apply only the committed difference, preserving outstanding reservations.
-	// Both balances are bounded above, so their difference fits in int64.
-	delta := int64(adjustment.After) - int64(adjustment.Before)
-	if delta != 0 {
-		if err := cacheIncrUserQuota(userID, delta); err != nil {
+	if quotaType == "gift" {
+		_ = invalidateUserCache(userID)
+	} else {
+		if err := cacheIncrUserQuota(userID, int64(adjustment.After)-int64(adjustment.Before)); err != nil {
 			common.SysError(common.LogText("failed to sync manual quota adjustment for user %d: %s", userID, err))
 		}
 	}

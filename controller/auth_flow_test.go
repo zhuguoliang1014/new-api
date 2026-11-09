@@ -1162,7 +1162,7 @@ func TestYaohuoSignupWithoutReward(t *testing.T) {
 		common.SessionCookieSecure = previousSecure
 		system_setting.ServerAddress = previousAddress
 	})
-	require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
+	require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}, &model.GiftQuota{}, &model.WalletGiftAllocation{}))
 	require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
 	previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
 	common.RegisterEnabled, common.QuotaForNewUser = true, 0
@@ -1312,7 +1312,7 @@ func TestYaohuoSignupWithoutRewardTransaction(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			setupSecurityEnrollmentTest(t)
-			require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}))
+			require.NoError(t, model.DB.AutoMigrate(&model.OAuthSignupReward{}, &model.GiftQuota{}, &model.WalletGiftAllocation{}))
 			require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
 			previousRegister, previousQuota := common.RegisterEnabled, common.QuotaForNewUser
 			common.RegisterEnabled, common.QuotaForNewUser = true, test.initial
