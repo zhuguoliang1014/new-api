@@ -1049,3 +1049,31 @@
 .image-studio .studio-group-field {
   overflow-wrap: anywhere;
 }
+
+.studio-image-hover-preview.is-reference-preview {
+  width: min(400px, calc(100vw - 32px));
+  padding: 10px;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgb(0 0 0 / 16%);
+}
+.studio-image-hover-preview.is-reference-preview figure {
+  margin: 0;
+}
+.studio-image-hover-preview .reference-thumbnail {
+  display: block;
+  width: 100%;
+  height: min(350px, 50vh);
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--muted);
+}
+.studio-image-hover-preview .reference-thumbnail img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.studio-image-hover-preview.is-reference-preview .reference-thumbnail {
+  height: min(520px, 65vh);
+}

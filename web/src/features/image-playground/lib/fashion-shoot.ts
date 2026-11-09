@@ -35,7 +35,8 @@ export function hasFashionReferences(references: ImageReference[]) {
 /** Bounded structured choices become explicit model instructions, never fake geometric controls. */
 export function fashionShootInstruction(
   shoot: FashionShoot,
-  hasScene = false
+  hasScene = false,
+  compact = false
 ): string {
   const body = {
     reference:
@@ -60,6 +61,17 @@ export function fashionShootInstruction(
       'Three-quarter length composition from head to below the knees; do not crop the garment hem if it is longer.',
     waist:
       'Upper-body composition from head to hips showing garment details. Preserve the upper-body gesture from the pose reference.',
+  }
+  if (compact) {
+    return [
+      'Create one adult character. Use the person only for face and hair, outfit only for garments, and pose only for gesture and camera. Ignore reference backgrounds and mannequin lines.',
+      body[shoot.body],
+      stature[shoot.stature],
+      framing[shoot.framing],
+      hasScene
+        ? 'Use the scene reference for background and lighting.'
+        : 'Use the brief for background and lighting.',
+    ].join(' ')
   }
   return [
     'Create one coherent character image following the creative brief. Apply only the supplied reference roles. Do not create reference sheets, insets or mannequin joints. If an outfit is supplied, dress the subject in it. If an identity is absent, create a fictional adult character.',

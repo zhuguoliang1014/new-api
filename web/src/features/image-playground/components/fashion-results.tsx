@@ -12,9 +12,6 @@ import {
   Image as ImageIcon,
   Maximize2,
   Plus,
-  UserRound,
-  Shirt,
-  PersonStanding,
 } from 'lucide-react'
 import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -34,8 +31,10 @@ import {
 import { referenceDisplayName } from '../lib/reference-names'
 import { useImagePlaygroundStore } from '../store'
 import { GenerationProgress } from './generation-progress'
+import { ReferenceSlotArtwork } from './reference-slot-artwork'
 import { ReferenceThumbnail } from './reference-thumbnail'
 import { ImageActions, ImageArtwork } from './studio-image'
+import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 const StudioPreview = lazy(() =>
   import('./studio-preview').then((m) => ({ default: m.StudioPreview }))
@@ -257,36 +256,40 @@ export function FashionResults(props: {
                 {(['identity', 'outfit', 'pose'] as const).map(
                   (role, index) => {
                     const ref = referenceForSlot(references, role)
-                    const Icon = {
-                      identity: UserRound,
-                      outfit: Shirt,
-                      pose: PersonStanding,
-                    }[role]
                     return (
                       <div key={role} className='compose-preview-item'>
                         {index > 0 && (
                           <Plus className='compose-preview-plus' size={17} />
                         )}
-                        <Button
-                          variant='outline'
-                          disabled={
-                            props.state.executing ||
-                            props.state.selectingElements
+                        <StudioImageHoverPreview
+                          src={ref?.preview ?? ''}
+                          label={labels[role]}
+                          enabled={Boolean(ref)}
+                          large
+                          side='left'
+                          trigger={
+                            <Button
+                              variant='outline'
+                              disabled={
+                                props.state.executing ||
+                                props.state.selectingElements
+                              }
+                              aria-label={t('Choose {{element}}', {
+                                element: labels[role],
+                              })}
+                              onClick={() => props.onChoose(role)}
+                            >
+                              {ref ? (
+                                <ReferenceThumbnail
+                                  src={ref.preview}
+                                  alt={labels[role]}
+                                />
+                              ) : (
+                                <ReferenceSlotArtwork role={role} />
+                              )}
+                            </Button>
                           }
-                          aria-label={t('Choose {{element}}', {
-                            element: labels[role],
-                          })}
-                          onClick={() => props.onChoose(role)}
-                        >
-                          {ref ? (
-                            <ReferenceThumbnail
-                              src={ref.preview}
-                              alt={labels[role]}
-                            />
-                          ) : (
-                            <Icon size={32} strokeWidth={1.1} />
-                          )}
-                        </Button>
+                        />
                         <span>{labels[role]}</span>
                       </div>
                     )

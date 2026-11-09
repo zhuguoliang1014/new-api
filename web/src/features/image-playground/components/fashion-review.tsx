@@ -45,6 +45,7 @@ export function FashionReview(props: {
   const options = getImageModelOptions(parameters.model)
   const canGenerate = Boolean(
     plan &&
+    state.canGenerate &&
     state.canPlan &&
     !state.stale &&
     !state.consumed &&

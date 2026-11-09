@@ -21,6 +21,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
+import { editableCreativePrompt } from '../lib/creative'
+
 export function CreativePromptEditor(props: {
   value: string
   onChange: (value: string) => void
@@ -31,9 +33,10 @@ export function CreativePromptEditor(props: {
   const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [open, setOpen] = useState(false)
   const id = useId()
-  const count = [...props.value].length
+  const value = editableCreativePrompt(props.value)
+  const count = [...value].length
   const limit = props.limit ?? 32000
-  const invalid = !props.value.trim() || count > limit
+  const invalid = !value.trim() || count > limit
   return (
     <Collapsible
       open={open}
@@ -51,14 +54,12 @@ export function CreativePromptEditor(props: {
           </span>
           <span className='creative-prompt-heading-text'>
             <strong>{t('Review & edit prompt')}</strong>
-            <small>
-              {t('Adjust the exact description sent to the image model.')}
-            </small>
+            <small>{t('Edit your creative description.')}</small>
           </span>
           <ChevronDown size={16} className={open ? 'is-expanded' : undefined} />
         </CollapsibleTrigger>
         <CopyButton
-          value={props.value}
+          value={value}
           size='sm'
           aria-label={t('Copy prompt')}
           tooltip={t('Copy prompt')}
@@ -73,8 +74,8 @@ export function CreativePromptEditor(props: {
             aria-invalid={invalid}
             disabled={props.disabled}
             rows={9}
-            maxLength={Math.max(limit, props.value.length)}
-            value={props.value}
+            maxLength={Math.max(limit, value.length)}
+            value={value}
             onChange={(e) => props.onChange(e.target.value)}
           />
           <div className='creative-prompt-meta' id={`${id}-hint`}>
@@ -85,7 +86,7 @@ export function CreativePromptEditor(props: {
           </div>
           {invalid && (
             <p role='status' className='studio-field-error'>
-              {props.value.trim()
+              {value.trim()
                 ? t('Prompt is too long.')
                 : t('Describe the image you want to create.')}
             </p>

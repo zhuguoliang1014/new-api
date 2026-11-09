@@ -345,7 +345,17 @@ export function CreativeWorkspace() {
       >
         <div className='image-studio'>
           <Suspense fallback={<LoadingState />}>
-            <StudioGallery />
+            <StudioGallery
+              actionsDisabled={busy}
+              onReuse={(record) => {
+                void state.reuseCreation(record).then((restored) => {
+                  if (restored) setHistory(false)
+                })
+              }}
+              onContinue={async (record, image) => {
+                if (await state.reuseCreation(record, image)) setHistory(false)
+              }}
+            />
           </Suspense>
         </div>
       </Dialog>

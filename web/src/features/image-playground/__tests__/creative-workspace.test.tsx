@@ -944,3 +944,200 @@ it('preserves the aspect ratio when switching from a native route to an upscaled
     '2:3'
   )
 })
+
+it('randomizes person, outfit and pose atomically without running a paid generation', async () => {
+  const user = await openStudio()
+  await user.click(screen.getByRole('tab', { name: 'Character composition' }))
+  await user.click(screen.getByRole('button', { name: 'Random combination' }))
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().references).toHaveLength(3)
+  )
+  const first = useImagePlaygroundStore.getState().references
+  expect(first.map((ref) => ref.role)).toEqual(['identity', 'outfit', 'pose'])
+  expect(first.every((ref) => ref.file.size > 0 && ref.assetId)).toBe(true)
+  await user.click(screen.getByRole('button', { name: 'Random combination' }))
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().references[0].id).not.toBe(
+      first[0].id
+    )
+  )
+  const second = useImagePlaygroundStore.getState().references
+  expect(
+    second
+      .filter((ref) => ref.role !== 'identity')
+      .every((ref) => !first.some((old) => old.assetId === ref.assetId))
+  ).toBe(true)
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('keeps the complete previous combination when one randomized original cannot be loaded', async () => {
+  const user = await openStudio()
+  await user.click(screen.getByRole('tab', { name: 'Character composition' }))
+  await user.click(screen.getByRole('button', { name: 'Random combination' }))
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().references).toHaveLength(3)
+  )
+  const previous = useImagePlaygroundStore.getState().references
+  vi.mocked(fetch).mockRejectedValueOnce(new Error('offline'))
+  await user.click(screen.getByRole('button', { name: 'Random combination' }))
+  await screen.findByRole('alert')
+  expect(useImagePlaygroundStore.getState().references).toBe(previous)
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('shows only the creative description while sending reference and character instructions privately', async () => {
+  const user = await openStudio()
+  await choose(user, 'Pose', 'Walking stride', 'Side view')
+  await user.type(
+    screen.getByRole('textbox', { name: 'Additional instructions' }),
+    'Walk beside a lake'
+  )
+  await user.click(
+    screen.getByRole('button', { name: 'AI creative assistant' })
+  )
+  const dialog = screen.getByRole('dialog', { name: 'Review proposal' })
+  await user.click(
+    within(dialog).getByRole('button', { name: /Review & edit prompt/ })
+  )
+  const editor = within(dialog).getByRole('textbox', {
+    name: 'Generation prompt',
+  })
+  expect(editor).toHaveValue('Walk beside a lake')
+  expect(editor).not.toHaveValue(expect.stringContaining('Camera:'))
+  await user.clear(editor)
+  await user.type(editor, 'Walking in warm evening light')
+  await user.click(
+    within(dialog).getByRole('button', { name: 'Confirm & generate' })
+  )
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  const [, request, , metadata] = vi.mocked(createStudioTask).mock.calls[0]
+  expect(request.prompt).toContain('Walking in warm evening light')
+  expect(request.prompt).toContain('Camera: Side view')
+  expect(metadata.parameters.prompt).toBe('Walking in warm evening light')
+  expect(metadata.parameters).not.toHaveProperty('requestPrompt')
+})
+
+function historyCreation() {
+  return {
+    id: 'history-art',
+    ownerId: 1,
+    createdAt: 1,
+    parameters: {
+      ...defaultImageParameters,
+      group: 'basic',
+      model: 'gpt-image-2-native',
+      size: '1536x1024',
+      prompt: 'A blue bicycle by a lake',
+    },
+    styleId: null,
+    referenceCount: 0,
+    images: [
+      {
+        id: 'history-image',
+        src: '/images/studio/scenes/ivory.webp',
+        width: 900,
+        height: 1200,
+      },
+    ],
+  }
+}
+it('returns from My creations to the creative form when reusing settings', async () => {
+  const user = await openStudio()
+  act(() => useImagePlaygroundStore.setState({ records: [historyCreation()] }))
+  await user.click(screen.getByRole('button', { name: 'My creations' }))
+  const history = await screen.findByRole('dialog', { name: 'My creations' })
+  await user.click(
+    await within(history).findByRole('button', { name: 'Reuse settings' })
+  )
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'My creations' })
+    ).not.toBeInTheDocument()
+  )
+  expect(
+    screen.getByRole('textbox', { name: 'What would you like to create?' })
+  ).toHaveValue('A blue bicycle by a lake')
+  expect(useImagePlaygroundStore.getState().parameters.model).toBe(
+    'gpt-image-2-native'
+  )
+  expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+it('returns from My creations and attaches the selected output when continuing editing', async () => {
+  const user = await openStudio()
+  act(() => useImagePlaygroundStore.setState({ records: [historyCreation()] }))
+  await user.click(screen.getByRole('button', { name: 'My creations' }))
+  const history = await screen.findByRole('dialog', { name: 'My creations' })
+  await user.click(
+    within(history).getByRole('button', { name: 'Continue editing' })
+  )
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'My creations' })
+    ).not.toBeInTheDocument()
+  )
+  expect(
+    screen.getByRole('textbox', { name: 'What would you like to create?' })
+  ).toHaveValue('A blue bicycle by a lake')
+  expect(useImagePlaygroundStore.getState().references).toHaveLength(1)
+  expect(fetch).toHaveBeenCalledWith(
+    '/images/studio/scenes/ivory.webp',
+    expect.any(Object)
+  )
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('returns from the enlarged creation preview when continuing editing', async () => {
+  const user = await openStudio()
+  act(() => useImagePlaygroundStore.setState({ records: [historyCreation()] }))
+  await user.click(screen.getByRole('button', { name: 'My creations' }))
+  const history = await screen.findByRole('dialog', { name: 'My creations' })
+  await user.click(
+    await within(history).findByRole('button', { name: 'Image Preview' })
+  )
+  const buttons = await screen.findAllByRole('button', {
+    name: 'Continue editing',
+  })
+  const button = buttons.at(-1)
+  if (!button) throw new Error('Preview continue action missing')
+  await user.click(button)
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('dialog', { name: 'My creations' })
+    ).not.toBeInTheDocument()
+  )
+  expect(useImagePlaygroundStore.getState().references).toHaveLength(1)
+})
+
+it('disables history restore actions while reference originals are still being loaded', async () => {
+  const user = await openStudio()
+  act(() => useImagePlaygroundStore.setState({ records: [historyCreation()] }))
+  let finish: ((response: Response) => void) | undefined
+  vi.mocked(fetch).mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve
+      })
+  )
+  await user.click(screen.getByRole('tab', { name: 'Character composition' }))
+  await user.click(screen.getByRole('button', { name: 'Random combination' }))
+  await user.click(screen.getByRole('button', { name: 'My creations' }))
+  const history = await screen.findByRole('dialog', { name: 'My creations' })
+  expect(
+    await within(history).findByRole('button', { name: 'Reuse settings' })
+  ).toBeDisabled()
+  expect(
+    within(history).getByRole('button', { name: 'Continue editing' })
+  ).toBeDisabled()
+  if (!finish) throw new Error('Pending image request missing')
+  finish({
+    ok: true,
+    blob: async () => new Blob(['image'], { type: 'image/webp' }),
+  } as Response)
+  await waitFor(() =>
+    expect(
+      within(history).getByRole('button', { name: 'Reuse settings' })
+    ).toBeEnabled()
+  )
+  expect(createStudioTask).not.toHaveBeenCalled()
+})

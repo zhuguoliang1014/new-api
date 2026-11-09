@@ -29,7 +29,7 @@ const assets = importReferenceAssets(source)
 
 it('preserves the entire pinned source catalog and all available camera angles', () => {
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-    'e50413cf38e8ca12d48e0d5e6afb8d2300ee75f3291d9ee309a4071192015a29'
+    '8dc73e16a3198c70fa2787526a8ddc34f5f47c91751f2e441e7597ed47281cba'
   )
   expect(assets).toHaveLength(3194)
   expect(new Set(assets.map((a) => a.id)).size).toBe(3194)
@@ -85,7 +85,15 @@ it('searches bilingual titles, existing IDs and facets in the locally hosted cat
   for (const asset of assets) {
     for (const view of asset.views) {
       expect(view.src).toMatch(/^\/api\/image-playground\/assets\/20261110\//)
-      expect(view.depth).toBeUndefined()
+      if (asset.role === 'pose') {
+        expect(view.depth?.src).toMatch(
+          /\/originals\/[a-zA-Z0-9_-]+-depth\.png$/
+        )
+        expect(view.depth?.preview).toContain('/images/')
+        expect(view.depth?.thumbnail).toContain('/thumbnails/')
+      } else {
+        expect(view.depth).toBeUndefined()
+      }
     }
   }
 })
@@ -101,4 +109,29 @@ it('rejects image URLs outside exact source hosts and image paths', () => {
   ]) {
     expect(isReferenceImagePath(url)).toBe(false)
   }
+})
+
+it('adds depth for every pose view without changing original catalog metadata or images', () => {
+  const original = JSON.parse(bytes.toString()) as {
+    items: { variants: { depth?: unknown }[] }[]
+  }
+  for (const item of original.items) {
+    for (const view of item.variants) delete view.depth
+  }
+  expect(
+    createHash('sha256')
+      .update(`${JSON.stringify(original)}\n`)
+      .digest('hex')
+  ).toBe('e50413cf38e8ca12d48e0d5e6afb8d2300ee75f3291d9ee309a4071192015a29')
+  const views = assets
+    .filter((asset) => asset.role === 'pose')
+    .flatMap((asset) => asset.views)
+  expect(views.filter((view) => view.depth)).toHaveLength(1439)
+  const pose = assets.find((asset) => asset.role === 'pose')
+  assert(pose)
+  const plain = selectedPortraitView(pose, pose.views[0].id)
+  const depth = selectedPortraitView(pose, `${pose.views[0].id}:depth`)
+  expect(depth?.src).not.toBe(plain?.src)
+  expect(depth?.instruction).toContain('AI inferred')
+  expect(depth?.src).toBe(pose.views[0].depth?.src)
 })

@@ -28,9 +28,10 @@ import { toIntlLocale } from '@/i18n/languages'
 
 import { getImageAuthScope } from '../api'
 import { persistStudioRecord } from '../hooks/use-image-studio'
+import { editableCreativePrompt } from '../lib/creative'
 import { studioModelLabel } from '../lib/model-presentation'
 import { useImagePlaygroundStore } from '../store'
-import type { ImageRecord } from '../types'
+import type { ImageOutput, ImageRecord } from '../types'
 import { GenerationProgress } from './generation-progress'
 import { StudioCreationActions } from './studio-creation-actions'
 import { ImageArtwork, ImageActions } from './studio-image'
@@ -42,7 +43,13 @@ const StudioPreview = lazy(() =>
   }))
 )
 
-export function StudioGallery() {
+export function StudioGallery(
+  props: {
+    onReuse?: (record: ImageRecord) => void
+    actionsDisabled?: boolean
+    onContinue?: (record: ImageRecord, image: ImageOutput) => Promise<void>
+  } = {}
+) {
   const { t, i18n } = useTranslation()
   const taskSyncError = useImagePlaygroundStore((state) => state.taskSyncError)
   const records = useImagePlaygroundStore((state) => state.records)
@@ -171,7 +178,9 @@ export function StudioGallery() {
                 ))}
               </div>
               <div className='studio-card-details'>
-                <p className='studio-card-prompt'>{record.parameters.prompt}</p>
+                <p className='studio-card-prompt'>
+                  {editableCreativePrompt(record.parameters.prompt)}
+                </p>
                 <div className='studio-card-meta'>
                   <span>{studioModelLabel(record.parameters.model, t)}</span>
                   {record.images.length !== record.parameters.count && (
@@ -231,7 +240,12 @@ export function StudioGallery() {
                     {t('Retry download')}
                   </Button>
                 )}
-                <StudioCreationActions record={record} />
+                <StudioCreationActions
+                  record={record}
+                  actionsDisabled={props.actionsDisabled}
+                  onReuse={props.onReuse}
+                  onContinue={props.onContinue}
+                />
               </div>
             </article>
           ))}
@@ -243,7 +257,7 @@ export function StudioGallery() {
             images={previewRecord.images}
             index={preview.index}
             requestedSize={previewRecord.parameters.size}
-            prompt={previewRecord.parameters.prompt}
+            prompt={editableCreativePrompt(previewRecord.parameters.prompt)}
             onClose={() => setPreview(null)}
             onIndexChange={(index) =>
               setPreview((current) => (current ? { ...current, index } : null))
@@ -252,6 +266,14 @@ export function StudioGallery() {
               <ImageActions
                 image={image}
                 record={previewRecord}
+                disabled={props.actionsDisabled}
+                onContinue={
+                  props.onContinue
+                    ? async () => {
+                        await props.onContinue?.(previewRecord, image)
+                      }
+                    : undefined
+                }
                 onReferenceUsed={() => setPreview(null)}
               />
             )}

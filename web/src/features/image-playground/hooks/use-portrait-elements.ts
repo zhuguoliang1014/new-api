@@ -23,6 +23,7 @@ import {
   type PortraitAsset,
   type PortraitSlot,
 } from '../lib/portrait-elements'
+import { randomCombination } from '../lib/random-combination'
 import {
   selectedPortraitView,
   portraitAssetName,
@@ -79,8 +80,41 @@ export function usePortraitElements(
     useImagePlaygroundStore.setState({ references: next })
     for (const ref of removed) URL.revokeObjectURL(ref.preview)
   }
-  const choose = async (asset: PortraitAsset, viewId?: string) => {
+  const prepare = async (
+    asset: PortraitAsset,
+    viewId: string | undefined,
+    signal: AbortSignal
+  ) => {
     const view = selectedPortraitView(asset, viewId)
+    const blob = await getImageBlob(view?.src ?? asset.src, signal)
+    const language = i18n.resolvedLanguage || i18n.language
+    const displayName =
+      portraitLabels(t)[asset.id] || portraitAssetName(asset, language)
+    const angle =
+      view && asset.role === 'pose'
+        ? `-${portraitViewName(view, language, poseViewLabels(t))}${view.id.endsWith(':depth') ? `-${t('Depth map')}` : ''}`
+        : ''
+    const filename = `${displayName}${angle}`
+      .replaceAll(/[\\/:*?"<>|]/g, '-')
+      .slice(0, 100)
+    return {
+      role: asset.role,
+      file: new File([blob], `${filename}.${getImageExtension(blob.type)}`, {
+        type: blob.type,
+      }),
+      metadata: {
+        assetTitle: asset.displayTitle ??
+          asset.title ?? { zh: displayName, en: displayName },
+        assetId: asset.id,
+        assetView: view?.id,
+        assetRole: asset.role,
+        assetInstruction: [asset.instruction, view?.instruction]
+          .filter(Boolean)
+          .join(' '),
+      },
+    }
+  }
+  const choose = async (asset: PortraitAsset, viewId?: string) => {
     const scope = getImageAuthScope()
     const controller = new AbortController()
     pending.current?.abort()
@@ -89,34 +123,9 @@ export function usePortraitElements(
     setLoading(asset.id)
     setError(undefined)
     try {
-      const blob = await getImageBlob(view?.src ?? asset.src, controller.signal)
+      const prepared = await prepare(asset, viewId, controller.signal)
       if (controller.signal.aborted || getImageAuthScope() !== scope) return
-      const language = i18n.resolvedLanguage || i18n.language
-      const displayName =
-        portraitLabels(t)[asset.id] || portraitAssetName(asset, language)
-      const angle =
-        view && asset.role === 'pose'
-          ? `-${portraitViewName(view, language, poseViewLabels(t))}${view.id.endsWith(':depth') ? `-${t('Depth map')}` : ''}`
-          : ''
-      const filename = `${displayName}${angle}`
-        .replaceAll(/[\\/:*?"<>|]/g, '-')
-        .slice(0, 100)
-      apply(
-        asset.role,
-        new File([blob], `${filename}.${getImageExtension(blob.type)}`, {
-          type: blob.type,
-        }),
-        {
-          assetTitle: asset.displayTitle ??
-            asset.title ?? { zh: displayName, en: displayName },
-          assetId: asset.id,
-          assetView: view?.id,
-          assetRole: asset.role,
-          assetInstruction: [asset.instruction, view?.instruction]
-            .filter(Boolean)
-            .join(' '),
-        }
-      )
+      apply(prepared.role, prepared.file, prepared.metadata)
       trackStudioEvent({
         action: 'reference_selected',
         mode: 'portrait',
@@ -130,6 +139,68 @@ export function usePortraitElements(
       }
     } finally {
       if (pending.current === controller) {
+        pending.current = null
+        setLoading(undefined)
+        setBusy(false)
+      }
+    }
+  }
+  const randomize = async (assets: PortraitAsset[]) => {
+    if (pending.current && !pending.current.signal.aborted) return
+    const chosen = randomCombination(
+      assets,
+      useImagePlaygroundStore.getState().references
+    )
+    if (chosen.length !== 3) return
+    const scope = getImageAuthScope()
+    const controller = new AbortController()
+    pending.current = controller
+    setBusy(true)
+    setLoading('random-combination')
+    setError(undefined)
+    try {
+      const prepared = await Promise.all(
+        chosen.map(({ asset, viewId }) =>
+          prepare(asset, viewId, controller.signal)
+        )
+      )
+      if (controller.signal.aborted || getImageAuthScope() !== scope) return
+      const store = useImagePlaygroundStore.getState()
+      const removed = store.references.filter((ref) =>
+        prepared.some((item) => item.role === ref.role)
+      )
+      const kept = store.references.filter((ref) => !removed.includes(ref))
+      validateReferenceFiles(
+        [...prepared.map((item) => item.file), ...kept.map((ref) => ref.file)],
+        getImageModelOptions(store.parameters.model).maxReferences
+      )
+      const added = prepared.map((item) => ({
+        id: nanoid(),
+        role: item.role,
+        file: item.file,
+        preview: URL.createObjectURL(item.file),
+        ...item.metadata,
+      }))
+      useImagePlaygroundStore.setState({ references: [...added, ...kept] })
+      for (const ref of removed) URL.revokeObjectURL(ref.preview)
+      for (const { asset } of chosen) {
+        trackStudioEvent({
+          action: 'reference_selected',
+          mode: 'portrait',
+          role: asset.role,
+          asset_id: asset.id,
+        })
+      }
+      return true
+    } catch {
+      const cancelled = controller.signal.aborted
+      controller.abort()
+      if (!cancelled && getImageAuthScope() === scope) {
+        setError(t('Could not add this element. Your selection is unchanged.'))
+      }
+    } finally {
+      if (pending.current === controller) {
+        pending.current = null
         setLoading(undefined)
         setBusy(false)
       }
@@ -169,5 +240,5 @@ export function usePortraitElements(
       }
     }
   }
-  return { choose, upload, remove, loading, error }
+  return { choose, randomize, upload, remove, loading, error }
 }

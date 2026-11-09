@@ -6,17 +6,9 @@ it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 */
-import {
-  ChevronDown,
-  ImagePlus,
-  Loader2,
-  Check,
-  PersonStanding,
-  Plus,
-  Shirt,
-  UserRound,
-  X,
-} from 'lucide-react'
+import { ShuffleIcon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { ChevronDown, ImagePlus, Loader2, Check, Plus, X } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -44,10 +36,11 @@ import {
 import { portraitViewName } from '../lib/reference-catalog'
 import { referenceDisplayName } from '../lib/reference-names'
 import { useImagePlaygroundStore } from '../store'
+import { ReferenceSlotArtwork } from './reference-slot-artwork'
 import { ReferenceThumbnail } from './reference-thumbnail'
+import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 const slots = ['identity', 'outfit', 'pose'] as const
-const slotIcons = { identity: UserRound, outfit: Shirt, pose: PersonStanding }
 export function FashionShootControls(props: {
   state: CreativeWorkspaceState
   elements: ReturnType<typeof usePortraitElements>
@@ -86,7 +79,25 @@ export function FashionShootControls(props: {
       <section className='compose-reference-section'>
         <div className='compose-section-heading'>
           <h3>{t('Build your combination')}</h3>
-          <span>{t('Optional')}</span>
+          <Button
+            variant='ghost'
+            size='sm'
+            className='compose-random-combination'
+            disabled={
+              disabled ||
+              !slots.every((role) =>
+                props.assets.some((asset) => asset.role === role)
+              )
+            }
+            onClick={() => void props.elements.randomize(props.assets)}
+          >
+            {props.elements.loading === 'random-combination' ? (
+              <Loader2 className='animate-spin' data-icon='inline-start' />
+            ) : (
+              <HugeiconsIcon icon={ShuffleIcon} data-icon='inline-start' />
+            )}
+            {t('Random combination')}
+          </Button>
         </div>
         <div className='compose-slots'>
           {slots.map((role) => {
@@ -97,7 +108,6 @@ export function FashionShootControls(props: {
             const name = reference
               ? referenceDisplayName(reference, t, language, props.assets)
               : undefined
-            const Icon = slotIcons[role]
             return (
               <div className='compose-slot' key={role}>
                 <div
@@ -126,28 +136,37 @@ export function FashionShootControls(props: {
                     }
                   }}
                 >
-                  <Button
-                    variant='outline'
-                    className={`compose-slot-pick${reference ? ' has-reference' : ''}`}
-                    disabled={disabled}
-                    title={name}
-                    aria-label={t('Choose {{element}}', {
-                      element: roles[role],
-                    })}
-                    onClick={() => props.onChoose(role)}
-                  >
-                    {reference ? (
-                      <ReferenceThumbnail
-                        src={reference.preview}
-                        alt={name ?? roles[role]}
-                      />
-                    ) : (
-                      <span className='compose-slot-placeholder'>
-                        <Icon size={28} strokeWidth={1.3} />
-                        <Plus size={14} />
-                      </span>
-                    )}
-                  </Button>
+                  <StudioImageHoverPreview
+                    src={reference?.preview ?? ''}
+                    label={name ?? roles[role]}
+                    enabled={Boolean(reference)}
+                    large
+                    side='right'
+                    trigger={
+                      <Button
+                        variant='outline'
+                        className={`compose-slot-pick${reference ? ' has-reference' : ''}`}
+                        disabled={disabled}
+                        title={name}
+                        aria-label={t('Choose {{element}}', {
+                          element: roles[role],
+                        })}
+                        onClick={() => props.onChoose(role)}
+                      >
+                        {reference ? (
+                          <ReferenceThumbnail
+                            src={reference.preview}
+                            alt={name ?? roles[role]}
+                          />
+                        ) : (
+                          <span className='compose-slot-placeholder'>
+                            <ReferenceSlotArtwork role={role} />
+                            <Plus size={14} />
+                          </span>
+                        )}
+                      </Button>
+                    }
+                  />
                   {props.elements.loading &&
                     asset?.id === props.elements.loading && (
                       <span

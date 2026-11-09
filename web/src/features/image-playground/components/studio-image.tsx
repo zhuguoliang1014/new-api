@@ -127,6 +127,7 @@ export function ImageActions(props: {
   onReferenceUsed?: () => void
   onContinue?: () => Promise<void>
   continueLabel?: string
+  disabled?: boolean
 }) {
   const { t } = useTranslation()
   const [working, setWorking] = useState(false)
@@ -197,6 +198,7 @@ export function ImageActions(props: {
         size='sm'
         disabled={
           working ||
+          props.disabled ||
           /^dall-e-/i.test(props.record.parameters.model) ||
           isGif ||
           isSvg

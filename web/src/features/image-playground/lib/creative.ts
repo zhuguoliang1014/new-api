@@ -96,7 +96,8 @@ export function creativeInputKey(
 export function compileManualPrompt(
   taskType: CreativeTask,
   brief: string,
-  references: ImageReference[]
+  references: ImageReference[],
+  compact = false
 ): string {
   const roles = references
     .map(
@@ -104,6 +105,20 @@ export function compileManualPrompt(
         `Reference image ${index + 1}: ${item.role ?? 'subject'} reference only.`
     )
     .join('\n')
+  if (compact) {
+    const camera = references
+      .map((ref) =>
+        ref.assetRole === ref.role
+          ? ref.assetInstruction?.match(/Camera: [^.]+\./)?.[0]
+          : ''
+      )
+      .filter(Boolean)
+      .join(' ')
+    const rule = references.length
+      ? 'Use each image only for its assigned role; preserve the main subject.'
+      : ''
+    return [brief.trim(), roles, camera, rule].filter(Boolean).join('\n')
+  }
   const constraints: Record<ReferenceRole, string> = {
     subject: 'Use as the main subject reference.',
     identity:
@@ -128,4 +143,13 @@ export function compileManualPrompt(
       ? '\nGenerate only a key visual/background with negative space for editable typography. Do not render lettering, logos, labels or watermarks.'
       : ''
   return `${brief.trim()}\n${roles}\n${details}\n${selectedElementInstructions(references)}${posterRule}`.trim()
+}
+
+/** Old manual drafts stored internal role instructions after the creative description.
+ * Only remove known generated blocks; English creative text remains editable. */
+export function editableCreativePrompt(prompt: string): string {
+  const boundary = prompt.search(
+    /\n(?:Create one coherent character image following the creative brief\.|Reference image \d+: [a-z]+ reference only\.|Image \d+: (?:Use|Preserve)|Generate only a key visual\/background with negative space)/
+  )
+  return boundary < 0 ? prompt : prompt.slice(0, boundary).trimEnd()
 }

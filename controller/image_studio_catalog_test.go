@@ -66,7 +66,7 @@ func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "e50413cf38e8ca12d48e0d5e6afb8d2300ee75f3291d9ee309a4071192015a29" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "8dc73e16a3198c70fa2787526a8ddc34f5f47c91751f2e441e7597ed47281cba" {
 		t.Fatalf("source catalog changed: %s", got)
 	}
 	response, err := imageStudioCatalogResponse()
@@ -80,7 +80,10 @@ func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
 		ReferenceCatalog struct {
 			Items []struct {
 				ID, Kind string
-				Variants []struct{ ID, Original string }
+				Variants []struct {
+					ID, Original string
+					Depth        *struct{ Original, Image, Thumbnail string }
+				}
 			} `json:"items"`
 		} `json:"referenceCatalog"`
 	}
@@ -95,6 +98,7 @@ func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
 	counts := map[string]int{}
 	ids := map[string]bool{}
 	poseViews := 0
+	depthViews := 0
 	for _, item := range catalog.ReferenceCatalog.Items {
 		if ids[item.ID] {
 			t.Fatalf("duplicate id %s", item.ID)
@@ -107,12 +111,20 @@ func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
 				t.Fatalf("missing or duplicated original for %s", item.ID)
 			}
 			views[view.Original] = true
+			if item.Kind == "pose" {
+				if view.Depth == nil || !strings.HasSuffix(view.Depth.Original, "-depth.png") || !strings.HasSuffix(view.Depth.Image, "-depth.webp") || !strings.Contains(view.Depth.Thumbnail, "/thumbnails/") {
+					t.Fatalf("missing depth media for %s/%s", item.ID, view.ID)
+				}
+				depthViews++
+			} else if view.Depth != nil {
+				t.Fatalf("unexpected depth for %s", item.ID)
+			}
 		}
 		if item.Kind == "pose" {
 			poseViews += len(item.Variants)
 		}
 	}
-	if counts["pose"] != 288 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 1439 {
+	if counts["pose"] != 288 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 1439 || depthViews != 1439 {
 		t.Fatalf("incomplete import: %v, %d pose views", counts, poseViews)
 	}
 }

@@ -38,6 +38,7 @@ import {
 } from '../lib/reference-library'
 import { useImagePlaygroundStore } from '../store'
 import { ReferenceThumbnail } from './reference-thumbnail'
+import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 const emptyAssets: PortraitAsset[] = []
 const roles: PortraitSlot[] = ['identity', 'outfit', 'pose', 'scene']
@@ -261,49 +262,60 @@ export function FashionReferencePicker(props: {
             selected.assetView === selectedViewId
           return (
             <div key={asset.id} className='studio-library-entry'>
-              <Button
-                variant='ghost'
-                className='shoot-library-card'
-                title={name}
-                aria-label={t('Select {{name}}', { name })}
-                aria-pressed={isSelected}
-                disabled={Boolean(props.elements.loading)}
-                onClick={async () => {
-                  if (await props.elements.choose(asset, selectedViewId)) {
-                    props.onClose()
-                  }
-                }}
-              >
-                <div>
-                  <ReferenceThumbnail
-                    src={
-                      view?.preview ?? view?.thumbnail ?? view?.src ?? asset.src
-                    }
-                    alt={name}
-                    lazy
-                  />
-                  {isSelected && (
-                    <span className='shoot-card-check'>
-                      <Check size={15} />
-                    </span>
-                  )}
-                  {props.elements.loading === asset.id && (
-                    <span className='shoot-card-loading'>
-                      <Loader2 size={22} className='animate-spin' />
-                    </span>
-                  )}
-                </div>
-                <strong>{name}</strong>
-                {asset.category && (
-                  <small>
-                    {asset.role === 'pose'
-                      ? t('{{count}} camera views', {
-                          count: asset.views.length,
-                        })
-                      : asset.category[locale]}
-                  </small>
-                )}
-              </Button>
+              <StudioImageHoverPreview
+                src={view?.preview ?? view?.src ?? asset.src}
+                label={name}
+                large
+                side='right'
+                trigger={
+                  <Button
+                    variant='ghost'
+                    className='shoot-library-card'
+                    title={name}
+                    aria-label={t('Select {{name}}', { name })}
+                    aria-pressed={isSelected}
+                    disabled={Boolean(props.elements.loading)}
+                    onClick={async () => {
+                      if (await props.elements.choose(asset, selectedViewId)) {
+                        props.onClose()
+                      }
+                    }}
+                  >
+                    <div>
+                      <ReferenceThumbnail
+                        src={
+                          view?.preview ??
+                          view?.thumbnail ??
+                          view?.src ??
+                          asset.src
+                        }
+                        alt={name}
+                        lazy
+                      />
+                      {isSelected && (
+                        <span className='shoot-card-check'>
+                          <Check size={15} />
+                        </span>
+                      )}
+                      {props.elements.loading === asset.id && (
+                        <span className='shoot-card-loading'>
+                          <Loader2 size={22} className='animate-spin' />
+                        </span>
+                      )}
+                    </div>
+                    <strong>{name}</strong>
+                    {asset.category && (
+                      <small>
+                        {asset.role === 'pose'
+                          ? t('{{count}} camera views', {
+                              count: asset.views.length,
+                            })
+                          : asset.category[locale]}
+                      </small>
+                    )}
+                  </Button>
+                }
+              />
               {asset.role === 'pose' && asset.views.length > 0 && (
                 <div
                   className='studio-angle-options'
@@ -311,27 +323,47 @@ export function FashionReferencePicker(props: {
                   aria-label={t('Camera angles for {{name}}', { name })}
                 >
                   {asset.views.map((v) => (
-                    <Button
+                    <StudioImageHoverPreview
                       key={v.id}
-                      variant='ghost'
-                      size='sm'
-                      aria-label={portraitViewName(v, language, angleLabels)}
-                      aria-pressed={v.id === viewId}
-                      disabled={Boolean(props.elements.loading)}
-                      onClick={() => setViews({ ...views, [asset.id]: v.id })}
-                    >
-                      <ReferenceThumbnail
-                        src={
-                          (depth ? v.depth?.thumbnail : undefined) ??
-                          v.thumbnail ??
-                          v.src
-                        }
-                        alt=''
-                        lazy
-                        compact
-                      />
-                      <span>{portraitViewName(v, language, angleLabels)}</span>
-                    </Button>
+                      src={
+                        (depth ? v.depth?.preview : undefined) ??
+                        v.preview ??
+                        v.src
+                      }
+                      label={`${name} · ${portraitViewName(v, language, angleLabels)}`}
+                      large
+                      side='right'
+                      trigger={
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          aria-label={portraitViewName(
+                            v,
+                            language,
+                            angleLabels
+                          )}
+                          aria-pressed={v.id === viewId}
+                          disabled={Boolean(props.elements.loading)}
+                          onClick={() =>
+                            setViews({ ...views, [asset.id]: v.id })
+                          }
+                        >
+                          <ReferenceThumbnail
+                            src={
+                              (depth ? v.depth?.thumbnail : undefined) ??
+                              v.thumbnail ??
+                              v.src
+                            }
+                            alt=''
+                            lazy
+                            compact
+                          />
+                          <span>
+                            {portraitViewName(v, language, angleLabels)}
+                          </span>
+                        </Button>
+                      }
+                    />
                   ))}
                 </div>
               )}

@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth-store'
 import { getImageAuthScope, type StudioGroup } from '../api'
 import {
   compileManualPrompt,
+  editableCreativePrompt,
   creativeInputKey,
   defaultPosterSettings,
   type CreativePlan,
@@ -335,13 +336,25 @@ export function useCreativeWorkspace(options?: {
     summary: usesCharacter
       ? t('Combine your selected references with the creative brief.')
       : t('A manual proposal using your brief and reference roles.'),
-    prompt: compileManualPrompt(taskType, effectiveBrief, references),
+    prompt: requestBrief,
     preserve: [],
     steps: [
       t('Combine the selected references and composition in one generation.'),
     ],
   })
-  const generationPlan = plan && !stale ? plan.value : manualPlan()
+  const generationPlan =
+    plan && !stale
+      ? { ...plan.value, prompt: editableCreativePrompt(plan.value.prompt) }
+      : manualPlan()
+  const requestPrompt = (value: CreativePlan) =>
+    compileManualPrompt(
+      taskType,
+      usesCharacter
+        ? `${value.prompt}\n${fashionShootInstruction(shoot, Boolean(referenceForSlot(references, 'scene')), modelOptions.isMidjourney)}`
+        : value.prompt,
+      references,
+      modelOptions.isMidjourney
+    )
   const inputPending =
     consumed &&
     !stale &&
@@ -353,17 +366,20 @@ export function useCreativeWorkspace(options?: {
   const validGeneration = (value: CreativePlan) =>
     Boolean(
       canPlan &&
+      value.prompt.trim() &&
       !executing &&
       !planning &&
       !selectingElements &&
       group?.available &&
       group.models.includes(parameters.model) &&
-      imageParametersSchema.safeParse({ ...parameters, prompt: value.prompt })
-        .success &&
+      imageParametersSchema.safeParse({
+        ...parameters,
+        prompt: requestPrompt(value),
+      }).success &&
       references.length <= modelOptions.maxReferences &&
       (!references.length || modelOptions.supportsReferences) &&
       jobs.filter((job) => !job.error).length < 4 &&
-      (!modelOptions.isMidjourney || [...value.prompt].length <= 1023)
+      (!modelOptions.isMidjourney || [...requestPrompt(value)].length <= 1023)
     )
   const submissionError =
     inputPending &&
@@ -455,7 +471,11 @@ export function useCreativeWorkspace(options?: {
       selectedStyleId: null,
     })
     try {
-      await studio.generateAsync({ ...parameters, prompt: value.prompt })
+      await studio.generateAsync({
+        ...parameters,
+        prompt: value.prompt,
+        requestPrompt: requestPrompt(value),
+      })
       if (scope === getImageAuthScope()) setMobilePanel('canvas')
     } finally {
       submitLock.current = false
@@ -464,7 +484,10 @@ export function useCreativeWorkspace(options?: {
   }
   const execute = async () => {
     if (!plan || stale || consumed) return
-    await submitPlan(plan.value, plan.source)
+    await submitPlan(
+      { ...plan.value, prompt: editableCreativePrompt(plan.value.prompt) },
+      plan.source
+    )
   }
   const generateDirect = async () => {
     if (!canGenerate) return
@@ -523,7 +546,7 @@ export function useCreativeWorkspace(options?: {
       if (scope !== getImageAuthScope() || controller.signal.aborted) return
       const file = new File(
         [blob],
-        `previous-version.${blob.type.split('/')[1]}`,
+        `${t('Generated image')}.${blob.type.split('/')[1]}`,
         { type: blob.type }
       )
       const store = useImagePlaygroundStore.getState()
@@ -537,6 +560,82 @@ export function useCreativeWorkspace(options?: {
       setMobilePanel('assistant')
     } catch (e) {
       if (!controller.signal.aborted) handleServerError(e)
+    }
+  }
+
+  const reuseCreation = async (record: ImageRecord, image?: ImageOutput) => {
+    if (
+      record.ownerId !== ownerId ||
+      executing ||
+      planning ||
+      selectingElements
+    ) {
+      return false
+    }
+    const scope = getImageAuthScope()
+    const controller = new AbortController()
+    continuationController.current?.abort()
+    continuationController.current = controller
+    setSelectingElements(true)
+    try {
+      let file: File | undefined
+      if (image) {
+        const blob = await getImageBlob(image.src, controller.signal)
+        file = new File(
+          [blob],
+          `${t('Generated image')}.${blob.type.split('/')[1]}`,
+          {
+            type: blob.type,
+          }
+        )
+        validateReferenceFiles(
+          [file],
+          getImageModelOptions(record.parameters.model).maxReferences
+        )
+      }
+      if (controller.signal.aborted || scope !== getImageAuthScope()) {
+        return false
+      }
+      pendingSave.current?.()
+      pendingSave.current = null
+      planningController.current?.abort()
+      const store = useImagePlaygroundStore.getState()
+      store.reuseRecord(record)
+      store.setParameters({
+        prompt: editableCreativePrompt(record.parameters.prompt),
+      })
+      if (file) store.addReferences([file])
+      submittedInput.current = undefined
+      setMode(
+        !image && record.creativeContext?.taskType === 'portrait'
+          ? 'portrait'
+          : 'general'
+      )
+      setProjectId(nanoid())
+      setBrief(editableCreativePrompt(record.parameters.prompt))
+      setShoot({ ...defaultFashionShoot })
+      setPlan(undefined)
+      setParentRecordId(record.id)
+      setConsumed(false)
+      setError(null)
+      saveRevision.current++
+      setSaveStatus('idle')
+      setMobilePanel('assets')
+      window.requestAnimationFrame(() => {
+        const field = document.querySelector<HTMLTextAreaElement>(
+          '#creative-brief, #shoot-brief'
+        )
+        field?.focus()
+        field?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+      return true
+    } catch (error) {
+      if (!controller.signal.aborted) handleServerError(error)
+      return false
+    } finally {
+      if (continuationController.current === controller) {
+        setSelectingElements(false)
+      }
     }
   }
 
@@ -583,6 +682,7 @@ export function useCreativeWorkspace(options?: {
     clear,
     restore,
     continueFrom,
+    reuseCreation,
     editPlan: (value: CreativePlan) => {
       setPlan((p) => (p ? { ...p, value, submitted: false } : p))
       setConsumed(false)

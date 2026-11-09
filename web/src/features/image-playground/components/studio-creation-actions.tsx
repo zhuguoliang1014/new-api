@@ -32,13 +32,19 @@ import {
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { deleteStudioTask, getImageAuthScope } from '../api'
+import { editableCreativePrompt } from '../lib/creative'
 import { deleteImageRecord } from '../lib/history'
 import { useImagePlaygroundStore } from '../store'
-import type { ImageRecord } from '../types'
+import type { ImageOutput, ImageRecord } from '../types'
 import { DownloadCreationButton } from './download-creation-button'
 import { ImageActions } from './studio-image'
 
-export function StudioCreationActions(props: { record?: ImageRecord }) {
+export function StudioCreationActions(props: {
+  record?: ImageRecord
+  actionsDisabled?: boolean
+  onReuse?: (record: ImageRecord) => void
+  onContinue?: (record: ImageRecord, image: ImageOutput) => Promise<void>
+}) {
   const { t } = useTranslation()
   const selectedRecord = useImagePlaygroundStore(
     (state) =>
@@ -103,7 +109,18 @@ export function StudioCreationActions(props: { record?: ImageRecord }) {
           aria-label={t('My creations')}
           role='group'
         >
-          <ImageActions image={record.images[0]} record={record} />
+          <ImageActions
+            image={record.images[0]}
+            record={record}
+            disabled={props.actionsDisabled}
+            onContinue={
+              props.onContinue
+                ? async () => {
+                    await props.onContinue?.(record, record.images[0])
+                  }
+                : undefined
+            }
+          />
           {record.images.length > 1 && (
             <DownloadCreationButton key={record.id} record={record} />
           )}
@@ -116,9 +133,11 @@ export function StudioCreationActions(props: { record?: ImageRecord }) {
             </PopoverTrigger>
             <PopoverContent side='top' className='studio-settings-popover'>
               <PopoverTitle>{t('Image prompt')}</PopoverTitle>
-              <p className='studio-saved-prompt'>{record.parameters.prompt}</p>
+              <p className='studio-saved-prompt'>
+                {editableCreativePrompt(record.parameters.prompt)}
+              </p>
               <CopyButton
-                value={record.parameters.prompt}
+                value={editableCreativePrompt(record.parameters.prompt)}
                 size='sm'
                 variant='ghost'
                 aria-label={t('Copy prompt')}
@@ -139,8 +158,12 @@ export function StudioCreationActions(props: { record?: ImageRecord }) {
             type='button'
             variant='ghost'
             size='sm'
-
+            disabled={props.actionsDisabled}
             onClick={() => {
+              if (props.onReuse) {
+                props.onReuse(record)
+                return
+              }
               useImagePlaygroundStore.getState().reuseRecord(record)
               document
                 .querySelector<HTMLTextAreaElement>('#studio-prompt')

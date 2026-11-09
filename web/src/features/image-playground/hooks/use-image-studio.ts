@@ -360,7 +360,9 @@ export function useImageStudio() {
   const generationMutation = useMutation({
     retry: false,
     meta: { errorToast: false },
-    mutationFn: async (parameters: ImageParameters) => {
+    mutationFn: async (
+      parameters: ImageParameters & { requestPrompt?: string }
+    ) => {
       const store = useImagePlaygroundStore.getState()
       if (
         store.jobs.filter((job) => !job.error).length >= 4 ||
@@ -375,12 +377,18 @@ export function useImageStudio() {
       const preset = stylePresets.find(
         (item) => item.id === store.selectedStyleId
       )
-      const creationParameters = normalizeImageParameters(parameters)
+      const { requestPrompt, ...draftParameters } = parameters
+      const creationParameters = normalizeImageParameters(draftParameters)
       const agentParameters = {
         ...creationParameters,
-        prompt: preset
-          ? applyStyleTemplate(creationParameters.prompt, preset.promptTemplate)
-          : creationParameters.prompt,
+        prompt:
+          requestPrompt ??
+          (preset
+            ? applyStyleTemplate(
+                creationParameters.prompt,
+                preset.promptTemplate
+              )
+            : creationParameters.prompt),
       }
       const controller = new AbortController()
       const job = {

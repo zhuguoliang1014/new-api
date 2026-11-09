@@ -2529,3 +2529,65 @@
     animation: none;
   }
 }
+
+/* Reference slots use small illustrations with the same proportions as the media. */
+.compose-slot-placeholder > .reference-slot-artwork:first-child {
+  width: 70px;
+  height: 82px;
+  stroke-width: unset;
+  color: #72798b;
+}
+.reference-art-paper {
+  fill: #eceef5;
+}
+.reference-art-fill {
+  fill: #dce1ed;
+}
+.reference-art-hair {
+  fill: #a9b0c2;
+}
+.reference-art-skin {
+  fill: #f9f8f6;
+}
+.reference-art-limb {
+  stroke: #dce1ed;
+}
+.reference-art-joint {
+  fill: #f9f8f6;
+}
+.dark .reference-art-paper {
+  fill: #2a2d39;
+}
+.dark .reference-art-fill {
+  fill: #454b61;
+}
+.dark .reference-art-hair {
+  fill: #69718c;
+}
+.dark .reference-art-skin,
+.dark .reference-art-joint {
+  fill: #b5bbcd;
+}
+.dark .reference-art-limb {
+  stroke: #454b61;
+}
+.compose-slot-placeholder {
+  gap: 6px;
+}
+.compose-random-combination {
+  flex-shrink: 0;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 8px;
+  color: var(--shoot-accent);
+  font-size: 11px;
+  font-weight: 500;
+}
+.compose-random-combination > svg {
+  width: 15px;
+  height: 15px;
+}
+.compose-combination-preview .reference-slot-artwork {
+  width: 70%;
+  height: 88%;
+}

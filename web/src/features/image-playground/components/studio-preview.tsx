@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button'
 import { toIntlLocale } from '@/i18n/languages'
 import { formatNumber } from '@/lib/format'
 
+import { editableCreativePrompt } from '../lib/creative'
 import type { ImageOutput } from '../types'
 import { ImageSizeDetails, type ImageDimensions } from './image-size-details'
 
@@ -415,9 +416,9 @@ export function StudioPreview(props: {
         {props.prompt && (
           <div className='studio-result-prompt'>
             <strong>{t('Image prompt')}</strong>
-            <p>{props.prompt}</p>
+            <p>{editableCreativePrompt(props.prompt)}</p>
             <CopyButton
-              value={props.prompt}
+              value={editableCreativePrompt(props.prompt)}
               size='sm'
               aria-label={t('Copy prompt')}
             >

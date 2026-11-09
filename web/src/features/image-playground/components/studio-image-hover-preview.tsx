@@ -23,40 +23,59 @@ import {
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card'
+import { useMediaQuery } from '@/hooks/use-media-query'
+
+import { ReferenceThumbnail } from './reference-thumbnail'
 
 type StudioImageHoverPreviewProps = {
   src: string
   label: string
   imageLabel?: string
   trigger: ReactElement
+  enabled?: boolean
+  large?: boolean
+  side?: 'top' | 'right' | 'bottom' | 'left'
 }
 
 /** A non-modal image preview shared by style choices and uploaded references. */
 export function StudioImageHoverPreview(props: StudioImageHoverPreviewProps) {
   const [open, setOpen] = useState(false)
+  const hoverAvailable = useMediaQuery(
+    '(min-width: 768px) and (hover: hover) and (pointer: fine)'
+  )
+  if (props.enabled === false || (props.large && !hoverAvailable)) {
+    return props.trigger
+  }
   return (
     <HoverCard open={open} onOpenChange={setOpen}>
       <HoverCardTrigger
         delay={180}
         closeDelay={100}
         render={props.trigger}
+        onFocus={() => {
+          if (props.large) setOpen(true)
+        }}
+        onBlur={() => {
+          if (props.large) setOpen(false)
+        }}
         onPointerUp={(event) => {
-          // Touch has no hover. A tap opens the same card, with outside-tap dismissal.
-          if (event.pointerType === 'touch') setOpen((current) => !current)
+          // Picker taps select the image; existing upload/style previews retain tap-to-preview.
+          if (event.pointerType === 'touch' && !props.large) {
+            setOpen((current) => !current)
+          }
         }}
       />
       <HoverCardContent
-        side='top'
+        side={props.side ?? 'top'}
         align='start'
         alignOffset={0}
         sideOffset={14}
-        className='studio-image-hover-preview'
+        className={`studio-image-hover-preview${props.large ? ' is-reference-preview' : ''}`}
       >
         <figure>
-          <img
+          <ReferenceThumbnail
             src={props.src}
             alt={props.imageLabel ?? props.label}
-            referrerPolicy='no-referrer'
           />
           <figcaption>{props.label}</figcaption>
         </figure>
