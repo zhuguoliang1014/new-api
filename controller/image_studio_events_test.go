@@ -48,3 +48,18 @@ func TestStudioInteractionEventsAreBoundedAndPrivate(t *testing.T) {
 	require.NoError(t, model.LOG_DB.Where("category = ?", "image_studio").Find(&rows).Error)
 	require.Len(t, rows, 1)
 }
+
+func TestStudioAuditCategoryCanBeFilteredThroughAPI(t *testing.T) {
+	user, _ := setupAccessTokenAudit(t)
+	model.RecordAuditLog(nil, model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: common.RoleCommonUser, Category: model.AuditCategoryImageStudio, Action: "studio.page_opened", Content: "Opened creative studio", Success: true})
+	router := gin.New()
+	router.Use(func(c *gin.Context) { c.Set("id", user.Id); c.Set("role", common.RoleRootUser) })
+	router.GET("/api/audit", GetAuditLogs)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/audit?category=image_studio&p=1&page_size=20", nil))
+	require.Equal(t, 200, w.Code)
+	require.Contains(t, w.Body.String(), `"success":true`)
+	require.Contains(t, w.Body.String(), `"action":"studio.page_opened"`)
+	require.True(t, model.ValidAuditCategory(model.AuditCategoryImageStudio))
+	require.False(t, model.ValidAuditCategory("arbitrary"))
+}

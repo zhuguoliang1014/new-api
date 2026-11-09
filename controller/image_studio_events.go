@@ -52,7 +52,7 @@ func RecordImageStudioEvent(c *gin.Context) {
 	}
 	// Authenticated user ID is part of the deduplication identity, never selected by the browser.
 	id := sha256.Sum256([]byte(event.EventID + ":" + strconv.Itoa(c.GetInt("id"))))
-	entry := model.AuditLog{EventId: hex.EncodeToString(id[:]), UserId: c.GetInt("id"), Username: c.GetString("username"), ActorRole: c.GetInt("role"), Category: "image_studio", Action: "studio." + event.Action, Content: studioEventContent(event.Action), Success: true, Status: http.StatusNoContent, Other: model.AuditOther{Op: &model.AuditOperation{Action: "studio." + event.Action, Params: params}}}
+	entry := model.AuditLog{EventId: hex.EncodeToString(id[:]), UserId: c.GetInt("id"), Username: c.GetString("username"), ActorRole: c.GetInt("role"), Category: model.AuditCategoryImageStudio, Action: "studio." + event.Action, Content: studioEventContent(event.Action), Success: true, Status: http.StatusNoContent, Other: model.AuditOther{Op: &model.AuditOperation{Action: "studio." + event.Action, Params: params}}}
 	model.RecordAuditLog(c, entry)
 	c.Status(http.StatusNoContent)
 }
@@ -100,5 +100,5 @@ func recordStudioTaskEvent(event service.StudioTaskEvent) {
 		return
 	}
 	params := model.AuditFields{"mode": mode, "task_id": event.Task.ID, "model": event.Request.Model, "reference_count": meta.ReferenceCount, "requested_count": meta.Parameters.Count, "result_count": len(event.Task.Images)}
-	model.RecordAuditLog(nil, model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: user.Role, Category: "image_studio", Action: "studio." + event.Action, Content: studioEventContent(event.Action), Success: event.Action == "accepted" || event.Action == "ready", Other: model.AuditOther{Op: &model.AuditOperation{Action: "studio." + event.Action, Params: params}}})
+	model.RecordAuditLog(nil, model.AuditLog{UserId: user.Id, Username: user.Username, ActorRole: user.Role, Category: model.AuditCategoryImageStudio, Action: "studio." + event.Action, Content: studioEventContent(event.Action), Success: event.Action == "accepted" || event.Action == "ready", Other: model.AuditOther{Op: &model.AuditOperation{Action: "studio." + event.Action, Params: params}}})
 }
