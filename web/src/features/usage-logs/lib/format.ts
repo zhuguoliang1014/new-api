@@ -463,6 +463,15 @@ export function formatDuration(
  * translatable instead of being frozen to whatever language was written to DB.
  */
 const AUDIT_TEMPLATES: Record<string, string> = {
+ 'studio.page_opened':'Opened creative studio',
+ 'studio.mode_selected':'Selected a creative studio mode',
+ 'studio.library_opened':'Browsed the reference library',
+ 'studio.reference_selected':'Selected a creative reference',
+ 'studio.assistant_opened':'Opened the creative assistant',
+  'studio.accepted':'Creative request accepted',
+ 'studio.ready':'Creative images ready',
+ 'studio.failed':'Creative image generation failed',
+ 'studio.download_failed':'Creative image download failed',
   'token.create': 'API token creation',
   'token.update': 'API token configuration update',
   'token.status_update': 'API token status update',

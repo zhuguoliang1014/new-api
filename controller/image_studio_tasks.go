@@ -36,6 +36,7 @@ func StartImageStudioTasks() error {
 	if err != nil {
 		return err
 	}
+	store.SetObserver(recordStudioTaskEvent)
 	imageStudioTasks = store
 	go store.Run(context.Background())
 	return nil
@@ -284,8 +285,16 @@ func CreateImageStudioTask(c *gin.Context) {
 			Quality    string                   `json:"quality"`
 			Background string                   `json:"background"`
 		} `json:"parameters"`
-		ReferenceCount int     `json:"referenceCount"`
-		StyleID        *string `json:"styleId"`
+		ReferenceCount  int     `json:"referenceCount"`
+		StyleID         *string `json:"styleId"`
+		CreativeContext *struct {
+			ProjectID      string   `json:"projectId"`
+			TaskType       string   `json:"taskType"`
+			Brief          string   `json:"brief"`
+			PlanTitle      string   `json:"planTitle"`
+			ParentRecordID string   `json:"parentRecordId,omitempty"`
+			ReferenceRoles []string `json:"referenceRoles"`
+		} `json:"creativeContext,omitempty"`
 	}
 	if len(metadata) > 128<<10 || common.Unmarshal(metadata, &meta) != nil || strings.TrimSpace(meta.Parameters.Prompt) == "" || strings.TrimSpace(prompt) == "" || len(prompt) > 128<<10 {
 		writePlaygroundError(c, 400, "invalid image task metadata")
@@ -294,6 +303,16 @@ func CreateImageStudioTask(c *gin.Context) {
 	if count < 1 || count > 4 || count != meta.Parameters.Count || meta.ReferenceCount < 0 || meta.ReferenceCount > maxReferences || meta.ReferenceCount != references {
 		writePlaygroundError(c, 400, "invalid image task metadata")
 		return
+	}
+	if ctx := meta.CreativeContext; ctx != nil {
+		valid := len(ctx.ProjectID) > 0 && len(ctx.ProjectID) <= 64 && len(ctx.Brief) <= 64000 && len([]rune(ctx.PlanTitle)) <= 120 && len(ctx.ParentRecordID) <= 64 && slices.Contains([]string{"general", "portrait", "product", "poster"}, ctx.TaskType) && len(ctx.ReferenceRoles) == references
+		for _, role := range ctx.ReferenceRoles {
+			valid = valid && slices.Contains([]string{"subject", "identity", "outfit", "pose", "product", "scene", "style", "composition"}, role)
+		}
+		if !valid {
+			writePlaygroundError(c, 400, "invalid image task metadata")
+			return
+		}
 	}
 	if profile.MaxCount > 0 && count > profile.MaxCount {
 		writePlaygroundError(c, 400, "invalid image count")

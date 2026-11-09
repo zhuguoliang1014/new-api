@@ -287,6 +287,7 @@ export function useImageStudio() {
         parameters: task.metadata.parameters,
         styleId: task.metadata.styleId,
         referenceCount: task.metadata.referenceCount,
+        creativeContext: task.metadata.creativeContext,
         images,
         serverTask: true,
         expiresAt: task.expires_at * 1000,
@@ -405,6 +406,7 @@ export function useImageStudio() {
             parameters: creationParameters,
             styleId: preset?.id ?? null,
             referenceCount: references.length,
+            creativeContext: store.creativeContext,
           },
           controller.signal
         )
@@ -469,5 +471,6 @@ export function useImageStudio() {
     refining: refineMutation.isPending,
     refineError: refineMutation.error,
     generate: generationMutation.mutate,
+    generateAsync: generationMutation.mutateAsync,
   }
 }

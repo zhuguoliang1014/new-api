@@ -437,6 +437,7 @@ export function buildAuditDetails(
   }
 
   let fallback = t('Operation audit')
+  if (entry.category === 'image_studio') fallback = t('Creative studio')
   if (entry.category === 'login') fallback = t('Login')
   if (entry.category === 'security') fallback = t('Account security')
   if (entry.category === 'access_token') fallback = t('Access Token')

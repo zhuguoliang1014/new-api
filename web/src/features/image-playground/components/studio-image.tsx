@@ -125,6 +125,8 @@ export function ImageActions(props: {
   image: ImageOutput
   record: ImageRecord
   onReferenceUsed?: () => void
+  onContinue?: () => Promise<void>
+  continueLabel?: string
 }) {
   const { t } = useTranslation()
   const [working, setWorking] = useState(false)
@@ -140,6 +142,10 @@ export function ImageActions(props: {
     const scope = getImageAuthScope()
     setWorking(true)
     try {
+      if (props.onContinue) {
+        await props.onContinue()
+        return
+      }
       const blob = await getImageBlob(props.image.src)
       if (scope !== getImageAuthScope()) return
       const store = useImagePlaygroundStore.getState()
@@ -210,7 +216,7 @@ export function ImageActions(props: {
         ) : (
           <ImagePlus size={15} aria-hidden='true' />
         )}
-        {t('Continue editing')}
+        {props.continueLabel ?? t('Continue editing')}
       </Button>
     </div>
   )

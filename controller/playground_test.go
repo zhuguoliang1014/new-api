@@ -390,6 +390,7 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		t.Cleanup(func() { imageStudioTasks = previous })
 		router.POST("/tasks/:kind", ImageStudioTasksAvailable, middleware.PlaygroundAgent(middleware.PlaygroundAgentImage), CreateImageStudioTask)
 		metadata := map[string]any{"parameters": map[string]any{"prompt": "original draft", "model": "gpt-image-2", "group": high, "size": "4096x4096", "quality": "high", "format": "png", "background": "auto", "count": 1}, "referenceCount": 0, "styleId": nil}
+		metadata["creativeContext"] = map[string]any{"projectId": "project-one", "taskType": "product", "brief": "original idea", "planTitle": "Light study", "referenceRoles": []string{}}
 		payload := map[string]any{"prompt": "expanded prompt", "size": "4096x4096", "quality": "high", "output_format": "png", "n": 1, "studio_metadata": metadata}
 		body, err := common.Marshal(payload)
 		require.NoError(t, err)
@@ -404,6 +405,19 @@ func TestImageStudioBootstrapAndRoutingDatabase(t *testing.T) {
 		task, err := store.Get(user.Id, "studio-task-controller-0001")
 		require.NoError(t, err)
 		assert.Equal(t, "queued", task.Status)
+		assert.Contains(t, string(task.Metadata), `"projectId":"project-one"`)
+		for _, context := range []map[string]any{
+			{"projectId": "project-one", "taskType": "unknown", "referenceRoles": []string{}},
+			{"projectId": "project-one", "taskType": "product", "referenceRoles": []string{"product"}},
+		} {
+			invalidMetadata := maps.Clone(metadata)
+			invalidMetadata["creativeContext"] = context
+			invalid := maps.Clone(payload)
+			invalid["studio_metadata"] = invalidMetadata
+			encoded, err := common.Marshal(invalid)
+			require.NoError(t, err)
+			assert.Equal(t, 400, request("/tasks/generations", high, "gpt-image-2", string(encoded), false).Code)
+		}
 		_, err = store.Get(user.Id+1, task.ID)
 		assert.ErrorIs(t, err, service.ErrStudioTaskNotFound)
 		for _, changes := range []map[string]any{{"n": 5}, {"stream": true}, {"studio_metadata": map[string]any{}}, {"size": "8192x4608"}, {"size": "10240x5760"}} {

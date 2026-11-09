@@ -1,0 +1,264 @@
+{
+  "version": 1,
+  "assets": [
+    {
+      "id": "muse",
+      "role": "identity",
+      "src": "/images/studio/portrait.webp",
+      "instruction": "Use only this fictional adult person’s identity and hairstyle, not her outfit, pose or background.",
+      "views": []
+    },
+    {
+      "id": "linen",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-linen.webp",
+      "instruction": "Ivory linen tailored blazer and wide-leg trousers, white tee, tan loafers. Transfer the garment design and materials onto the subject, not the flat-lay arrangement.",
+      "views": []
+    },
+    {
+      "id": "trench",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-trench.webp",
+      "instruction": "Midnight navy belted trench, cream shirt, dark trousers and black ankle boots. Dress the subject naturally.",
+      "views": []
+    },
+    {
+      "id": "knit",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-knit.webp",
+      "instruction": "Terracotta rib-knit cardigan, long cream skirt and brown leather flats. Natural cloth drape.",
+      "views": []
+    },
+    {
+      "id": "denim",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-denim.webp",
+      "instruction": "Indigo denim chore jacket, straight indigo jeans, white tee and white sneakers.",
+      "views": []
+    },
+    {
+      "id": "utility",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-utility.webp",
+      "instruction": "Sage-green utility shirt and loose cargo trousers with off-white canvas shoes.",
+      "views": []
+    },
+    {
+      "id": "sport",
+      "role": "outfit",
+      "src": "/images/studio/elements/outfit-sport.webp",
+      "instruction": "Ink-black technical zip jacket, tapered athletic trousers and grey running shoes.",
+      "views": []
+    },
+    {
+      "id": "standing",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-standing.webp",
+      "instruction": "Relaxed standing contrapposto, weight on one leg, one hand at the hip. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-standing.webp",
+          "instruction": "Relaxed frontal contrapposto, weight on one leg, other knee slightly bent, one hand near hip. Use the pose only; never render the mannequin."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/standing-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/standing-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/standing-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "walking",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-walking.webp",
+      "instruction": "Mid-stride walking pose, opposite arm and leg forward. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-walking.webp",
+          "instruction": "Mid-stride walk at a three-quarter angle toward camera, opposite arm and leg forward. Use the mannequin body gesture only."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/walking-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/walking-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/walking-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "seated",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-seated.webp",
+      "instruction": "Sit upright on a small cubic stool, hands resting on thighs, feet grounded. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-seated.webp",
+          "instruction": "Sit upright on a small cubic stool, three-quarter view, hands on thighs, feet on ground. Use the gesture and stool, not mannequin material or identity."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/seated-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/seated-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/seated-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "reaching",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-reaching.webp",
+      "instruction": "Stand with one arm raised gently over the head, other arm relaxed. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-reaching.webp",
+          "instruction": "Side view, one arm reaching gently above the head, other relaxed. Reproduce the gesture only, not the mannequin."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/reaching-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/reaching-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/reaching-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "turning",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-turning.webp",
+      "instruction": "Standing torso with head turned over one shoulder, both arms relaxed. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-turning.webp",
+          "instruction": "Three-quarter rear view, looking back over one shoulder, relaxed arms. Use only the body orientation, not the mannequin."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/turning-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/turning-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/turning-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "dynamic",
+      "role": "pose",
+      "src": "/images/studio/elements/pose-dynamic.webp",
+      "instruction": "Wide lateral step with one knee bent, other leg extended, one arm extended for balance. Use pose only; do not copy the mannequin identity, wooden material or grey clothing.",
+      "views": [
+        {
+          "id": "original",
+          "src": "/images/studio/elements/pose-dynamic.webp",
+          "instruction": "Wide lateral step with one leg bent, other extended, torso upright and one arm extended for balance. Use gesture only, not the mannequin."
+        },
+        {
+          "id": "front",
+          "src": "/images/studio/angles/dynamic-front.webp",
+          "instruction": "Camera: Front view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "side",
+          "src": "/images/studio/angles/dynamic-side.webp",
+          "instruction": "Camera: Side view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        },
+        {
+          "id": "back",
+          "src": "/images/studio/angles/dynamic-back.webp",
+          "instruction": "Camera: Back view. Match the pose image viewpoint; do not mirror it. This selected camera view takes priority over any other viewpoint mentioned in the brief."
+        }
+      ]
+    },
+    {
+      "id": "courtyard",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-courtyard.webp",
+      "instruction": "Sand plaster courtyard, curved arch, warm afternoon sunlight and diagonal wall shadow; match subject lighting and ground contact.",
+      "views": []
+    },
+    {
+      "id": "charcoal",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-charcoal.webp",
+      "instruction": "Charcoal-grey studio cyclorama, subtle modelling light and matte floor, no equipment.",
+      "views": []
+    },
+    {
+      "id": "coast",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-coast.webp",
+      "instruction": "White stone coastal terrace and steps, distant blue sea, airy midday light.",
+      "views": []
+    },
+    {
+      "id": "gallery",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-gallery.webp",
+      "instruction": "Concrete gallery, architectural rectangular opening, soft side light and clean floor.",
+      "views": []
+    },
+    {
+      "id": "garden",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-garden.webp",
+      "instruction": "Glass conservatory with softly blurred green plants framing a pale stone walkway; filtered daylight.",
+      "views": []
+    },
+    {
+      "id": "ivory",
+      "role": "scene",
+      "src": "/images/studio/elements/scene-ivory.webp",
+      "instruction": "Warm ivory seamless studio cyclorama, very soft diffuse high-key light.",
+      "views": []
+    }
+  ]
+}

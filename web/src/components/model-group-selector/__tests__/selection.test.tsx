@@ -155,3 +155,32 @@ it('shows prices and searchable categories in the narrow-screen drawer and clear
     within(screen.getByRole('listbox')).getAllByRole('option')
   ).toHaveLength(2)
 })
+
+it('uses a concise list name while retaining the full selected label and exact callback value', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  render(
+    <ModelSelector
+      presentation='field'
+      selectedModel='gpt-image-2-native'
+      onModelChange={onChange}
+      models={[
+        {
+          value: 'gpt-image-2-native',
+          label: 'GPT Image 2 · Native',
+          menuLabel: 'GPT Image 2',
+          category: 'GPT Image',
+          subcategory: 'Native',
+        },
+      ]}
+    />
+  )
+  expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent(
+    'GPT Image 2 · Native'
+  )
+  await user.click(screen.getByRole('combobox', { name: 'Model' }))
+  const option = screen.getByRole('option', { name: 'GPT Image 2' })
+  expect(option).not.toHaveTextContent('gpt-image-2-native')
+  await user.click(option)
+  expect(onChange).toHaveBeenCalledWith('gpt-image-2-native')
+})

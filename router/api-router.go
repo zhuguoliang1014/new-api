@@ -20,7 +20,15 @@ func SetApiRouter(router *gin.Engine) {
 	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{`^/api/image-playground/tasks/[^/]+/images/`})))
 	apiRouter.Use(middleware.AccessTokenAudit())
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
-	apiRouter.Use(middleware.GlobalAPIRateLimit())
+	apiRateLimit := middleware.GlobalAPIRateLimit()
+	apiRouter.Use(func(c *gin.Context) {
+		// Immutable public library images must not consume the management API budget.
+		if c.FullPath() == "/api/image-playground/assets/:version/:kind/:variant/:file" {
+			c.Next()
+			return
+		}
+		apiRateLimit(c)
+	})
 	setFinanceRouter(apiRouter)
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
 	studioTasks := apiRouter.Group("/image-playground/tasks", middleware.UserAuth(), controller.ImageStudioTasksAvailable)
@@ -37,10 +45,16 @@ func SetApiRouter(router *gin.Engine) {
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 42<<20)
 		c.Next()
 	}, middleware.PlaygroundAgent(middleware.PlaygroundAgentImage), controller.CreateImageStudioTask)
+	apiRouter.GET("/image-playground/assets/:version/:kind/:variant/:file", controller.GetImageStudioAsset)
+	apiRouter.POST("/image-playground/events", middleware.UserAuth(), middleware.ImageStudioEventRateLimit(), controller.RecordImageStudioEvent)
+	apiRouter.GET("/image-playground/catalog", middleware.UserAuth(), controller.GetImageStudioCatalog)
 	apiRouter.POST("/image-playground/bootstrap", middleware.UserAuth(), middleware.DisableCache(), controller.BootstrapImageStudio)
 	apiRouter.GET("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.GetPlaygroundAgentConfig)
 	apiRouter.PUT("/image-playground/settings", middleware.UserAuth(), middleware.DisableCache(), controller.UpdatePlaygroundAgentConfig)
 	apiRouter.POST("/image-playground/refine-prompt", middleware.UserAuth(), middleware.PlaygroundPath("/pg/chat/completions"), middleware.PlaygroundAgent(middleware.PlaygroundAgentPrompt), middleware.Distribute(), controller.PlaygroundPromptRefine)
+	apiRouter.POST("/image-playground/plan", middleware.UserAuth(), func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 8<<20)
+	}, middleware.PlaygroundPath("/pg/chat/completions"), middleware.PlaygroundAgent(middleware.PlaygroundAgentPrompt), middleware.Distribute(), controller.PlanImageStudio)
 	{
 		apiRouter.GET("/setup", controller.GetSetup)
 		apiRouter.POST("/setup", anonymousRequestBodyLimit, controller.PostSetup)

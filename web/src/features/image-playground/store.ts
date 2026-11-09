@@ -21,6 +21,7 @@ import { create } from 'zustand'
 
 import { useAuthStore } from '@/stores/auth-store'
 
+import type { CreativeContext, ReferenceRole } from './lib/creative'
 import { validateReferenceFiles } from './lib/images'
 import {
   defaultImageParameters,
@@ -45,11 +46,14 @@ type ImagePlaygroundStore = {
   storageUnavailable: boolean
   taskSyncError: boolean
   historyLoaded: boolean
+  creativeContext: CreativeContext | undefined
   setScope: (scope: string | null) => void
   setParameters: (values: Partial<ImageParameters>) => void
   clearDraft: () => void
   addReferences: (files: File[]) => void
   removeReference: (id: string) => void
+  setReferenceRole: (id: string, role: ReferenceRole) => void
+  replaceReferences: (references: ImageReference[]) => void
   reuseRecord: (record: ImageRecord) => void
 }
 
@@ -66,6 +70,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
     storageUnavailable: false,
     taskSyncError: false,
     historyLoaded: false,
+    creativeContext: undefined,
     setScope: (scope) => {
       if (scope === get().scope) return
       for (const job of get().jobs) job.controller.abort()
@@ -84,6 +89,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         storageUnavailable: false,
         taskSyncError: false,
         historyLoaded: false,
+        creativeContext: undefined,
       })
     },
     setParameters: (values) => {
@@ -135,6 +141,7 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
         selectedRecordId: null,
         selectedStyleId: null,
         error: null,
+        creativeContext: undefined,
       }))
     },
     addReferences: (files) => {
@@ -163,6 +170,22 @@ export const useImagePlaygroundStore = create<ImagePlaygroundStore>(
       set((state) => ({
         references: state.references.filter((item) => item.id !== id),
       }))
+    },
+    setReferenceRole: (id, role) =>
+      set((state) => ({
+        references: state.references.map((item) =>
+          item.id === id ? { ...item, role } : item
+        ),
+      })),
+    replaceReferences: (references) => {
+      validateReferenceFiles(
+        references.map((item) => item.file),
+        getImageModelOptions(get().parameters.model).maxReferences
+      )
+      for (const reference of get().references) {
+        URL.revokeObjectURL(reference.preview)
+      }
+      set({ references })
     },
     reuseRecord: (record) => {
       for (const reference of get().references) {

@@ -26,10 +26,14 @@ import { formatNumber } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
 import { deleteStudioTask, retryStudioDownload } from '../api'
+import { studioModelLabel } from '../lib/model-presentation'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageJob } from '../types'
 
-export function GenerationProgress(props: { job: ImageJob }) {
+export function GenerationProgress(props: {
+  job: ImageJob
+  promptLabel?: string
+}) {
   const { t, i18n } = useTranslation()
   const job = props.job
   const [now, setNow] = useState(Date.now)
@@ -93,9 +97,11 @@ export function GenerationProgress(props: { job: ImageJob }) {
           />
         )}
       </div>
-      <p className='studio-card-prompt'>{job.parameters.prompt}</p>
+      <p className='studio-card-prompt'>
+        {props.promptLabel ?? job.parameters.prompt}
+      </p>
       <div className='studio-card-meta'>
-        <span>{job.parameters.model}</span>
+        <span>{studioModelLabel(job.parameters.model, t)}</span>
         <span>
           {job.parameters.size === 'auto'
             ? t('Auto')

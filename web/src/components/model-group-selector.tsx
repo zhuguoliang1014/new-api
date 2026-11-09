@@ -69,6 +69,8 @@ import {
 } from './model-group-selector/layout'
 
 interface ModelOption {
+  /** Optional concise list label; the trigger retains the unambiguous full label. */
+  menuLabel?: string
   label: string
   value: string
   category?: string
@@ -387,7 +389,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = React.memo(
                                 : 'text-[11px]'
                             )}
                           >
-                            <span className='inline'>{model.label}</span>
+                            <span className='inline'>{model.menuLabel ?? model.label}</span>
                             {presentation === 'field' &&
                               (model.description ||
                                 (model.price !== undefined &&

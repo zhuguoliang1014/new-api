@@ -28,6 +28,7 @@ import { toIntlLocale } from '@/i18n/languages'
 
 import { getImageAuthScope } from '../api'
 import { persistStudioRecord } from '../hooks/use-image-studio'
+import { studioModelLabel } from '../lib/model-presentation'
 import { useImagePlaygroundStore } from '../store'
 import type { ImageRecord } from '../types'
 import { GenerationProgress } from './generation-progress'
@@ -62,7 +63,7 @@ export function StudioGallery() {
     filter === 'running'
       ? []
       : records.filter((item) =>
-          `${item.parameters.prompt} ${item.parameters.model}`
+          `${item.parameters.prompt} ${studioModelLabel(item.parameters.model, t)} ${item.parameters.model}`
             .toLowerCase()
             .includes(search)
         )
@@ -70,7 +71,7 @@ export function StudioGallery() {
     filter === 'completed'
       ? []
       : jobs.filter((item) =>
-          `${item.parameters.prompt} ${item.parameters.model}`
+          `${item.parameters.prompt} ${studioModelLabel(item.parameters.model, t)} ${item.parameters.model}`
             .toLowerCase()
             .includes(search)
         )
@@ -172,7 +173,7 @@ export function StudioGallery() {
               <div className='studio-card-details'>
                 <p className='studio-card-prompt'>{record.parameters.prompt}</p>
                 <div className='studio-card-meta'>
-                  <span>{record.parameters.model}</span>
+                  <span>{studioModelLabel(record.parameters.model, t)}</span>
                   {record.images.length !== record.parameters.count && (
                     <span>
                       {t('{{count}} images returned', {

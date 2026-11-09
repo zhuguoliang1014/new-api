@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { z } from 'zod'
 
+import type { CreativeContext, ReferenceRole } from './lib/creative'
 import {
   getImageAspectRatio,
   getStudioSize,
@@ -85,7 +86,17 @@ export const imageParametersSchema = z.object({
 })
 
 export type ImageParameters = z.infer<typeof imageParametersSchema>
-export type ImageReference = { id: string; file: File; preview: string }
+export type ImageReference = {
+  id: string
+  file: File
+  preview: string
+  role?: ReferenceRole
+  assetTitle?: { zh: string; en: string }
+  assetId?: string
+  assetView?: string
+  assetRole?: ReferenceRole
+  assetInstruction?: string
+}
 export type ImageOutput = {
   id: string
   src: string
@@ -106,6 +117,7 @@ export type ImageRecord = {
   styleId?: string | null
   images: ImageOutput[]
   referenceCount: number
+  creativeContext?: CreativeContext
   serverTask?: boolean
   expiresAt?: number
   cacheProgress?: { loaded: number; total: number }

@@ -27,6 +27,7 @@ import {
 } from '@/lib/server-error-message'
 import { useAuthStore } from '@/stores/auth-store'
 
+import { creativeContextSchema } from './lib/creative'
 import { readReferenceImage, validateReferenceFiles } from './lib/images'
 import {
   getImageModelOptions,
@@ -233,6 +234,7 @@ const studioTaskSchema = z.object({
     parameters: imageParametersSchema,
     styleId: z.string().nullable(),
     referenceCount: z.number().int().min(0).max(5),
+    creativeContext: creativeContextSchema.optional(),
   }),
   images: z
     .array(

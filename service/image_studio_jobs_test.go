@@ -282,3 +282,28 @@ func TestStudioGIFRequestRejectsStaticOutputWithoutRegeneration(t *testing.T) {
 		})
 	}
 }
+
+func TestStudioTaskObserverReportsActualAdmissionAndCompletionWithoutReplay(t *testing.T) {
+	original := studioTestPNG(t)
+	store := studioTestStore(t, func(_ context.Context, _ StudioTaskRequest, _ io.Reader, w http.ResponseWriter) error {
+		_, err := fmt.Fprintf(w, `{"data":[{"b64_json":"%s"}]}`, base64.StdEncoding.EncodeToString(original))
+		return err
+	})
+	var events []StudioTaskEvent
+	store.SetObserver(func(event StudioTaskEvent) {
+		// Calling back into the store is safe: observers cannot run while holding its mutex.
+		_, err := store.Get(event.Request.OwnerID, event.Task.ID)
+		require.NoError(t, err)
+		events = append(events, event)
+	})
+	studioTestSubmit(t, store, studioTestID)
+	studioTestSubmit(t, store, studioTestID)
+	require.Len(t, events, 1)
+	require.Equal(t, "accepted", events[0].Action)
+	store.runNext(context.Background())
+	require.Len(t, events, 2)
+	require.Equal(t, "ready", events[1].Action)
+	require.Len(t, events[1].Task.Images, 1)
+	store.runNext(context.Background())
+	require.Len(t, events, 2)
+}

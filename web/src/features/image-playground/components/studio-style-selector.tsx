@@ -34,11 +34,15 @@ const StudioPreview = lazy(() =>
   }))
 )
 
-export function StudioStyleSelector() {
+export function StudioStyleSelector(
+  props: { value?: string | null; onChange?: (id: string | null) => void } = {}
+) {
   const { t } = useTranslation()
-  const selectedStyleId = useImagePlaygroundStore(
+  const storedStyleId = useImagePlaygroundStore(
     (state) => state.selectedStyleId
   )
+  const selectedStyleId =
+    props.value !== undefined ? props.value : storedStyleId
   const selectedStyle = stylePresets.find(
     (preset) => preset.id === selectedStyleId
   )
@@ -51,9 +55,11 @@ export function StudioStyleSelector() {
         className='studio-native-select'
         value={selectedStyleId ?? ''}
         onChange={(event) =>
-          useImagePlaygroundStore.setState({
-            selectedStyleId: event.target.value || null,
-          })
+          props.onChange
+            ? props.onChange(event.target.value || null)
+            : useImagePlaygroundStore.setState({
+                selectedStyleId: event.target.value || null,
+              })
         }
       >
         <NativeSelectOption value=''>{t('No style')}</NativeSelectOption>

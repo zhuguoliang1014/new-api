@@ -42,7 +42,7 @@ import {
   refinePrompt,
   savePlaygroundAgentConfig,
 } from '../api'
-import { ImagePlayground } from '../index'
+import { QuickImageStudio as ImagePlayground } from '../index'
 import { readImageHistory, saveImageRecord } from '../lib/history'
 import * as imageFiles from '../lib/images'
 import { applyStyleTemplate, stylePresets } from '../lib/style-presets'
@@ -362,7 +362,7 @@ it('starts without a key setup dialog and exposes the selected group models', as
     target: { value: 'high' },
   })
   expect(screen.getByRole('combobox', { name: 'Model' })).toHaveTextContent(
-    'gpt-image-2'
+    'GPT Image 2'
   )
   expect(
     screen.queryByRole('option', { name: 'gpt-image-2.5-flare' })
@@ -1791,7 +1791,7 @@ it('uses one image group and changes size limits and pricing controls with the m
     .setParameters({ group: '画图', model: 'gpt-image-2-basic' })
   showStudio()
   const model = await screen.findByRole('combobox', { name: 'Model' })
-  await waitFor(() => expect(model).toHaveTextContent('gpt-image-2'))
+  await waitFor(() => expect(model).toHaveTextContent('GPT Image 2'))
   expect(
     screen.queryByRole('combobox', { name: 'Generation group' })
   ).not.toBeInTheDocument()
@@ -1842,12 +1842,16 @@ it('uses one image group and changes size limits and pricing controls with the m
     'Banana',
     'Midjourney',
   ])
-  expect(gptOptions[0]).toHaveTextContent('Upscaled · up to 4K')
-  expect(gptOptions[6]).toHaveTextContent('Native · up to 4K')
+  expect(gptOptions[0]).toHaveTextContent(
+    'Low-cost upscaled images for everyday creation and reference composition.'
+  )
+  expect(gptOptions[6]).toHaveTextContent(
+    'Native output for detailed image editing and reference composition.'
+  )
   expect(screen.getByText('Midjourney')).toBeInTheDocument()
   expect(
     within(screen.getByRole('option', { name: /Midjourney v8.2/ })).getByText(
-      'Usually 4 images per request'
+      'Midjourney for stylized composition and illustration.'
     )
   ).toBeInTheDocument()
   for (const name of [

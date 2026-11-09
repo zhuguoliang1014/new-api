@@ -273,3 +273,83 @@ it.each(['gpt-image-2.6-flare-basic', 'gpt-image-2.6-sunburst-native'])(
     ).not.toBeInTheDocument()
   }
 )
+
+it('shows live editable parameters inline and keeps dimensions consistent when changing ratio and resolution', async () => {
+  useImagePlaygroundStore
+    .getState()
+    .setParameters({ model: 'gpt-image-2.6-basic', size: '4096x4096' })
+  render(<StudioParameters group={group} presentation='compact' />)
+  expect(screen.getByRole('combobox', { name: 'Aspect ratio' })).toHaveValue(
+    '1:1'
+  )
+  expect(screen.getByRole('combobox', { name: 'Resolution' })).toHaveValue('4K')
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Aspect ratio' }),
+    '16:9'
+  )
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('4096x2304')
+  expect(screen.getByText('4096 × 2304')).toBeVisible()
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Resolution' }),
+    '2K'
+  )
+  expect(useImagePlaygroundStore.getState().parameters.size).toBe('2048x1152')
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'Image count' }),
+    '3'
+  )
+  await userEvent.selectOptions(
+    screen.getByRole('combobox', { name: 'File format' }),
+    'jpeg'
+  )
+  expect(
+    screen.getByRole('combobox', { name: 'Image background' })
+  ).toBeDisabled()
+  expect(useImagePlaygroundStore.getState().parameters.count).toBe(3)
+  expect(useImagePlaygroundStore.getState().parameters.background).toBe('auto')
+})
+
+it('renders native dimensions and ratio-only models correctly in inline settings', () => {
+  useImagePlaygroundStore
+    .getState()
+    .setParameters({ model: 'gpt-image-2-native', size: '2880x2880' })
+  const nativeGroup = {
+    ...group,
+    models: ['gpt-image-2-native'],
+    size_mode: 'native' as const,
+    max_resolution: 4,
+  }
+  const view = render(
+    <StudioParameters group={nativeGroup} presentation='compact' />
+  )
+  expect(screen.getByRole('combobox', { name: 'Resolution' })).toHaveValue('4K')
+  expect(screen.getByText('2880 × 2880')).toBeVisible()
+  act(() =>
+    useImagePlaygroundStore
+      .getState()
+      .setParameters({ model: 'mj-v8.2', size: '9:21' })
+  )
+  view.rerender(<StudioParameters group={group} presentation='compact' />)
+  expect(screen.getByRole('combobox', { name: 'Aspect ratio' })).toHaveValue(
+    '9:21'
+  )
+  expect(
+    screen.queryByRole('combobox', { name: 'Resolution' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('combobox', { name: 'File format' })
+  ).not.toBeInTheDocument()
+})
+
+it('prevents inline parameter edits including Midjourney switches while submitting', async () => {
+  render(<StudioParameters group={group} presentation='compact' disabled />)
+  expect(screen.getByRole('combobox', { name: 'Aspect ratio' })).toBeDisabled()
+  expect(screen.getByRole('switch', { name: 'Raw mode' })).toHaveAttribute(
+    'aria-disabled',
+    'true'
+  )
+  expect(screen.getByRole('spinbutton', { name: 'Stylization' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled()
+  await userEvent.click(screen.getByRole('switch', { name: 'Raw mode' }))
+  expect(useImagePlaygroundStore.getState().parameters.mj?.raw).not.toBe(true)
+})

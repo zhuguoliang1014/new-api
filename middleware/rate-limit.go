@@ -268,3 +268,8 @@ func SearchRateLimit() func(c *gin.Context) {
 	}
 	return userRateLimitFactory(common.SearchRateLimitNum, common.SearchRateLimitDuration, "SR")
 }
+
+// Studio interaction logs have their own fixed per-user budget, independent of paid request limits.
+func ImageStudioEventRateLimit() func(c *gin.Context) {
+	return userRateLimitFactory(60, 60, "STUDIO_EVENT")
+}

@@ -102,7 +102,7 @@ function CreativeRange(props: {
   )
 }
 
-export function StudioMidjourneyParameters() {
+export function StudioMidjourneyParameters(props: { disabled?: boolean } = {}) {
   const { t } = useTranslation()
   const options = useImagePlaygroundStore((state) => state.parameters.mj) ?? {}
   const referenceCount = useImagePlaygroundStore(
@@ -113,13 +113,15 @@ export function StudioMidjourneyParameters() {
   const invalidFields = validation.success
     ? []
     : validation.error.issues.map((issue) => issue.path[0])
-  const setOptions = (patch: Partial<MidjourneyParameters>) =>
-    setParameters({ mj: { ...options, ...patch } })
+  const setOptions = (patch: Partial<MidjourneyParameters>) => {
+    if (!props.disabled) setParameters({ mj: { ...options, ...patch } })
+  }
   return (
     <div className='studio-mj-controls'>
       <div className='studio-field-label'>
         <h3>{t('Midjourney controls')}</h3>
         <Button
+          disabled={props.disabled}
           type='button'
           size='sm'
           variant='ghost'
@@ -137,6 +139,7 @@ export function StudioMidjourneyParameters() {
         <div className='studio-field-label'>
           <Label htmlFor='studio-mj-raw'>{t('Raw mode')}</Label>
           <Switch
+            disabled={props.disabled}
             id='studio-mj-raw'
             checked={options.raw ?? false}
             onCheckedChange={(raw) => setOptions({ raw })}
@@ -145,6 +148,7 @@ export function StudioMidjourneyParameters() {
         <div className='studio-field-label'>
           <Label htmlFor='studio-mj-tile'>{t('Seamless tile')}</Label>
           <Switch
+            disabled={props.disabled}
             id='studio-mj-tile'
             checked={options.tile ?? false}
             onCheckedChange={(tile) => setOptions({ tile })}
@@ -152,6 +156,7 @@ export function StudioMidjourneyParameters() {
         </div>
       </div>
       <CreativeRange
+        disabled={props.disabled}
         id='studio-mj-stylize'
         label={t('Stylization')}
         value={options.stylize}
@@ -161,6 +166,7 @@ export function StudioMidjourneyParameters() {
         hint={t('Higher values give Midjourney more artistic freedom.')}
       />
       <CreativeRange
+        disabled={props.disabled}
         id='studio-mj-chaos'
         label={t('Variety')}
         value={options.chaos}
@@ -170,6 +176,7 @@ export function StudioMidjourneyParameters() {
         hint={t('Increase variation between the images in one request.')}
       />
       <CreativeRange
+        disabled={props.disabled}
         id='studio-mj-weird'
         label={t('Weirdness')}
         value={options.weird}
@@ -180,6 +187,7 @@ export function StudioMidjourneyParameters() {
       <div className='studio-field'>
         <Label htmlFor='studio-mj-seed'>{t('Random seed')}</Label>
         <Input
+          disabled={props.disabled}
           id='studio-mj-seed'
           type='number'
           min={0}
@@ -211,6 +219,7 @@ export function StudioMidjourneyParameters() {
       <div className='studio-field'>
         <Label htmlFor='studio-mj-negative'>{t('Negative prompt')}</Label>
         <Textarea
+          disabled={props.disabled}
           id='studio-mj-negative'
           maxLength={4000}
           rows={2}
@@ -228,7 +237,7 @@ export function StudioMidjourneyParameters() {
         defaultValue={1}
         max={3}
         step={0.1}
-        disabled={referenceCount === 0}
+        disabled={props.disabled || referenceCount === 0}
         hint={
           referenceCount === 0
             ? t('Add a reference image above to set its influence.')
@@ -277,6 +286,7 @@ export function StudioMidjourneyParameters() {
                       {reference.label}
                     </Label>
                     <Input
+                      disabled={props.disabled}
                       id={`studio-mj-${reference.field}`}
                       type='url'
                       value={options[reference.field] ?? ''}
@@ -303,7 +313,7 @@ export function StudioMidjourneyParameters() {
                     defaultValue={reference.defaultValue}
                     max={reference.max}
                     step={reference.weight === 'dw' ? 0.1 : undefined}
-                    disabled={!options[reference.field]}
+                    disabled={props.disabled || !options[reference.field]}
                     onChange={(value) =>
                       setOptions({ [reference.weight]: value })
                     }

@@ -17,19 +17,28 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { useEffect } from 'react'
+
 import { useAuthStore } from '@/stores/auth-store'
 
+import { CreativeWorkspace } from './components/creative-workspace'
 import { StudioComposer } from './components/studio-composer'
 import { StudioGallery } from './components/studio-gallery'
 import { useImageStudio } from './hooks/use-image-studio'
+import { useImagePlaygroundStore } from './store'
 
 import '@/styles/image-studio.css'
+import '@/styles/fashion-studio.css'
 
 export function ImagePlayground() {
   const scope = useAuthStore((state) => state.auth.session?.sid)
-  return <ImageStudio key={scope} />
+  return <CreativeWorkspace key={scope} />
 }
-function ImageStudio() {
+
+export function QuickImageStudio() {
+  useEffect(() => {
+    useImagePlaygroundStore.setState({ creativeContext: undefined })
+  }, [])
   const studio = useImageStudio()
   return (
     <div className='image-studio'>

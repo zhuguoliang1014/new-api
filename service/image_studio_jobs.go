@@ -65,11 +65,19 @@ type studioTaskEntry struct {
 	Request StudioTaskRequest `json:"request"`
 	busy    bool
 }
+
+// Events are observations of actual store transitions, not browser-reported success.
+type StudioTaskEvent struct {
+	Action  string
+	Request StudioTaskRequest
+	Task    StudioTask
+}
 type StudioTaskRelay func(context.Context, StudioTaskRequest, io.Reader, http.ResponseWriter) error
 
 // One store owns one persistent directory. Deployments must route studio jobs
 // to this instance; multiple processes must not share the directory.
 type StudioTaskStore struct {
+	observer    func(StudioTaskEvent)
 	mu          sync.Mutex
 	root        string
 	entries     map[string]*studioTaskEntry
@@ -77,6 +85,13 @@ type StudioTaskStore struct {
 	client      *http.Client
 	thumbnailMu sync.Mutex
 	artifactMu  sync.Mutex
+}
+
+// SetObserver must be configured before serving or running tasks. Callbacks run without the store lock.
+func (s *StudioTaskStore) SetObserver(observer func(StudioTaskEvent)) {
+	s.mu.Lock()
+	s.observer = observer
+	s.mu.Unlock()
 }
 
 func NewStudioTaskStore(root string, relay StudioTaskRelay) (*StudioTaskStore, error) {
@@ -193,7 +208,14 @@ func (s *StudioTaskStore) Submit(id string, req StudioTaskRequest, metadata json
 	hash.Write(identity)
 	req.Hash = hex.EncodeToString(hash.Sum(nil))
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	var observation *StudioTaskEvent
+	defer func() {
+		observer := s.observer
+		s.mu.Unlock()
+		if observer != nil && observation != nil {
+			observer(*observation)
+		}
+	}()
 	if e, ok := s.entries[id]; ok {
 		if e.Request.OwnerID != req.OwnerID || e.Request.Hash != req.Hash {
 			return StudioTask{}, errors.New("image task ID already exists")
@@ -246,6 +268,7 @@ func (s *StudioTaskStore) Submit(id string, req StudioTaskRequest, metadata json
 		return StudioTask{}, err
 	}
 	s.entries[id] = e
+	observation = &StudioTaskEvent{Action: "accepted", Request: req, Task: cloneStudioTask(e.Task)}
 	return cloneStudioTask(e.Task), nil
 }
 func cloneStudioTask(task StudioTask) StudioTask {
@@ -404,7 +427,14 @@ func (s *StudioTaskStore) runNext(ctx context.Context) {
 		err = s.process(ctx, selected, generate)
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	defer func() {
+		event := StudioTaskEvent{Action: selected.Task.Status, Request: selected.Request, Task: cloneStudioTask(selected.Task)}
+		observer := s.observer
+		s.mu.Unlock()
+		if observer != nil {
+			observer(event)
+		}
+	}()
 	selected.busy = false
 	if err != nil {
 		if errors.Is(err, errStudioGIFNotAnimated) || errors.Is(err, errStudioSVGNotReturned) {

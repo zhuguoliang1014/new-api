@@ -46,6 +46,10 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { getStudioModelProfile } from '../api'
 import { useStudioAgentConfig } from '../hooks/use-studio-agent-config'
 import { useStudioGroups } from '../hooks/use-studio-groups'
+import {
+  studioModelLabel,
+  studioModelPresentation,
+} from '../lib/model-presentation'
 import { getStudioDefaultSize, getStudioSizeSelection } from '../lib/sizes'
 import { useImagePlaygroundStore } from '../store'
 import {
@@ -232,45 +236,14 @@ export function StudioComposer(props: {
                       a.localeCompare(b, 'en', { numeric: true })
                   )
                   .map((model) => {
-                    let label = model
-                    let description = model
-                    let category = t('Other')
-                    let subcategory: string | undefined
-                    if (model.endsWith('-basic')) {
-                      label = model.slice(0, -6)
-                      description = t('Upscaled · up to 4K')
-                      category = 'GPT Image'
-                      subcategory = t('Upscaled images')
-                    } else if (model.endsWith('-native')) {
-                      label = model.slice(0, -7)
-                      description = t('Native · up to 4K')
-                      category = 'GPT Image'
-                      subcategory = t('Native images')
-                    } else if (model.startsWith('gemini-')) {
-                      category = t('Banana')
-                      if (model.includes('3-pro')) {
-                        label = t('Banana Pro')
-                      } else if (model.includes('3.1-flash')) {
-                        label = t('Banana 2')
-                      } else if (model.includes('nano-banana')) {
-                        label = `${t('Banana')} · 2.1`
-                      } else {
-                        label = `${t('Banana')} · Gemini 2.5 Flash`
-                      }
-                      if (model.endsWith('-preview')) {
-                        label += ` · ${t('Preview')}`
-                      }
-                    } else if (model === 'mj-v8.2') {
-                      label = 'Midjourney v8.2'
-                      description = t('Usually 4 images per request')
-                      category = 'Midjourney'
-                    }
+                    const presentation = studioModelPresentation(model, t)
                     return {
                       value: model,
-                      label,
-                      category,
-                      subcategory,
-                      description,
+                      ...presentation,
+                      menuLabel:
+                        presentation.category === 'GPT Image'
+                          ? presentation.name
+                          : presentation.label,
                       price: (
                         <StudioCostEstimate
                           group={group}
@@ -302,7 +275,9 @@ export function StudioComposer(props: {
               aria-label={t('Selected model information')}
             >
               {groups.data?.length === 1 ? (
-                <p className='studio-field-hint'>{parameters.model}</p>
+                <p className='studio-field-hint'>
+                  {studioModelLabel(parameters.model, t)}
+                </p>
               ) : (
                 <>
                   <Label htmlFor='studio-group'>{t('Generation group')}</Label>

@@ -23,17 +23,19 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
+import { referenceDisplayName } from '../lib/reference-names'
 import { useImagePlaygroundStore } from '../store'
 import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 type StudioReferencesProps = {
+  disabled?: boolean
   maxReferences?: number
   supportsReferences: boolean
   onAddFiles: (files: File[]) => void
 }
 
 export function StudioReferences(props: StudioReferencesProps) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const maxReferences = props.maxReferences ?? 4
   const references = useImagePlaygroundStore((state) => state.references)
   const [dragging, setDragging] = useState(false)
@@ -56,7 +58,7 @@ export function StudioReferences(props: StudioReferencesProps) {
         accept='image/png,image/jpeg,image/webp'
         multiple
         hidden
-        disabled={!props.supportsReferences}
+        disabled={props.disabled || !props.supportsReferences}
         onChange={(event) => {
           props.onAddFiles([...(event.target.files ?? [])])
           event.target.value = ''
@@ -66,13 +68,13 @@ export function StudioReferences(props: StudioReferencesProps) {
         className={`studio-references${dragging ? ' studio-upload-dragging' : ''}`}
         onDragOver={(event) => {
           event.preventDefault()
-          if (props.supportsReferences) setDragging(true)
+          if (props.supportsReferences && !props.disabled) setDragging(true)
         }}
         onDragLeave={() => setDragging(false)}
         onDrop={(event) => {
           event.preventDefault()
           setDragging(false)
-          if (props.supportsReferences) {
+          if (props.supportsReferences && !props.disabled) {
             props.onAddFiles([...event.dataTransfer.files])
           }
         }}
@@ -81,9 +83,17 @@ export function StudioReferences(props: StudioReferencesProps) {
           <div key={reference.id} className='studio-reference'>
             <StudioImageHoverPreview
               src={reference.preview}
-              label={reference.file.name}
+              label={referenceDisplayName(
+                reference,
+                t,
+                i18n.resolvedLanguage || i18n.language
+              )}
               imageLabel={t('Preview reference {{name}}', {
-                name: reference.file.name,
+                name: referenceDisplayName(
+                  reference,
+                  t,
+                  i18n.resolvedLanguage || i18n.language
+                ),
               })}
               trigger={
                 <Button
@@ -91,10 +101,21 @@ export function StudioReferences(props: StudioReferencesProps) {
                   variant='ghost'
                   className='studio-reference-preview'
                   aria-label={t('Preview reference {{name}}', {
-                    name: reference.file.name,
+                    name: referenceDisplayName(
+                      reference,
+                      t,
+                      i18n.resolvedLanguage || i18n.language
+                    ),
                   })}
                 >
-                  <img src={reference.preview} alt={reference.file.name} />
+                  <img
+                    src={reference.preview}
+                    alt={referenceDisplayName(
+                      reference,
+                      t,
+                      i18n.resolvedLanguage || i18n.language
+                    )}
+                  />
                 </Button>
               }
             />
@@ -102,10 +123,14 @@ export function StudioReferences(props: StudioReferencesProps) {
               type='button'
               variant='secondary'
               size='icon'
-
+              disabled={props.disabled}
               className='studio-reference-remove'
               aria-label={t('Remove reference {{name}}', {
-                name: reference.file.name,
+                name: referenceDisplayName(
+                  reference,
+                  t,
+                  i18n.resolvedLanguage || i18n.language
+                ),
               })}
               onClick={() =>
                 useImagePlaygroundStore.getState().removeReference(reference.id)
@@ -123,7 +148,9 @@ export function StudioReferences(props: StudioReferencesProps) {
             aria-label={t('Add images to guide your creation')}
             title={t('Drop, paste or choose · PNG, JPEG, WebP · 10 MB each')}
             disabled={
-              !props.supportsReferences || references.length >= maxReferences
+              props.disabled ||
+              !props.supportsReferences ||
+              references.length >= maxReferences
             }
             onClick={() => fileInput.current?.click()}
           >
