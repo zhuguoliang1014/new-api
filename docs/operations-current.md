@@ -653,3 +653,10 @@ go vet ./...
 - 官方社群已增加微信号及备注提示，复制使用共享组件。此次未发布TG公告。原机器人和运维未提交草稿保留。验证日志、私有历史CSV、转换脚本和实机截图在本机 `~/.codex/operations/finance-20261107/`，不入Git。
 
 验证命令：`TEST_MYSQL_DSN=<本机隔离库> TEST_POSTGRES_DSN=<本机隔离库> go test -race ./model -run '^TestFinance' -count=1 -v`；`go test ./controller -run '^TestFinance' -count=1 -v`；`go test ./router ./service/authz -count=1`；前端 `bun run test src/features/finance src/components/layout/__tests__/official-community.test.tsx src/hooks/__tests__/sidebar-config.test.tsx src/features/image-playground`，`bunx --no-install tsgo -b`、改动oxlint/oxfmt、`bun run build`。
+
+## 赠送余额上线与妖火历史迁移（2026-11-10）
+
+- 用户授权提交上线，功能revision `92b397327cd64a31b6f76054c6b53bf35f2b4882` 已push main；北京时间02:33:51恢复访问，容器healthy、三入口状态/定价200。账户余额永久，赠送余额按原发放时间30天到期、优先扣除、原路退款、过期记录可查；前台只分两类，不细分赠送来源。
+- 固定原核对的近10天名单118人迁移，原赠590美元，剩余529.987648美元；总可用额度及付款记录不变。两帖赠送脚本同步更新，自动化5原本PAUSED，保持暂停，未代发论坛消息或公告。
+- Actions42673435445两次均未启动构建，部署skipped。改用隔离提交的Linux构建包和原运行时构建镜像，程序SHA-256 `55510c0c1a3a757997d326b5f2e750d52d92eedf435fe0c8aa6b371f49ba1015`；GHCR推送unauthenticated，远程未更新。Compose仅new-api固定本地 `ghcr.io/zhuguoliang1014/new-api:gift-quota-92b397327cd6` 并pull_policy never，后续不能拉取旧latest。
+- 恢复目录 `/root/upgrade-recovery/new-api-gift-quota-20261110/` 含两次已完整校验全库147972688/147983585字节、配置/迁移/逆向演练及最终核验。138 options/32套餐/44渠道/235 abilities/101模型/2452令牌及原158奖励收据不变，其他六容器不变。赠送账本使用后禁止直接切旧应用扣费，不整库恢复；见该目录recovery.md及 `docs/gift-quota/README.md`。生产网页登录会话失效，未代建凭据，本地实机与线上资源/接口验收范围已如实记录。

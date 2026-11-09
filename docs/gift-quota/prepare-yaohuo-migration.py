@@ -16,7 +16,9 @@ GIFT = 2_500_000
 LIFETIME = 30 * 86400
 
 
-def inventory_sql(as_of):
+def inventory_sql(as_of, registered_as_of=None):
+    if registered_as_of is None:
+        registered_as_of = as_of
     return f"""
 BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
 WITH registered AS (
@@ -28,7 +30,7 @@ WITH registered AS (
    FROM audit_logs a WHERE a.user_id=u.id AND a.category='login' AND a.success
    ORDER BY a.created_at,a.id LIMIT 1
  ) login
- WHERE u.created_at BETWEEN {as_of - 10 * 86400} AND {as_of}
+ WHERE u.created_at BETWEEN {registered_as_of - 10 * 86400} AND {registered_as_of}
  AND extract(epoch from b.created_at) BETWEEN u.created_at AND u.created_at+3
  AND login.method='oauth:yaohuo' AND login.created_at BETWEEN u.created_at AND u.created_at+30
 ), evidence AS (
@@ -237,6 +239,7 @@ COMMIT;
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--as-of', help='ISO-8601 with timezone; defaults to current time')
+    parser.add_argument('--registered-as-of', help='Freeze the approved 10-day registration cohort while refreshing current balances')
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--host', default='aiproxy-hk')
     args = parser.parse_args()
@@ -244,16 +247,20 @@ def main():
     if moment.tzinfo is None:
         parser.error('--as-of must include a timezone')
     as_of = int(moment.timestamp())
+    cohort_moment = dt.datetime.fromisoformat(args.registered_as_of) if args.registered_as_of else moment
+    if cohort_moment.tzinfo is None or cohort_moment > moment:
+        parser.error('--registered-as-of must include a timezone and cannot follow --as-of')
+    registered_as_of = int(cohort_moment.timestamp())
     args.output.mkdir(parents=True, exist_ok=False, mode=0o700)
     os.chmod(args.output,0o700)
     result = subprocess.run(
         ['ssh',args.host,'docker exec -i postgres psql -X -U root -d new-api -At -v ON_ERROR_STOP=1'],
-        input=inventory_sql(as_of),text=True,capture_output=True,check=True,
+        input=inventory_sql(as_of, registered_as_of),text=True,capture_output=True,check=True,
     )
     rows = [review(json.loads(line)) for line in result.stdout.splitlines() if line.startswith('{')]
     selected = [r for r in rows if r['disposition']=='migrate']
     summary = {
-        'as_of':moment.isoformat(),'window_days':10,'registered_accounts':len(rows),
+        'as_of':moment.isoformat(),'registered_as_of':cohort_moment.isoformat(),'window_days':10,'registered_accounts':len(rows),
         'migrate_accounts':len(selected),'original_gift_quota':sum(r['granted'] for r in selected),
         'remaining_gift_quota':sum(r['remaining'] for r in selected),
         'with_paid_orders':sum(bool(r['paid_orders']) for r in selected),
@@ -265,7 +272,7 @@ def main():
         ('manifest.json',json.dumps(manifest,ensure_ascii=False,indent=2)+'\n'),
         ('apply.sql',migration_sql(rows,as_of)),
         ('rollback.sql',rollback_sql(rows)),
-        ('inventory.sql',inventory_sql(as_of)),
+        ('inventory.sql',inventory_sql(as_of,registered_as_of)),
     ]:
         path=args.output/filename
         path.write_text(content)

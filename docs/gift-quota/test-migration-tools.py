@@ -20,6 +20,11 @@ def account(**updates):
 
 
 class ReviewTests(unittest.TestCase):
+    def test_registration_cohort_does_not_move_during_release(self):
+        sql=migration.inventory_sql(1794250000,1794240000)
+        self.assertIn('u.created_at BETWEEN 1793376000 AND 1794240000',sql)
+        self.assertIn('created_at<=1794250000',sql)
+
     def test_paid_and_gift_split(self):
         row=migration.review(account())
         self.assertEqual(row['remaining'],1500000)
