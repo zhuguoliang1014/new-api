@@ -440,7 +440,9 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 				require.NoError(t, db.Create(&billingPlan).Error)
 				InvalidateSubscriptionPlanCache(billingPlan.Id)
 				t.Cleanup(func() { InvalidateSubscriptionPlanCache(billingPlan.Id) })
-				billingSub := UserSubscription{UserId: billingUser.Id, PlanId: billingPlan.Id, Status: "active", StartTime: holiday - 60, EndTime: holiday + 30*86400, AmountTotal: 1000, AmountUsed: 317}
+				// Reservation reads the database clock even though freezing uses the
+				// fixed holiday clock. Keep the billing fixture active on both clocks.
+				billingSub := UserSubscription{UserId: billingUser.Id, PlanId: billingPlan.Id, Status: "active", StartTime: holiday - 60, EndTime: max(holiday, GetDBTimestamp()) + 30*86400, AmountTotal: 1000, AmountUsed: 317}
 				require.NoError(t, db.Create(&billingSub).Error)
 				reservation, err := PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, "gpt-test", 100, 100)
 				require.NoError(t, err)

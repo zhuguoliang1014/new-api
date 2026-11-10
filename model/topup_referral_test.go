@@ -187,7 +187,9 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 			t.Run("failed subscription payment rolls back receipt and rewards", func(t *testing.T) {
 				require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
 				order := &SubscriptionOrder{UserId: invitee.Id, PlanId: 999999, Money: 100, TradeNo: "subscription-invalid-plan", PaymentMethod: "alipay", PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending}
-				require.NoError(t, order.Insert())
+				// Seed a historical invalid order directly: new checkout validation
+				// rejects it before the settlement rollback path can be exercised.
+				require.NoError(t, db.Create(order).Error)
 				require.Error(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 100, "{}"))
 				require.NoError(t, db.First(inviter, inviter.Id).Error)
 				assert.Zero(t, inviter.AffQuota)
