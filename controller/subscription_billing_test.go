@@ -1195,7 +1195,7 @@ func TestNativeEpayQueryNormalizesGatewayStatesWithoutAcceptingMalformedPaidOrde
 func TestSubscriptionSalesLimitAPI(t *testing.T) {
 	db := subscriptionBillingDB(t)
 	confirmPaymentComplianceForTest(t)
-	plan := model.SubscriptionPlan{Title: "Limited", PriceAmount: 1, PriceCNY: 7, SalesLimit: 30, DisplaySoldCount: 999}
+	plan := model.SubscriptionPlan{Title: "Limited", PriceAmount: 1, PriceCNY: 7, SalesLimit: 5, DisplaySoldCount: 2}
 	request := func(create bool) *httptest.ResponseRecorder {
 		body, err := common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: plan})
 		require.NoError(t, err)
@@ -1214,10 +1214,15 @@ func TestSubscriptionSalesLimitAPI(t *testing.T) {
 	require.Contains(t, request(true).Body.String(), `"success":true`)
 	require.NoError(t, db.First(&plan).Error)
 	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
-	require.Equal(t, 30, plan.SalesLimit)
-	for i := range 30 {
+	require.Equal(t, 5, plan.SalesLimit)
+	records, err := buildSubscriptionPlanDTOs([]model.SubscriptionPlan{plan})
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	assert.EqualValues(t, 2, records[0].SoldCount)
+	assert.EqualValues(t, 3, records[0].RemainingCount)
+	for i := range 3 {
 		status := common.TopUpStatusSuccess
-		if i == 29 {
+		if i == 2 {
 			status = common.TopUpStatusPending
 		}
 		require.NoError(t, db.Create(&model.SubscriptionOrder{PlanId: plan.Id, TradeNo: fmt.Sprintf("stock-%d", i), Status: status}).Error)
@@ -1229,17 +1234,28 @@ func TestSubscriptionSalesLimitAPI(t *testing.T) {
 		assert.Equal(t, soldOut, records[0].SoldOut)
 		assert.True(t, records[0].SalesUnavailable)
 		assert.Zero(t, records[0].RemainingCount)
-		assert.EqualValues(t, 999, records[0].SoldCount, "display sales never determine stock")
+		expectedSold := int64(4)
+		if soldOut {
+			expectedSold = 5
+		}
+		assert.EqualValues(t, expectedSold, records[0].SoldCount)
 	}
 	checkCatalog(false)
-	plan.SalesLimit = 29
+	plan.SalesLimit = 4
 	require.Contains(t, request(false).Body.String(), `"success":false`)
 	var saved model.SubscriptionPlan
 	require.NoError(t, db.First(&saved, plan.Id).Error)
-	assert.Equal(t, 30, saved.SalesLimit)
+	assert.Equal(t, 5, saved.SalesLimit)
 	require.NoError(t, db.Model(&model.SubscriptionOrder{}).Where("plan_id = ?", plan.Id).Update("status", common.TopUpStatusSuccess).Error)
-	plan.SalesLimit = 30
+	plan.SalesLimit = 5
 	checkCatalog(true)
+	plan.DisplaySoldCount = 3
+	require.Contains(t, request(false).Body.String(), `"success":false`)
+	require.NoError(t, db.First(&saved, plan.Id).Error)
+	assert.EqualValues(t, 2, saved.DisplaySoldCount, "a rejected edit cannot consume places already reserved or sold")
+	plan.DisplaySoldCount = 1
+	plan.SalesLimit = 4
+	require.Contains(t, request(false).Body.String(), `"success":true`)
 	plan.SalesLimit = 0
 	require.Contains(t, request(false).Body.String(), `"success":true`)
 	require.NoError(t, db.First(&saved, plan.Id).Error)
@@ -1249,4 +1265,13 @@ func TestSubscriptionSalesLimitAPI(t *testing.T) {
 		require.Contains(t, request(true).Body.String(), `"success":false`)
 		require.Contains(t, request(false).Body.String(), `"success":false`)
 	}
+	plan.SalesLimit = 5
+	for _, display := range []int64{-1, 2147483648} {
+		plan.DisplaySoldCount = display
+		require.Contains(t, request(true).Body.String(), `"success":false`)
+		require.Contains(t, request(false).Body.String(), `"success":false`)
+	}
+	plan.DisplaySoldCount = 6
+	require.Contains(t, request(true).Body.String(), `"success":false`)
+	require.Contains(t, request(false).Body.String(), `"success":false`)
 }

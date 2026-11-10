@@ -177,7 +177,7 @@ type SubscriptionPlan struct {
 
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
-	// Lifetime paid sales cap; pending checkouts reserve a place. 0 = unlimited.
+	// Lifetime paid and display sales cap; pending checkouts reserve a place. 0 = unlimited.
 	SalesLimit int `json:"sales_limit" gorm:"type:int;not null;default:0"`
 
 	// AllowedChannelTypes stores model-provider identifiers using legacy channel-type IDs.
@@ -205,7 +205,7 @@ type SubscriptionPlan struct {
 	StartsAt  int64 `json:"starts_at"  gorm:"type:bigint;not null;default:0"`
 	ExpiresAt int64 `json:"expires_at" gorm:"type:bigint;not null;default:0"`
 
-	// Fake display sold count shown to users (0 = use real count only)
+	// Added to paid sales for display and limited stock; never creates an order.
 	DisplaySoldCount int64 `json:"display_sold_count" gorm:"type:bigint;not null;default:0"`
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`

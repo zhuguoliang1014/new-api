@@ -1,6 +1,7 @@
 package model
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -272,28 +273,37 @@ func TestSubscriptionSalesDatabaseMatrix(t *testing.T) {
 					}
 				}
 			})
-			t.Run("gifts_and_fake_sales_do_not_use_stock_and_unlimited_stays_unlimited", func(t *testing.T) {
-				p := newPlan(1)
-				require.NoError(t, db.Model(p).Update("display_sold_count", 999).Error)
+			t.Run("display_sales_consume_stock_without_creating_orders_and_gifts_do_not", func(t *testing.T) {
+				p := newPlan(5)
+				require.NoError(t, db.Model(p).Update("display_sold_count", 2).Error)
 				_, err := AdminBindSubscription(user.Id, p.Id, "")
 				require.NoError(t, err)
-				require.NoError(t, PurchaseSubscriptionWithBalance(user.Id, p.Id))
-				assert.Equal(t, SubscriptionSalesCounts{Sold: 1}, salesFor(p))
-				p = newPlan(0)
+				assert.Equal(t, SubscriptionSalesCounts{}, salesFor(p))
+				for range 3 {
+					require.NoError(t, PurchaseSubscriptionWithBalance(user.Id, p.Id))
+				}
+				assert.ErrorIs(t, PurchaseSubscriptionWithBalance(user.Id, p.Id), ErrSubscriptionSoldOut)
+				assert.ErrorIs(t, newOrder(p, PaymentProviderEpay, "full").Insert(), ErrSubscriptionSoldOut)
+				assert.Equal(t, SubscriptionSalesCounts{Sold: 3}, salesFor(p))
+			})
+			t.Run("unlimited_stays_unlimited_and_lower_caps_protect_existing_orders", func(t *testing.T) {
+				p := newPlan(0)
+				require.NoError(t, db.Model(p).Update("display_sold_count", 999).Error)
 				require.NoError(t, newOrder(p, PaymentProviderEpay, "one").Insert())
 				require.NoError(t, newOrder(p, PaymentProviderEpay, "two").Insert())
 				assert.Equal(t, SubscriptionSalesCounts{Reserved: 2}, salesFor(p))
-				assert.Error(t, db.Transaction(func(tx *gorm.DB) error { return ValidateSubscriptionSalesLimitTx(tx, p.Id, 1) }))
+				assert.Error(t, db.Transaction(func(tx *gorm.DB) error { return ValidateSubscriptionSalesLimitTx(tx, p.Id, 1000, 999) }))
 				require.NoError(t, db.Transaction(func(tx *gorm.DB) error {
-					if err := ValidateSubscriptionSalesLimitTx(tx, p.Id, 2); err != nil {
+					if err := ValidateSubscriptionSalesLimitTx(tx, p.Id, 1001, 999); err != nil {
 						return err
 					}
-					return tx.Model(p).Update("sales_limit", 2).Error
+					return tx.Model(p).Update("sales_limit", 1001).Error
 				}))
 				assert.ErrorIs(t, newOrder(p, PaymentProviderEpay, "three").Insert(), ErrSubscriptionSalesReserved)
 			})
 			t.Run("balance_and_external_checkout_compete_for_last_place", func(t *testing.T) {
-				p := newPlan(1)
+				p := newPlan(3)
+				require.NoError(t, db.Model(p).Update("display_sold_count", 2).Error)
 				var before User
 				require.NoError(t, db.First(&before, user.Id).Error)
 				var results [2]error
@@ -322,6 +332,38 @@ func TestSubscriptionSalesDatabaseMatrix(t *testing.T) {
 					expectedQuota -= int(common.QuotaPerUnit)
 				}
 				assert.Equal(t, expectedQuota, after.Quota)
+			})
+			t.Run("display_sales_edit_and_checkout_share_the_same_last_place", func(t *testing.T) {
+				p := newPlan(3)
+				require.NoError(t, db.Model(p).Update("display_sold_count", 1).Error)
+				require.NoError(t, newOrder(p, PaymentProviderEpay, "first").Insert())
+				var results [2]error
+				start := make(chan struct{})
+				var wg sync.WaitGroup
+				wg.Go(func() {
+					<-start
+					results[0] = db.Transaction(func(tx *gorm.DB) error {
+						if err := ValidateSubscriptionSalesLimitTx(tx, p.Id, 3, 2); err != nil {
+							return err
+						}
+						return tx.Model(p).Update("display_sold_count", 2).Error
+					})
+				})
+				wg.Go(func() { <-start; results[1] = newOrder(p, PaymentProviderEpay, "last").Insert() })
+				close(start)
+				wg.Wait()
+				accepted := 0
+				for _, err := range results {
+					if err == nil {
+						accepted++
+					} else {
+						assert.True(t, errors.Is(err, ErrSubscriptionSalesReserved) || errors.Is(err, ErrSubscriptionSalesLimitTooLow), "unexpected error: %v", err)
+					}
+				}
+				assert.Equal(t, 1, accepted)
+				require.NoError(t, db.First(p, p.Id).Error)
+				counts := salesFor(p)
+				assert.EqualValues(t, 3, counts.Sold+counts.Reserved+p.DisplaySoldCount)
 			})
 		})
 	}

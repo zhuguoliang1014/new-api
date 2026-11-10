@@ -27,7 +27,7 @@ export function getPlanCreateFormSchema(t: TFunction) {
     sort_order: z.coerce.number(),
     max_purchase_per_user: z.coerce.number().min(0),
     sales_limit: z.coerce.number().int().min(0).max(2147483647),
-    display_sold_count: z.coerce.number().min(0),
+    display_sold_count: z.coerce.number().int().min(0).max(2147483647),
     upgrade_group: z.string().optional(),
     starts_at: z.coerce.number().min(0).optional(),
     expires_at: z.coerce.number().min(0).optional(),

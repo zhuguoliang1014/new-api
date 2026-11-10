@@ -451,7 +451,7 @@ export function SubscriptionCreateDrawer({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Minimum sold count shown to users. Real count is used when higher.'
+                          'Added to paid sales and deducted from limited stock. Does not create orders or revenue.'
                         )}
                       </FormDescription>
                       <FormMessage />

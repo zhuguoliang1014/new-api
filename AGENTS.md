@@ -24,6 +24,8 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 - JavaScript task plugins live in `plugins/tasks/`, run through `pkg/jsplugin/`, and integrate with host task polling and settlement.
 - `web/` is the React frontend (see `web/AGENTS.md`); `electron/` is the desktop wrapper.
 
+- **订阅展示销量与限量名额（2026-11-10）**：展示销量是在实际成功付款订单上增加的额外已售数，同时消耗销售总量；限量5、展示销量2、无订单时应为已售2、剩余3。库存统一按实际成功付款＋展示销量＋待支付占位计算，已售不再按订阅实例条数统计；赠送不占名额，取消/删除订阅不回补实际已售。新增/编辑套餐校验非负整数展示销量及三项合计，编辑与下单共用套餐行锁。展示销量不创建订单、收入、余额或用户订阅；支付过期及回调规则沿用已提交版本，不合入现有过期处理草稿。
+
 - **rc.49 本地合并（2026-11-10）**：合并官方 `v1.0.0-rc.49`（`48a6c87f9e7757fdc58e5be9bcb4f8281ad0dfd0`），保留本站创作工作台、GIF/SVG、Responses WSS、订阅/返利、机器人及运维定制。OAuth 测试与七语言冲突均合并保留两边内容；另修正冻结订阅测试的过期日期和返利回滚测试的旧订单夹具，不修改对应生产业务。Go 主模块48测试包、相关11包race、relaykit/tokenkit独立测试/vet/构建、前端类型/lint/格式/637.2KiB构建及三库渠道/定价/缓存/OAuth/订阅回归通过，SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17。前端首次全量3036项仅1项悬停关闭测试未通过，其所在工作台70项独立复测全部通过；生图队列测试在释放本机旧编译缓存后通过。原未提交草稿已独立备份并保留；本次仅本地合并提交，未push或部署。备份与核验材料 `/tmp/newapi-rc49-merge-20261110T173509/`。
 
 - **画图模型目录维护约定（2026-11-05）**：工作台模型来自启用渠道的 abilities，GPT 以一个大类下的「超分、原生」展示，分类顺序固定 GPT、香蕉、Midjourney；默认模型为 `gpt-image-2.5-flare-basic`。新建「画图」工作台专用 Key 由画图分组和图片能力校验约束，不再冻结创建时的模型名单；已有自定义模型限制、停用/删除状态及 IP/额度限制仍生效。此次将116把匹配旧版完整自动名单的现存 Key 改为跟随该分组，限定事务及逆向脚本保存在 `/root/upgrade-recovery/new-api-image-catalog-20261105/`；其他 Key 未纳入该迁移。新增模型时须同时验证渠道 abilities、工作台 bootstrap、实际列表和价格，不能仅检查映射或模拟数据。

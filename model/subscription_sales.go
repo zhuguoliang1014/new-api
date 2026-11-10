@@ -6,13 +6,14 @@ import (
 )
 
 var (
-	ErrSubscriptionSoldOut       = common.NewMessage("This subscription plan is sold out")
-	ErrSubscriptionSalesReserved = common.NewMessage("All remaining places are reserved by pending payments. Please try again later.")
+	ErrSubscriptionSoldOut          = common.NewMessage("This subscription plan is sold out")
+	ErrSubscriptionSalesReserved    = common.NewMessage("All remaining places are reserved by pending payments. Please try again later.")
+	ErrSubscriptionSalesLimitTooLow = common.NewMessage("Sales limit cannot be less than paid, reserved and display sales")
 )
 
-// SubscriptionSalesCounts deliberately uses payment orders, not displayed sales
-// or subscription instances: gifts do not consume stock, and deleting, expiring
-// or cancelling a delivered subscription does not replenish lifetime stock.
+// SubscriptionSalesCounts records real payment orders. Display sales consume
+// additional stock without creating an order; gifts consume no stock, and
+// deleting or cancelling a delivered subscription does not replenish it.
 type SubscriptionSalesCounts struct {
 	Sold     int64
 	Reserved int64
@@ -81,23 +82,24 @@ func checkSubscriptionSaleCapacityTx(tx *gorm.DB, plan *SubscriptionPlan) error 
 	if err := subscriptionSaleOrders(tx).Where("plan_id = ?", plan.Id).Count(&occupied).Error; err != nil {
 		return err
 	}
-	if occupied < int64(plan.SalesLimit) {
+	available := int64(plan.SalesLimit) - max(0, plan.DisplaySoldCount)
+	if occupied < available {
 		return nil
 	}
 	var sold int64
 	if err := tx.Model(&SubscriptionOrder{}).Where("plan_id = ? AND status = ?", plan.Id, common.TopUpStatusSuccess).Count(&sold).Error; err != nil {
 		return err
 	}
-	if sold >= int64(plan.SalesLimit) {
+	if sold >= available {
 		return ErrSubscriptionSoldOut
 	}
 	return ErrSubscriptionSalesReserved
 }
 
 // ValidateSubscriptionSalesLimitTx locks the plan until its new cap is saved.
-// Existing paid and reserved orders are always honored, so a cap cannot be
-// lowered below them. Setting zero removes the cap.
-func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int) error {
+// Paid orders, pending reservations and the proposed display sales all consume
+// the cap. Setting zero removes the cap.
+func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int, displaySoldCount int64) error {
 	if _, err := lockSubscriptionSalePlanTx(tx, planID); err != nil {
 		return err
 	}
@@ -108,8 +110,8 @@ func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int) error {
 	if err := subscriptionSaleOrders(tx).Where("plan_id = ?", planID).Count(&occupied).Error; err != nil {
 		return err
 	}
-	if int64(limit) < occupied {
-		return common.NewMessage("Sales limit cannot be less than paid and reserved orders")
+	if occupied > int64(limit)-displaySoldCount {
+		return ErrSubscriptionSalesLimitTooLow
 	}
 	return nil
 }

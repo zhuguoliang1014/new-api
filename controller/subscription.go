@@ -60,7 +60,7 @@ func newSubscriptionPlanDTO(plan model.SubscriptionPlan, soldCount int64) Subscr
 	return SubscriptionPlanDTO{
 		Plan:           plan,
 		TotalAmountUSD: totalAmountUSD,
-		SoldCount:      soldCount + plan.DisplaySoldCount,
+		SoldCount:      soldCount + max(0, plan.DisplaySoldCount),
 	}
 }
 
@@ -72,38 +72,19 @@ func buildSubscriptionPlanDTOs(plans []model.SubscriptionPlan) ([]SubscriptionPl
 		}
 	}
 
-	soldCounts := map[int]int64{}
-	if len(planIds) > 0 {
-		var rows []struct {
-			PlanId    int   `gorm:"column:plan_id"`
-			SoldCount int64 `gorm:"column:sold_count"`
-		}
-		err := model.DB.Model(&model.UserSubscription{}).
-			Select("plan_id, COUNT(*) as sold_count").
-			Where("plan_id IN ? AND status <> ?", planIds, "cancelled").
-			Group("plan_id").
-			Scan(&rows).Error
-		if err != nil {
-			return nil, err
-		}
-		for _, row := range rows {
-			soldCounts[row.PlanId] = row.SoldCount
-		}
-	}
-
 	salesCounts, err := model.GetSubscriptionSalesCounts(planIds)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]SubscriptionPlanDTO, 0, len(plans))
 	for _, p := range plans {
-		record := newSubscriptionPlanDTO(p, soldCounts[p.Id])
 		sales := salesCounts[p.Id]
+		record := newSubscriptionPlanDTO(p, sales.Sold)
 		record.PaidCount = sales.Sold
 		record.ReservedCount = sales.Reserved
 		if p.SalesLimit > 0 {
-			record.RemainingCount = max(0, int64(p.SalesLimit)-sales.Sold-sales.Reserved)
-			record.SoldOut = sales.Sold >= int64(p.SalesLimit)
+			record.RemainingCount = max(0, int64(p.SalesLimit)-record.SoldCount-sales.Reserved)
+			record.SoldOut = record.SoldCount >= int64(p.SalesLimit)
 			record.SalesUnavailable = record.RemainingCount == 0
 		}
 		result = append(result, record)
@@ -335,6 +316,14 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
 		return
 	}
+	if req.Plan.DisplaySoldCount < 0 || req.Plan.DisplaySoldCount > 2147483647 {
+		common.ApiErrorT(c, "Display sold count must be an integer between 0 and 2147483647")
+		return
+	}
+	if req.Plan.SalesLimit > 0 && req.Plan.DisplaySoldCount > int64(req.Plan.SalesLimit) {
+		common.ApiError(c, model.ErrSubscriptionSalesLimitTooLow)
+		return
+	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorT(c, "Purchase limit cannot be negative")
 		return
@@ -431,6 +420,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
 		return
 	}
+	if req.Plan.DisplaySoldCount < 0 || req.Plan.DisplaySoldCount > 2147483647 {
+		common.ApiErrorT(c, "Display sold count must be an integer between 0 and 2147483647")
+		return
+	}
 	if req.Plan.MaxPurchasePerUser < 0 {
 		common.ApiErrorT(c, "Purchase limit cannot be negative")
 		return
@@ -470,7 +463,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		if err := model.ValidateSubscriptionSalesLimitTx(tx, id, req.Plan.SalesLimit); err != nil {
+		if err := model.ValidateSubscriptionSalesLimitTx(tx, id, req.Plan.SalesLimit, req.Plan.DisplaySoldCount); err != nil {
 			return err
 		}
 		// update plan (allow zero values updates with map)

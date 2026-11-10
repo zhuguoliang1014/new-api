@@ -13,6 +13,7 @@ import {
   createFormValuesToPayload,
   PLAN_CREATE_FORM_DEFAULTS,
 } from '../../lib/plan-create-form'
+import { getPlanSalesState } from '../../lib/sales'
 import { subscriptionPlanSchema, type PlanRecord } from '../../types'
 import { SubscriptionPurchaseDialog } from '../dialogs/subscription-purchase-dialog'
 import { SubscriptionCreateDrawer } from '../subscription-create-drawer'
@@ -43,6 +44,44 @@ function record(paid: number, reserved = 0): PlanRecord {
     sales_unavailable: paid + reserved >= 30,
   }
 }
+
+test.each([
+  [0, 0, 3, false, false],
+  [2, 1, 0, false, true],
+  [3, 0, 0, true, true],
+])(
+  'counts two display sales with %i paid and %i reserved orders',
+  (paid, reserved, remaining, soldOut, unavailable) => {
+    const offer = record(paid, reserved)
+    offer.plan.sales_limit = 5
+    offer.plan.display_sold_count = 2
+    delete offer.remaining_count
+    delete offer.sold_out
+    delete offer.sales_unavailable
+    expect(getPlanSalesState(offer)).toMatchObject({
+      remaining,
+      soldOut,
+      unavailable,
+    })
+  }
+)
+
+test('display sales exhaust all limited places and disable payment without creating paid orders', () => {
+  const offer = record(0)
+  offer.plan.sales_limit = 5
+  offer.plan.display_sold_count = 5
+  delete offer.remaining_count
+  render(
+    <LocalSubscriptionPurchaseDialog
+      open
+      onOpenChange={() => {}}
+      enableHupijiao
+      plan={offer}
+    />
+  )
+  expect(screen.getByRole('button', { name: 'Alipay' })).toBeDisabled()
+  expect(screen.getByText('Sold Out')).toBeVisible()
+})
 
 test('a sold-out plan disables every built-in payment method in the purchase dialog', () => {
   render(
@@ -118,7 +157,8 @@ test('the legacy wallet refreshes sold-out stock and keeps checkout disabled aft
 })
 
 test('the editor reports a rejected sales cap and keeps the unsaved form open', async () => {
-  const message = 'Sales limit cannot be less than paid and reserved orders'
+  const message =
+    'Sales limit cannot be less than paid, reserved and display sales'
   vi.spyOn(api, 'get').mockResolvedValue({ data: { success: true, data: [] } })
   vi.spyOn(api, 'put').mockResolvedValue({
     data: { success: false, message, message_key: message },

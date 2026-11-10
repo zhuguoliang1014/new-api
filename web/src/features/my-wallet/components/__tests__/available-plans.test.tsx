@@ -548,18 +548,17 @@ it('shows temporary unavailability when pending payments reserve the remaining p
   expect(screen.getByText('Limited to 30 · 0 available')).toBeVisible()
 })
 
-it('uses real stock rather than display sales to keep remaining places purchasable', async () => {
+it('deducts two display sales from five available places while keeping the remaining three purchasable', async () => {
   await renderPlans([
     {
-      ...plan({ sales_limit: 30, display_sold_count: 999 }),
-      sold_count: 999,
-      paid_count: 5,
-      reserved_count: 2,
-      remaining_count: 23,
+      ...plan({ sales_limit: 5, display_sold_count: 2 }),
+      sold_count: 2,
+      paid_count: 0,
+      reserved_count: 0,
       sold_out: false,
       sales_unavailable: false,
     },
   ])
   expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
-  expect(screen.getByText('Limited to 30 · 23 available')).toBeVisible()
+  expect(screen.getByText('Limited to 5 · 3 available')).toBeVisible()
 })
