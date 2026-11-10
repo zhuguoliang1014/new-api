@@ -29,15 +29,15 @@ const assets = importReferenceAssets(source)
 
 it('preserves the entire pinned source catalog and all available camera angles', () => {
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-    '8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828'
+    '482f633866c5137b534c0acb4767c02ee5fbb209bfb12cf9c028628048675c98'
   )
-  expect(assets).toHaveLength(2978)
-  expect(new Set(assets.map((a) => a.id)).size).toBe(2978)
+  expect(assets).toHaveLength(3028)
+  expect(new Set(assets.map((a) => a.id)).size).toBe(3028)
   expect(assets.filter((a) => a.role === 'outfit')).toHaveLength(1407)
   expect(assets.filter((a) => a.role === 'identity')).toHaveLength(1499)
   const poses = assets.filter((a) => a.role === 'pose')
-  expect(poses).toHaveLength(72)
-  expect(poses.flatMap((a) => a.views)).toHaveLength(360)
+  expect(poses).toHaveLength(122)
+  expect(poses.flatMap((a) => a.views)).toHaveLength(610)
   for (const asset of assets) {
     const original = source.items.find((item) => item.id === asset.id)
     assert(original)
@@ -126,7 +126,7 @@ it('keeps every retained depth view and leaves person and outfit data unchanged'
   const views = assets
     .filter((asset) => asset.role === 'pose')
     .flatMap((asset) => asset.views)
-  expect(views.filter((view) => view.depth)).toHaveLength(360)
+  expect(views.filter((view) => view.depth)).toHaveLength(610)
   const pose = assets.find((asset) => asset.role === 'pose')
   assert(pose)
   const plain = selectedPortraitView(pose, pose.views[0].id)
@@ -134,4 +134,32 @@ it('keeps every retained depth view and leaves person and outfit data unchanged'
   expect(depth?.src).not.toBe(plain?.src)
   expect(depth?.instruction).toContain('AI inferred')
   expect(depth?.src).toBe(pose.views[0].depth?.src)
+})
+
+it('makes all fifty natural poses searchable with five distinct selectable views and paired depth', () => {
+  const additions = assets.filter((asset) =>
+    asset.id.startsWith('natural_pose_N')
+  )
+  expect(additions).toHaveLength(50)
+  const paths = new Set<string>()
+  for (const asset of additions) {
+    assert(asset.code)
+    expect(
+      filterLibraryAssets(assets, 'pose', asset.code, emptyLibraryFilters)
+    ).toContain(asset)
+    expect(asset.views.map((view) => view.label?.en).sort()).toEqual(
+      ['Front', 'High angle', 'Low angle', 'Side', 'Three-quarter'].sort()
+    )
+    for (const view of asset.views) {
+      const selected = selectedPortraitView(asset, `${view.id}:depth`)
+      expect(selected?.src).toBe(view.depth?.src)
+      expect(selected?.instruction).toContain(`Camera: ${view.label?.en}`)
+      assert(view.depth)
+      expect(paths.has(view.src)).toBe(false)
+      expect(paths.has(view.depth.src)).toBe(false)
+      paths.add(view.src)
+      paths.add(view.depth.src)
+    }
+  }
+  expect(paths.size).toBe(500)
 })

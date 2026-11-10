@@ -66,7 +66,7 @@ func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "482f633866c5137b534c0acb4767c02ee5fbb209bfb12cf9c028628048675c98" {
 		t.Fatalf("source catalog changed: %s", got)
 	}
 	response, err := imageStudioCatalogResponse()
@@ -124,7 +124,7 @@ func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 			poseViews += len(item.Variants)
 		}
 	}
-	if counts["pose"] != 72 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 360 || depthViews != 360 {
+	if counts["pose"] != 122 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 610 || depthViews != 610 {
 		t.Fatalf("incomplete import: %v, %d pose views", counts, poseViews)
 	}
 }

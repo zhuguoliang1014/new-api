@@ -55,5 +55,5 @@ func TestStudioRetiredPoseMediaAreNotServedEvenWhenFilesExist(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, imageStudioPoseMedia(), 360*6)
+	require.Len(t, imageStudioPoseMedia(), 610*6)
 }
