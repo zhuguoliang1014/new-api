@@ -46,7 +46,10 @@ export function FashionResults(props: {
     id: string
     latestId?: string
   }>()
-  const [imageId, setImageId] = useState<string>()
+  const [imageSelection, setImageSelection] = useState<{
+    id: string
+    latestId?: string
+  }>()
   const [mode, setMode] = useState<'result' | 'side' | 'overlay'>('result')
   const [referenceId, setReferenceId] = useState<string>()
   const [opacity, setOpacity] = useState(50)
@@ -55,7 +58,10 @@ export function FashionResults(props: {
   const items = records
     .filter((r) => r.creativeContext?.projectId === props.state.projectId)
     .flatMap((record) => record.images.map((image) => ({ record, image })))
-  const selected = items.find((item) => item.image.id === imageId) ?? items[0]
+  const selected =
+    imageSelection?.latestId === items[0]?.image.id
+      ? (items.find((item) => item.image.id === imageSelection?.id) ?? items[0])
+      : items[0]
   const projectJobs = jobs
     .filter((job) => job.creativeContext?.projectId === props.state.projectId)
     .sort((a, b) => b.startedAt - a.startedAt)
@@ -269,7 +275,12 @@ export function FashionResults(props: {
                         index: items.length - index,
                       })}
                       aria-pressed={selected.image.id === image.id}
-                      onClick={() => setImageId(image.id)}
+                      onClick={() =>
+                        setImageSelection({
+                          id: image.id,
+                          latestId: items[0]?.image.id,
+                        })
+                      }
                     >
                       <img src={image.previewSrc || image.src} alt='' />
                       <span>{items.length - index}</span>

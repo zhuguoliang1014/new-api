@@ -1448,3 +1448,77 @@ it('keeps the canvas active while a finished server task is preparing its local 
   )
   expect(createStudioTask).toHaveBeenCalledTimes(1)
 })
+
+it('reveals the newly delivered result even when an older project version was selected', async () => {
+  const user = await openStudio()
+  await user.type(
+    screen.getByRole('textbox', { name: 'What would you like to create?' }),
+    'A painted coastal scene'
+  )
+  await user.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  const [id, parameters, , metadata] = vi.mocked(createStudioTask).mock.calls[0]
+  const first = {
+    id,
+    ownerId: 1,
+    createdAt: Date.now(),
+    parameters,
+    referenceCount: 0,
+    styleId: null,
+    creativeContext: metadata.creativeContext,
+    images: [
+      {
+        id: 'first-version',
+        src: 'data:image/png;base64,Zmlyc3Q=',
+        width: 1024,
+        height: 1024,
+      },
+    ],
+  }
+  const second = {
+    ...first,
+    id: 'second-record',
+    createdAt: first.createdAt + 1000,
+    images: [
+      {
+        ...first.images[0],
+        id: 'second-version',
+        src: 'data:image/png;base64,c2Vjb25k',
+      },
+    ],
+  }
+  act(() =>
+    useImagePlaygroundStore.setState({ jobs: [], records: [second, first] })
+  )
+  const region = screen.getByRole('region', { name: 'Your creation' })
+  await user.click(
+    await within(region).findByRole('button', { name: 'Select version 1' })
+  )
+  await waitFor(() =>
+    expect(
+      within(region).getByRole('img', { name: 'Generated image' })
+    ).toHaveAttribute('src', first.images[0].src)
+  )
+  const third = {
+    ...second,
+    id: 'new-record',
+    createdAt: second.createdAt + 1000,
+    images: [
+      {
+        ...second.images[0],
+        id: 'new-version',
+        src: 'data:image/png;base64,bmV3',
+      },
+    ],
+  }
+  act(() =>
+    useImagePlaygroundStore.setState({ records: [third, second, first] })
+  )
+  await waitFor(() =>
+    expect(
+      within(region).getByRole('img', { name: 'Generated image' })
+    ).toHaveAttribute('src', third.images[0].src)
+  )
+  expect(region.querySelectorAll('.compose-canvas-card')).toHaveLength(1)
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
+})
