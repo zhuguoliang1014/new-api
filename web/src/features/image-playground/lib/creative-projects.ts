@@ -14,6 +14,7 @@ import type {
   ReferenceRole,
 } from './creative'
 import type { FashionShoot } from './fashion-shoot'
+import { withoutRetiredPoses } from './pose-availability'
 
 export type CreativeProject = {
   version: 1
@@ -44,6 +45,20 @@ export type CreativeProject = {
     source: 'assistant' | 'manual'
     submitted?: boolean
     previousRecordIds?: string[]
+  }
+}
+
+/** Drop withdrawn built-in images and invalidate any plan built around them. */
+export function sanitizeCreativeProject(
+  project: CreativeProject
+): CreativeProject {
+  const references = withoutRetiredPoses(project.references)
+  if (references.length === project.references.length) return project
+  return {
+    ...project,
+    references,
+    plan: undefined,
+    title: project.brief.trim().slice(0, 36),
   }
 }
 
@@ -81,6 +96,7 @@ export async function listCreativeProjects(
         resolve(
           (request.result as CreativeProject[])
             .filter((p) => p.version === 1 && p.ownerId === ownerId)
+            .map(sanitizeCreativeProject)
             .sort((a, b) => b.updatedAt - a.updatedAt)
         )
       )
@@ -99,7 +115,7 @@ export async function saveCreativeProject(
   try {
     await new Promise<void>((resolve, reject) => {
       const tx = db.transaction('projects', 'readwrite')
-      tx.objectStore('projects').put(project)
+      tx.objectStore('projects').put(sanitizeCreativeProject(project))
       tx.addEventListener('complete', () => resolve())
       tx.addEventListener('error', () => reject(tx.error))
       tx.addEventListener('abort', () => reject(tx.error))

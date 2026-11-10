@@ -27,6 +27,7 @@ import { requestCreativePlan } from '../lib/creative-plan-api'
 import {
   listCreativeProjects,
   saveCreativeProject,
+  sanitizeCreativeProject,
   type CreativeProject,
 } from '../lib/creative-projects'
 import {
@@ -41,6 +42,7 @@ import {
   selectedElementInstructions,
   type PortraitAsset,
 } from '../lib/portrait-elements'
+import { isRetiredPoseId, withoutRetiredPoses } from '../lib/pose-availability'
 import { referenceDisplayName } from '../lib/reference-names'
 import { trackStudioEvent } from '../lib/studio-events'
 import { useImagePlaygroundStore } from '../store'
@@ -115,18 +117,19 @@ export function useCreativeWorkspace(options?: {
   const taskType: CreativeTask = mode
   const invalidManagedReferences = references.some(
     (r) =>
-      (r.role === 'pose' || r.role === 'outfit') &&
-      !options?.catalog?.some(
-        (a) =>
-          a.role === r.role &&
-          a.id === r.assetId &&
-          (a.role !== 'pose' ||
-            a.views.some(
-              (v) =>
-                v.id === r.assetView ||
-                (v.depth && `${v.id}:depth` === r.assetView)
-            ))
-      )
+      isRetiredPoseId(r.assetId) ||
+      ((r.role === 'pose' || r.role === 'outfit') &&
+        !options?.catalog?.some(
+          (a) =>
+            a.role === r.role &&
+            a.id === r.assetId &&
+            (a.role !== 'pose' ||
+              a.views.some(
+                (v) =>
+                  v.id === r.assetView ||
+                  (v.depth && `${v.id}:depth` === r.assetView)
+              ))
+        ))
   )
   const inputKey = creativeInputKey(
     taskType,
@@ -189,7 +192,7 @@ export function useCreativeWorkspace(options?: {
     let active = true
     listCreativeProjects(ownerId)
       .then((items) => {
-        if (active) setProjects(items)
+        if (active) setProjects(items.map(sanitizeCreativeProject))
       })
       .catch(() => {
         if (active) setSaveStatus('failed')
@@ -198,6 +201,20 @@ export function useCreativeWorkspace(options?: {
       active = false
     }
   }, [ownerId])
+
+  useEffect(() => {
+    const retired = references.filter((reference) =>
+      isRetiredPoseId(reference.assetId)
+    )
+    if (!retired.length) return
+    useImagePlaygroundStore.setState({
+      references: withoutRetiredPoses(references),
+    })
+    for (const reference of retired) URL.revokeObjectURL(reference.preview)
+    setPlan(undefined)
+    setConsumed(false)
+    submittedInput.current = undefined
+  }, [references])
 
   useEffect(() => {
     if (!ready || !ownerId || (!brief.trim() && !references.length && !plan)) {
@@ -285,7 +302,22 @@ export function useCreativeWorkspace(options?: {
       parentRecordId,
       references: references.map(({ preview: _preview, ...ref }) => ref),
     }
-    const draft = drafts.current[next]
+    const previousDraft = drafts.current[next]
+    const draft = previousDraft
+      ? {
+          ...previousDraft,
+          references: withoutRetiredPoses(previousDraft.references),
+        }
+      : undefined
+    if (
+      draft &&
+      previousDraft &&
+      draft.references.length !== previousDraft.references.length
+    ) {
+      draft.plan = undefined
+      draft.consumed = false
+      draft.submission = undefined
+    }
     planningController.current?.abort()
     continuationController.current?.abort()
     useImagePlaygroundStore.getState().clearDraft()
@@ -494,8 +526,9 @@ export function useCreativeWorkspace(options?: {
     await submitPlan(generationPlan, plan && !stale ? plan.source : 'manual')
   }
 
-  const restore = (project: CreativeProject) => {
-    if (project.ownerId !== ownerId) return
+  const restore = (savedProject: CreativeProject) => {
+    if (savedProject.ownerId !== ownerId) return
+    const project = sanitizeCreativeProject(savedProject)
     pendingSave.current?.()
     planningController.current?.abort()
     continuationController.current?.abort()

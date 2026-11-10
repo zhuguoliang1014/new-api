@@ -29,15 +29,15 @@ const assets = importReferenceAssets(source)
 
 it('preserves the entire pinned source catalog and all available camera angles', () => {
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-    '8dc73e16a3198c70fa2787526a8ddc34f5f47c91751f2e441e7597ed47281cba'
+    '8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828'
   )
-  expect(assets).toHaveLength(3194)
-  expect(new Set(assets.map((a) => a.id)).size).toBe(3194)
+  expect(assets).toHaveLength(2978)
+  expect(new Set(assets.map((a) => a.id)).size).toBe(2978)
   expect(assets.filter((a) => a.role === 'outfit')).toHaveLength(1407)
   expect(assets.filter((a) => a.role === 'identity')).toHaveLength(1499)
   const poses = assets.filter((a) => a.role === 'pose')
-  expect(poses).toHaveLength(288)
-  expect(poses.flatMap((a) => a.views)).toHaveLength(1439)
+  expect(poses).toHaveLength(72)
+  expect(poses.flatMap((a) => a.views)).toHaveLength(360)
   for (const asset of assets) {
     const original = source.items.find((item) => item.id === asset.id)
     assert(original)
@@ -48,8 +48,8 @@ it('preserves the entire pinned source catalog and all available camera angles',
     )
     expect(new Set(asset.views.map((v) => v.src)).size).toBe(asset.views.length)
   }
-  // One original pose has no low view. Importing must not invent that view.
-  expect(poses.filter((a) => a.views.length === 4)).toHaveLength(1)
+  // Every retained group has its five actual views.
+  expect(poses.every((asset) => asset.views.length === 5)).toBe(true)
 })
 it('uses the selected full-resolution image for generation and preserves separate previews and depth files', () => {
   const depthSource = sourceReferenceCatalogSchema.parse(
@@ -74,7 +74,7 @@ it('uses the selected full-resolution image for generation and preserves separat
 })
 it('searches bilingual titles, existing IDs and facets in the locally hosted catalog', () => {
   expect(
-    filterLibraryAssets(assets, 'pose', 'full_sexy_P001', emptyLibraryFilters)
+    filterLibraryAssets(assets, 'pose', 'full_single_P001', emptyLibraryFilters)
   ).toHaveLength(1)
   expect(
     filterLibraryAssets(assets, 'outfit', 'SPR-0001', emptyLibraryFilters)
@@ -111,22 +111,22 @@ it('rejects image URLs outside exact source hosts and image paths', () => {
   }
 })
 
-it('adds depth for every pose view without changing original catalog metadata or images', () => {
-  const original = JSON.parse(bytes.toString()) as {
-    items: { variants: { depth?: unknown }[] }[]
-  }
-  for (const item of original.items) {
-    for (const view of item.variants) delete view.depth
-  }
+it('keeps every retained depth view and leaves person and outfit data unchanged', () => {
   expect(
     createHash('sha256')
-      .update(`${JSON.stringify(original)}\n`)
+      .update(
+        JSON.stringify(
+          (
+            JSON.parse(bytes.toString()) as { items: { kind: string }[] }
+          ).items.filter((item) => item.kind !== 'pose')
+        )
+      )
       .digest('hex')
-  ).toBe('e50413cf38e8ca12d48e0d5e6afb8d2300ee75f3291d9ee309a4071192015a29')
+  ).toBe('6ca975f40081eff2d94210918489c8435bac574a0d2edf2ccc8c79fb5ff6180b')
   const views = assets
     .filter((asset) => asset.role === 'pose')
     .flatMap((asset) => asset.views)
-  expect(views.filter((view) => view.depth)).toHaveLength(1439)
+  expect(views.filter((view) => view.depth)).toHaveLength(360)
   const pose = assets.find((asset) => asset.role === 'pose')
   assert(pose)
   const plain = selectedPortraitView(pose, pose.views[0].id)

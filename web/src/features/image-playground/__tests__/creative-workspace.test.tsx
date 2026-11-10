@@ -73,7 +73,8 @@ vi.mock('../lib/history', () => ({
   saveImageRecord: vi.fn(),
   deleteImageRecord: vi.fn(),
 }))
-vi.mock('../lib/creative-projects', () => ({
+vi.mock('../lib/creative-projects', async (original) => ({
+  ...(await original<typeof import('../lib/creative-projects')>()),
   listCreativeProjects: vi.fn(),
   saveCreativeProject: vi.fn(),
 }))
@@ -1138,6 +1139,89 @@ it('disables history restore actions while reference originals are still being l
     expect(
       within(history).getByRole('button', { name: 'Reuse settings' })
     ).toBeEnabled()
+  )
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('removes a withdrawn pose and its proposal when restoring an old saved project', async () => {
+  vi.mocked(listCreativeProjects).mockResolvedValue([
+    {
+      version: 1,
+      id: 'retired-project',
+      ownerId: 1,
+      title: 'Retired pose title',
+      updatedAt: 1,
+      taskType: 'portrait',
+      brief: 'Window light',
+      parameters: {
+        ...defaultImageParameters,
+        group: 'basic',
+        model: 'gpt-image-2.5-flare-basic',
+      },
+      references: [
+        {
+          id: 'retired-pose',
+          file: new File(['old'], 'old-pose.png', { type: 'image/png' }),
+          role: 'pose',
+          assetId: 'pair60_P007',
+          assetRole: 'pose',
+          assetView: 'pair60_P007_front',
+          assetInstruction: 'Withdrawn pose instruction',
+        },
+      ],
+      poster: {
+        kicker: '',
+        title: '',
+        subtitle: '',
+        color: '#000000',
+        position: 'top',
+        align: 'left',
+        size: 7,
+      },
+      plan: {
+        inputKey: 'old',
+        source: 'manual',
+        value: {
+          ...proposal,
+          title: 'Retired pose title',
+          prompt: 'Withdrawn pose instruction',
+        },
+      },
+    },
+  ])
+  const user = await openStudio()
+  await user.click(screen.getByRole('button', { name: 'Saved projects' }))
+  expect(
+    screen.queryByRole('button', { name: 'Retired pose title' })
+  ).not.toBeInTheDocument()
+  await user.click(await screen.findByRole('button', { name: 'Window light' }))
+  expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
+  expect(
+    screen.getByRole('textbox', { name: 'Additional instructions' })
+  ).toHaveValue('Window light')
+  expect(
+    screen.queryByText('Withdrawn pose instruction')
+  ).not.toBeInTheDocument()
+  expect(createStudioTask).not.toHaveBeenCalled()
+})
+
+it('clears a withdrawn pose from a live draft before allowing any new generation', async () => {
+  await openStudio()
+  act(() =>
+    useImagePlaygroundStore.setState({
+      references: [
+        {
+          id: 'old-pose',
+          file: new File(['old'], 'old.png', { type: 'image/png' }),
+          preview: 'blob:old',
+          role: 'pose',
+          assetId: 'upper80v2_P051',
+        },
+      ],
+    })
+  )
+  await waitFor(() =>
+    expect(useImagePlaygroundStore.getState().references).toHaveLength(0)
   )
   expect(createStudioTask).not.toHaveBeenCalled()
 })

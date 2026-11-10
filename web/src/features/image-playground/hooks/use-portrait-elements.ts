@@ -23,6 +23,7 @@ import {
   type PortraitAsset,
   type PortraitSlot,
 } from '../lib/portrait-elements'
+import { isRetiredPoseId } from '../lib/pose-availability'
 import { randomCombination } from '../lib/random-combination'
 import {
   selectedPortraitView,
@@ -85,6 +86,7 @@ export function usePortraitElements(
     viewId: string | undefined,
     signal: AbortSignal
   ) => {
+    if (isRetiredPoseId(asset.id)) throw new Error('Reference unavailable')
     const view = selectedPortraitView(asset, viewId)
     const blob = await getImageBlob(view?.src ?? asset.src, signal)
     const language = i18n.resolvedLanguage || i18n.language

@@ -8,6 +8,7 @@ License, or (at your option) any later version.
 */
 import type { ImageReference } from '../types'
 import type { PortraitAsset } from './portrait-elements'
+import { isRetiredPoseId } from './pose-availability'
 
 /** Pick all three slots before loading; prefer a new choice for every slot. */
 export function randomCombination(
@@ -17,7 +18,7 @@ export function randomCombination(
 ): { asset: PortraitAsset; viewId?: string }[] {
   const roles = ['identity', 'outfit', 'pose'] as const
   const groups = roles.map((role) =>
-    assets.filter((asset) => asset.role === role)
+    assets.filter((asset) => asset.role === role && !isRetiredPoseId(asset.id))
   )
   if (groups.some((group) => !group.length)) return []
   return groups.map((group, index) => {

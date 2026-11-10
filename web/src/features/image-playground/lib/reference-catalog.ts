@@ -9,6 +9,7 @@ License, or (at your option) any later version.
 import { z } from 'zod'
 
 import type { PortraitAsset, PortraitView } from './portrait-elements'
+import { isRetiredPoseId } from './pose-availability'
 import { createReferenceTitle } from './reference-names'
 
 /** Built-in media is served by this site from a versioned, read-only catalog. */
@@ -72,60 +73,62 @@ export function importReferenceAssets(
   source: SourceReferenceCatalog
 ): PortraitAsset[] {
   const ordinals = { pose: 0, costume: 0, character: 0 }
-  return source.items.map((item) => {
-    const displayTitle = createReferenceTitle(item, ++ordinals[item.kind])
-    const role = { pose: 'pose', costume: 'outfit', character: 'identity' }[
-      item.kind
-    ] as PortraitAsset['role']
-    const instruction = {
-      pose: 'Use only the body gesture and selected camera angle. Do not copy the mannequin material, identity or clothing. The reference is an image constraint, not calibrated 3D geometry.',
-      outfit:
-        'Use only the clothing, footwear and accessories from this reference. Keep the separately selected person and pose.',
-      identity:
-        'Use this reference for the adult person identity. Clothing and body gesture come from their own selected references.',
-    }[role as 'pose' | 'outfit' | 'identity']
-    const views: PortraitView[] = item.variants.map((variant) => {
-      const depth = variant.depth
+  return source.items
+    .filter((item) => item.kind !== 'pose' || !isRetiredPoseId(item.id))
+    .map((item) => {
+      const displayTitle = createReferenceTitle(item, ++ordinals[item.kind])
+      const role = { pose: 'pose', costume: 'outfit', character: 'identity' }[
+        item.kind
+      ] as PortraitAsset['role']
+      const instruction = {
+        pose: 'Use only the body gesture and selected camera angle. Do not copy the mannequin material, identity or clothing. The reference is an image constraint, not calibrated 3D geometry.',
+        outfit:
+          'Use only the clothing, footwear and accessories from this reference. Keep the separately selected person and pose.',
+        identity:
+          'Use this reference for the adult person identity. Clothing and body gesture come from their own selected references.',
+      }[role as 'pose' | 'outfit' | 'identity']
+      const views: PortraitView[] = item.variants.map((variant) => {
+        const depth = variant.depth
+        return {
+          id: variant.id,
+          src: variant.original,
+          thumbnail: variant.thumbnail,
+          preview: variant.image,
+          label: variant.label,
+          instruction:
+            role === 'pose'
+              ? `Camera: ${variant.label.en}. Match the selected reference viewpoint; do not mirror it. This view takes priority over other camera directions.`
+              : '',
+          depth: depth
+            ? {
+                src: depth.original,
+                thumbnail: depth.thumbnail,
+                preview: depth.image,
+              }
+            : undefined,
+        }
+      })
       return {
-        id: variant.id,
-        src: variant.original,
-        thumbnail: variant.thumbnail,
-        preview: variant.image,
-        label: variant.label,
-        instruction:
-          role === 'pose'
-            ? `Camera: ${variant.label.en}. Match the selected reference viewpoint; do not mirror it. This view takes priority over other camera directions.`
-            : '',
-        depth: depth
-          ? {
-              src: depth.original,
-              thumbnail: depth.thumbnail,
-              preview: depth.image,
-            }
-          : undefined,
+        id: item.id,
+        role,
+        src: views[0].src,
+        thumbnail: views[0].thumbnail,
+        instruction,
+        views,
+        name: item.title.en,
+        displayTitle,
+        title: item.title,
+        code: item.code,
+        category: item.category,
+        series: item.series,
+        keywords: item.keywords,
+        tags: item.tags,
+        country: item.country,
+        hair: item.portrait?.hair,
+        collection: item.collection ?? 'upstream',
+        source: item.source,
       }
     })
-    return {
-      id: item.id,
-      role,
-      src: views[0].src,
-      thumbnail: views[0].thumbnail,
-      instruction,
-      views,
-      name: item.title.en,
-      displayTitle,
-      title: item.title,
-      code: item.code,
-      category: item.category,
-      series: item.series,
-      keywords: item.keywords,
-      tags: item.tags,
-      country: item.country,
-      hair: item.portrait?.hair,
-      collection: item.collection ?? 'upstream',
-      source: item.source,
-    }
-  })
 }
 
 export function portraitAssetName(

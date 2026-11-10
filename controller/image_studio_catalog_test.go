@@ -61,12 +61,12 @@ func TestStudioReferenceCatalogKeepsShippedScenes(t *testing.T) {
 	}
 }
 
-func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
+func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 	source, err := studioReferenceCatalog.ReadFile("resources/studio-local-catalog.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "8dc73e16a3198c70fa2787526a8ddc34f5f47c91751f2e441e7597ed47281cba" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828" {
 		t.Fatalf("source catalog changed: %s", got)
 	}
 	response, err := imageStudioCatalogResponse()
@@ -124,7 +124,7 @@ func TestStudioReferenceCatalogPreservesCompletePinnedSource(t *testing.T) {
 			poseViews += len(item.Variants)
 		}
 	}
-	if counts["pose"] != 288 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 1439 || depthViews != 1439 {
+	if counts["pose"] != 72 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 360 || depthViews != 360 {
 		t.Fatalf("incomplete import: %v, %d pose views", counts, poseViews)
 	}
 }

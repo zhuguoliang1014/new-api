@@ -72,12 +72,14 @@ it('gives imported references product names while retaining source IDs, files an
   const pose = filterLibraryAssets(
     assets,
     'pose',
-    'full_sexy_P001',
+    'full_single_P015',
     emptyLibraryFilters
   )[0]
-  expect(pose.id).toBe('full_sexy_P001')
-  expect(portraitAssetName(pose, 'zhCN')).toBe('站姿 · S形站姿，胯部侧顶')
-  expect(pose.views[0].src).toContain('full_sexy_P001_front.png')
+  expect(pose.id).toBe('full_single_P015')
+  expect(portraitAssetName(pose, 'zhCN')).toBe(
+    '站姿 · 站立，对立式平衡，手扶腰'
+  )
+  expect(pose.views[0].src).toContain('full_single_P015_front.png')
   expect(pose.title).toEqual(
     source.items.find((item) => item.id === pose.id)?.title
   )
@@ -90,15 +92,15 @@ it('resolves old library filenames and saved draft titles without changing user 
     }),
     preview: 'blob:old',
     role: 'pose' as const,
-    assetId: 'full_sexy_P001',
+    assetId: 'full_single_P015',
   }
   const t = i18next.t.bind(i18next)
   expect(referenceDisplayName(ref, t, 'zhCN', assets)).toBe(
-    '站姿 · S形站姿，胯部侧顶'
+    '站姿 · 站立，对立式平衡，手扶腰'
   )
   expect(referenceDisplayName(ref, t, 'en')).toBe('Pose')
   expect(savedReferenceTitle(ref.file.name, [ref], t, 'zhCN', assets)).toBe(
-    '站姿 · S形站姿，胯部侧顶'
+    '站姿 · 站立，对立式平衡，手扶腰'
   )
   expect(savedReferenceTitle('My design.png', [ref], t, 'en', assets)).toBe(
     'My design.png'

@@ -11,6 +11,7 @@ import type {
   PortraitSlot,
   ReferenceFacet,
 } from './portrait-elements'
+import { isRetiredPoseId } from './pose-availability'
 
 export type LibraryFilters = {
   category: string
@@ -78,6 +79,7 @@ export function filterLibraryAssets(
   return candidates.filter((asset) => {
     if (
       asset.role !== role ||
+      isRetiredPoseId(asset.id) ||
       (filters.category && asset.category?.id !== filters.category) ||
       (filters.collection && asset.collection !== filters.collection) ||
       (filters.country && asset.country?.id !== filters.country) ||
