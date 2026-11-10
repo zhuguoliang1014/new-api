@@ -9,9 +9,28 @@ import {
   computePlanSavings,
   computeSavingsByPlan,
   filterGPTGroups,
+  getSavingsPercent,
 } from '../subscription-savings'
 
 const pricing = { unitPrice: 1 }
+
+describe('getSavingsPercent', () => {
+  it.each([
+    ['savings near half off', 0.4962962962962963, 50],
+    ['floating point noise below 50%', 0.5 - Number.EPSILON, 50],
+    ['fractional savings rounding up', 0.2785, 28],
+    ['savings below the rounding boundary', 0.494, 49],
+    ['savings too small to show a whole percent', 0.004, 0],
+    ['a paid plan approaching full savings', 0.9999, 99],
+    ['no savings', 0, 0],
+    ['invalid savings', Number.NaN, 0],
+  ])(
+    'displays the expected whole percent for %s',
+    (_name, savings, expected) => {
+      expect(getSavingsPercent(savings)).toBe(expected)
+    }
+  )
+})
 
 function record(
   overrides: Partial<SubscriptionPlan> = {},

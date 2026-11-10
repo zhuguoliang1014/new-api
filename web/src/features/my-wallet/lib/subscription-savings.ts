@@ -19,6 +19,13 @@ export interface UserGroup {
   ratio: number | string
 }
 
+export function getSavingsPercent(savings: number): number {
+  if (!Number.isFinite(savings) || savings <= 0 || savings >= 1) return 0
+  // Round the approximate display without changing the underlying ratios.
+  // A paid plan must not round up to a claim of 100% savings.
+  return Math.min(99, Math.round(savings * 100))
+}
+
 export function computePlanSavings(
   record: PlanRecord,
   comparisonRatio: number,

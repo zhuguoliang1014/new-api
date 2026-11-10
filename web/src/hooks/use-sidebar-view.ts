@@ -27,6 +27,7 @@ import type {
   SidebarBadges,
 } from '@/components/layout/types'
 import { useSubscriptionSavings } from '@/features/my-wallet/hooks/use-subscription-savings'
+import { getSavingsPercent } from '@/features/my-wallet/lib/subscription-savings'
 import { useModelPricingIssueBadge } from '@/features/system-settings/models/pricing-issues'
 import { hasPermission } from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
@@ -60,7 +61,7 @@ export function useSidebarView(): ResolvedSidebarView {
   )
   const modelPricingBadge = useModelPricingIssueBadge()
   const savings = useSubscriptionSavings()
-  const savingsPercent = Math.floor(savings.maxSavings * 100)
+  const savingsPercent = getSavingsPercent(savings.maxSavings)
   const badges: SidebarBadges = {
     modelPricing: modelPricingBadge,
     walletSavings:

@@ -44,7 +44,10 @@ import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import type { PlanSavings } from '../lib/subscription-savings'
+import {
+  getSavingsPercent,
+  type PlanSavings,
+} from '../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../types'
 import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
 
@@ -436,7 +439,9 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                               <span>
                                 {t(
                                   'Save about {{percent}}% vs wallet payment',
-                                  { percent: Math.floor(savings.savings * 100) }
+                                  {
+                                    percent: getSavingsPercent(savings.savings),
+                                  }
                                 )}
                               </span>
                             </AccordionTrigger>

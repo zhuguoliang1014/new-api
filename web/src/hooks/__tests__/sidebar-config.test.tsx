@@ -254,12 +254,16 @@ describe('model pricing badge', () => {
   async function renderSidebar(
     path: string,
     role: number,
-    issues: () => ModelPricingIssue[]
+    issues: () => ModelPricingIssue[],
+    responses: Record<string, unknown> = {}
   ) {
     const get = vi.spyOn(api, 'get').mockImplementation(async (url) => ({
       data: {
         success: true,
-        data: url === '/api/option/model_pricing/issues' ? issues() : {},
+        data:
+          url === '/api/option/model_pricing/issues'
+            ? issues()
+            : (responses[String(url)] ?? {}),
       },
     }))
     const client = new QueryClient({
@@ -327,6 +331,24 @@ describe('model pricing badge', () => {
     issues = []
     await act(() => invalidateModelPricing(client))
     await waitFor(() => expect(badgedEntries()).toHaveLength(0))
+  })
+
+  it('rounds the Wallet savings badge to the same 50% shown by the subscription card', async () => {
+    await renderSidebar('/dashboard/overview', ROLE.ADMIN, () => [], {
+      '/api/subscription/plans': [
+        {
+          total_amount_usd: 6000,
+          plan: { id: 1, price_cny: 1088, enabled: true, billing_ratio: 1 },
+        },
+      ],
+      '/api/user/self/groups': { GPT: { desc: 'GPT', ratio: 0.36 } },
+      '/api/user/topup/info': {
+        enable_hupijiao_topup: true,
+        hupijiao_price: 1,
+      },
+    })
+
+    expect(await screen.findByText('Wallet: Save up to 50%')).toBeVisible()
   })
 
   it('never asks for the count below the super administrator role', async () => {

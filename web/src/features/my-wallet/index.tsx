@@ -15,6 +15,7 @@ import { SubscriptionTab } from './components/subscription-tab'
 import { TransferDialog } from './components/transfer-dialog'
 import { type WalletTab, useMyWallet } from './hooks/use-my-wallet'
 import { useSubscriptionSavings } from './hooks/use-subscription-savings'
+import { getSavingsPercent } from './lib/subscription-savings'
 
 interface MyWalletProps {
   initialTab?: WalletTab
@@ -24,7 +25,7 @@ export function MyWallet(props: MyWalletProps) {
   const { t } = useTranslation()
   const wallet = useMyWallet(props.initialTab)
   const subscriptionSavings = useSubscriptionSavings()
-  const savingsPercent = Math.floor(subscriptionSavings.maxSavings * 100)
+  const savingsPercent = getSavingsPercent(subscriptionSavings.maxSavings)
 
   const alipayMethod = useMemo(
     () => ({

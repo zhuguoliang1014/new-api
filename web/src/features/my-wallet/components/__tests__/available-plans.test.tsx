@@ -23,7 +23,10 @@ import {
   useSystemConfigStore,
 } from '@/stores/system-config-store'
 
-import type { PlanSavings } from '../../lib/subscription-savings'
+import {
+  computeSavingsByPlan,
+  type PlanSavings,
+} from '../../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../../types'
 import { AvailablePlansCard } from '../available-plans-card'
 
@@ -375,6 +378,24 @@ it('submits the native Epay subscription checkout when the original gateway is d
   ).toBe(false)
 })
 
+it('rounds the 1088 CNY plan savings to 50% while keeping its displayed equivalent at 0.18x', async () => {
+  const record = {
+    ...plan({ price_cny: 1088, total_amount: 3000000000 }),
+    total_amount_usd: 6000,
+  }
+  await renderPlans([record], {
+    planSavings: computeSavingsByPlan([record], 0.36, { unitPrice: 1 }),
+  })
+
+  const card = within(screen.getByRole('article', { name: '苍穹版' }))
+  expect(card.getByText('Save about 50% vs wallet payment')).toBeVisible()
+  await userEvent.click(
+    card.getByRole('button', { name: 'How savings are calculated' })
+  )
+  expect(card.getByText('0.18x')).toBeVisible()
+  expect(card.getByText('0.36x')).toBeVisible()
+})
+
 it('keeps the savings summary compact and puts the comparison group inside details', async () => {
   await renderPlans([plan(), plan({ id: 2, title: '凌云版' })], {
     comparisonGroup: 'GPT stable',
@@ -383,7 +404,7 @@ it('keeps the savings summary compact and puts the comparison group inside detai
     ]),
   })
   const card = within(screen.getByRole('article', { name: '苍穹版' }))
-  expect(card.getByText('Save about 27% vs wallet payment')).toBeVisible()
+  expect(card.getByText('Save about 28% vs wallet payment')).toBeVisible()
   expect(card.queryByText('Wallet GPT · GPT stable')).not.toBeInTheDocument()
   expect(
     card.queryByText('Assumes quota is used before expiry or reset')
@@ -430,13 +451,13 @@ it('reveals pricing multipliers and their meaning through keyboard-accessible de
 })
 
 it.each([
-  ['en', 'Save about 27% vs wallet payment'],
-  ['zhCN', '比余额支付省约 27%'],
-  ['zhTW', '比餘額支付省約 27%'],
-  ['fr', 'Environ 27 % de moins qu’avec le solde'],
-  ['ja', '残高払いより約27%お得'],
-  ['ru', 'Примерно на 27% дешевле оплаты с баланса'],
-  ['vi', 'Rẻ hơn khoảng 27% so với trả bằng số dư'],
+  ['en', 'Save about 28% vs wallet payment'],
+  ['zhCN', '比余额支付省约 28%'],
+  ['zhTW', '比餘額支付省約 28%'],
+  ['fr', 'Environ 28 % de moins qu’avec le solde'],
+  ['ja', '残高払いより約28%お得'],
+  ['ru', 'Примерно на 28% дешевле оплаты с баланса'],
+  ['vi', 'Rẻ hơn khoảng 28% so với trả bằng số dư'],
 ])(
   'explains savings in %s without falling back to the English key',
   async (language, headline) => {
@@ -457,9 +478,9 @@ it('updates savings explanations when the interface language changes', async () 
       [1, { planRatio: 0.2597, rechargeRatio: 0.36, savings: 0.2785 }],
     ]),
   })
-  expect(screen.getByText('Save about 27% vs wallet payment')).toBeVisible()
+  expect(screen.getByText('Save about 28% vs wallet payment')).toBeVisible()
   await act(() => i18n.changeLanguage('zhCN'))
-  expect(screen.getByText('比余额支付省约 27%')).toBeVisible()
+  expect(screen.getByText('比余额支付省约 28%')).toBeVisible()
   expect(screen.getByRole('button', { name: '费用说明' })).toBeVisible()
 })
 
