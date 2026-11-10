@@ -124,6 +124,8 @@ export type ImageRecord = {
   localSaveStatus?: 'saving' | 'saved' | 'failed'
 }
 export type ImageJob = {
+  referenceFiles?: Pick<ImageReference, 'id' | 'file' | 'role'>[]
+  creativeContext?: CreativeContext
   id: string
   startedAt: number
   controller: AbortController
@@ -137,6 +139,7 @@ export type ImageJob = {
     | 'generating'
     | 'downloading'
     | 'download_failed'
+    | 'saving'
   downloadImageIndex?: number
   downloadedBytes?: number
   totalBytes?: number

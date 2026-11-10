@@ -44,6 +44,7 @@ import {
 import { useImagePlaygroundStore } from '../store'
 import {
   normalizeImageParameters,
+  type ImageJob,
   type ImageParameters,
   type ImageRecord,
 } from '../types'
@@ -318,23 +319,32 @@ export function useImageStudio() {
     useImagePlaygroundStore.setState((state) => ({
       jobs: [
         ...tasks.data
-          .filter((task) => task.status !== 'ready')
-          .map((task) => ({
-            id: task.id,
-            startedAt: task.created_at,
-            controller,
-            parameters: task.metadata.parameters,
-            referenceCount: task.metadata.referenceCount,
-            serverTask: true,
-            status:
-              task.status === 'failed' || task.status === 'ready'
-                ? undefined
-                : task.status,
-            downloadImageIndex: task.download_image_index,
-            downloadedBytes: task.downloaded_bytes,
-            totalBytes: task.total_bytes,
-            error: task.error ? t(task.error) : undefined,
-          })),
+          .filter(
+            (task) =>
+              task.status !== 'ready' ||
+              !state.records.some((record) => record.id === task.id)
+          )
+          .map((task) => {
+            let status: ImageJob['status']
+            if (task.status === 'ready') status = 'saving'
+            else if (task.status !== 'failed') status = task.status
+            return {
+              id: task.id,
+              startedAt: task.created_at,
+              controller,
+              parameters: task.metadata.parameters,
+              referenceCount: task.metadata.referenceCount,
+              creativeContext: task.metadata.creativeContext,
+              referenceFiles: state.jobs.find((job) => job.id === task.id)
+                ?.referenceFiles,
+              serverTask: true,
+              status,
+              downloadImageIndex: task.download_image_index,
+              downloadedBytes: task.downloaded_bytes,
+              totalBytes: task.total_bytes,
+              error: task.error ? t(task.error) : undefined,
+            }
+          }),
         ...state.jobs.filter(
           (job) =>
             !job.serverTask && !tasks.data.some((task) => task.id === job.id)
@@ -397,6 +407,12 @@ export function useImageStudio() {
         controller,
         parameters: creationParameters,
         referenceCount: store.references.length,
+        creativeContext: store.creativeContext,
+        referenceFiles: store.references.map(({ id, file, role }) => ({
+          id,
+          file,
+          role,
+        })),
         serverTask: false,
         status: 'submitting' as const,
       }

@@ -33,6 +33,8 @@ import type { ImageJob } from '../types'
 export function GenerationProgress(props: {
   job: ImageJob
   promptLabel?: string
+  embedded?: boolean
+  onReuse?: () => void
 }) {
   const { t, i18n } = useTranslation()
   const job = props.job
@@ -50,15 +52,18 @@ export function GenerationProgress(props: {
     statusLabel = t('Submitting task...')
   } else if (job.status === 'queued') {
     statusLabel = t('Queued')
+  } else if (job.status === 'saving') {
+    statusLabel = t('Saving images locally...')
   } else if (job.status === 'downloading') {
     statusLabel = t('Receiving image on server...')
   }
   return (
     <article
-      className={`studio-job-card${job.error ? ' studio-job-failed' : ''}`}
+      className={`studio-job-card${job.error ? ' studio-job-failed' : ''}${props.embedded ? ' is-canvas-progress' : ''}`}
+      data-state={job.error ? 'failed' : (job.status ?? 'generating')}
     >
       <div className='studio-job-top'>
-        <span>{statusLabel}</span>
+        <span role={props.embedded ? 'status' : undefined}>{statusLabel}</span>
         {(!job.serverTask || job.error) && (
           <Button
             type='button'
@@ -149,9 +154,13 @@ export function GenerationProgress(props: {
             type='button'
             variant='outline'
             size='sm'
-            onClick={() =>
-              useImagePlaygroundStore.getState().setParameters(job.parameters)
-            }
+            onClick={() => {
+              if (props.onReuse) {
+                props.onReuse()
+              } else {
+                useImagePlaygroundStore.getState().setParameters(job.parameters)
+              }
+            }}
           >
             {t('Reuse settings')}
           </Button>

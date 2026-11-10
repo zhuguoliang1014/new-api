@@ -1225,3 +1225,226 @@ it('clears a withdrawn pose from a live draft before allowing any new generation
   )
   expect(createStudioTask).not.toHaveBeenCalled()
 })
+
+it('keeps one canvas surface from the empty preview through generation and the delivered image', async () => {
+  const user = await openStudio()
+  await user.type(
+    screen.getByRole('textbox', { name: 'What would you like to create?' }),
+    'A quiet lake at sunrise'
+  )
+  const region = screen.getByRole('region', { name: 'Your creation' })
+  const canvas = region.querySelector('.compose-canvas-card')
+  expect(canvas).toHaveAttribute('data-state', 'idle')
+  await user.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  await waitFor(() =>
+    expect(canvas).toHaveAttribute('data-state', 'generating')
+  )
+  await waitFor(() => expect(within(region).getByText('Queued')).toBeVisible())
+  expect(region.querySelectorAll('.compose-canvas-card')).toHaveLength(1)
+  expect(region.querySelectorAll('.compose-empty')).toHaveLength(0)
+  expect(
+    region.querySelectorAll('.studio-job-card.is-canvas-progress')
+  ).toHaveLength(1)
+  expect(
+    region.querySelector('.studio-job-card')?.closest('.compose-canvas-card')
+  ).toBe(canvas)
+  expect(
+    within(region).queryByText('Give your idea a picture.')
+  ).not.toBeInTheDocument()
+  const job = useImagePlaygroundStore.getState().jobs[0]
+  const context = vi.mocked(createStudioTask).mock.calls[0][3].creativeContext
+  act(() =>
+    useImagePlaygroundStore.setState({
+      jobs: [],
+      records: [
+        {
+          id: job.id,
+          ownerId: 1,
+          createdAt: job.startedAt,
+          parameters: job.parameters,
+          referenceCount: 0,
+          styleId: null,
+          creativeContext: context,
+          images: [
+            {
+              id: 'delivered-image',
+              src: 'data:image/png;base64,dGVzdA==',
+              width: 1024,
+              height: 1024,
+            },
+          ],
+        },
+      ],
+    })
+  )
+  await waitFor(() =>
+    expect(
+      within(region).getByRole('img', { name: 'Generated image' })
+    ).toBeInTheDocument()
+  )
+  expect(canvas).toHaveAttribute('data-state', 'ready')
+  expect(region.querySelector('.compose-canvas-card')).toBe(canvas)
+  expect(region.querySelector('.studio-job-card')).not.toBeInTheDocument()
+})
+
+it('keeps reference thumbnails in the same canvas while generating and after failure', async () => {
+  const user = await openStudio()
+  await choose(user, 'Person', 'Studio muse')
+  await choose(user, 'Outfit', 'Linen tailoring')
+  await choose(user, 'Pose', 'Walking stride', 'Side view')
+  const region = screen.getByRole('region', { name: 'Your creation' })
+  const canvas = region.querySelector('.compose-canvas-card')
+  const combination = within(region).getByLabelText('Combination preview')
+  const selectedFiles = useImagePlaygroundStore
+    .getState()
+    .references.map((reference) => reference.file)
+  await user.click(screen.getByRole('button', { name: 'Generate combination' }))
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(within(region).getByText('Queued')).toBeVisible())
+  expect(within(region).getByLabelText('Combination preview')).toBe(combination)
+  expect(
+    useImagePlaygroundStore
+      .getState()
+      .jobs[0].referenceFiles?.map((reference) => reference.file)
+  ).toEqual(selectedFiles)
+  expect(within(combination).getAllByRole('img')).toHaveLength(3)
+  act(() =>
+    useImagePlaygroundStore.setState((state) => ({
+      jobs: state.jobs.map((job) => ({
+        ...job,
+        error: 'Provider temporarily unavailable',
+      })),
+    }))
+  )
+  await waitFor(() =>
+    expect(within(region).getByRole('alert')).toHaveTextContent(
+      'Provider temporarily unavailable'
+    )
+  )
+  expect(region.querySelector('.compose-canvas-card')).toBe(canvas)
+  expect(canvas).toHaveAttribute('data-state', 'failed')
+  expect(
+    within(region).queryByText('See your references come together.')
+  ).not.toBeInTheDocument()
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
+})
+
+it('shows only the current project task in the canvas and keeps other tasks available in history', async () => {
+  const user = await openStudio()
+  await user.type(
+    screen.getByRole('textbox', { name: 'What would you like to create?' }),
+    'A watercolor landscape'
+  )
+  await user.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  const region = screen.getByRole('region', { name: 'Your creation' })
+  const current = useImagePlaygroundStore.getState().jobs[0]
+  if (!current.creativeContext) {
+    throw new Error('Project identity missing from task')
+  }
+  const context = current.creativeContext
+  act(() =>
+    useImagePlaygroundStore.setState({
+      jobs: [
+        {
+          ...current,
+          id: 'unrelated-task',
+          creativeContext: {
+            ...context,
+            projectId: 'another-project',
+          },
+          error: 'Unrelated project failure',
+        },
+        current,
+      ],
+    })
+  )
+  await waitFor(() => expect(within(region).getByText('Queued')).toBeVisible())
+  expect(
+    within(region).queryByText('Unrelated project failure')
+  ).not.toBeInTheDocument()
+  expect(region.querySelectorAll('.studio-job-card')).toHaveLength(1)
+  act(() =>
+    useImagePlaygroundStore.setState((state) => ({
+      jobs: [
+        ...state.jobs,
+        {
+          ...current,
+          id: 'second-project-task',
+          startedAt: current.startedAt + 1,
+        },
+      ],
+    }))
+  )
+  expect(
+    within(region).getByRole('group', { name: 'Task ID' })
+  ).toBeInTheDocument()
+  expect(region.querySelectorAll('.studio-job-card')).toHaveLength(1)
+})
+
+it('keeps the canvas active while a finished server task is preparing its local preview', async () => {
+  const user = await openStudio()
+  await user.type(
+    screen.getByRole('textbox', { name: 'What would you like to create?' }),
+    'A sunrise over hills'
+  )
+  await user.click(screen.getByRole('button', { name: 'Generate image' }))
+  await waitFor(() => expect(createStudioTask).toHaveBeenCalledTimes(1))
+  const [id, , , metadata] = vi.mocked(createStudioTask).mock.calls[0]
+  let finishPreview: ((blob: Blob) => void) | undefined
+  vi.mocked(api.get).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishPreview = (blob: Blob) => resolve({ data: blob })
+      })
+  )
+  vi.mocked(listStudioTasks).mockResolvedValue([
+    {
+      id,
+      metadata,
+      status: 'ready',
+      created_at: Date.now(),
+      expires_at: 9999999999,
+      downloaded_bytes: 1,
+      total_bytes: 1,
+      images: [
+        {
+          index: 0,
+          width: 1024,
+          height: 1024,
+          bytes: 10,
+          content_type: 'image/png',
+        },
+      ],
+    },
+  ])
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['image-studio-tasks'] })
+  })
+  const region = screen.getByRole('region', { name: 'Your creation' })
+  await waitFor(() =>
+    expect(within(region).getByText('Saving images locally...')).toBeVisible()
+  )
+  expect(region.querySelector('.compose-canvas-card')).toHaveAttribute(
+    'data-state',
+    'generating'
+  )
+  expect(
+    within(region).queryByText('Give your idea a picture.')
+  ).not.toBeInTheDocument()
+  if (!finishPreview) throw new Error('Thumbnail request missing')
+  finishPreview(new Blob(['image'], { type: 'image/png' }))
+  await waitFor(() =>
+    expect(region.querySelector('.compose-canvas-card')).toHaveAttribute(
+      'data-state',
+      'ready'
+    )
+  )
+  await waitFor(() =>
+    expect(
+      within(region).getByRole('img', { name: 'Generated image' })
+    ).toBeInTheDocument()
+  )
+  expect(createStudioTask).toHaveBeenCalledTimes(1)
+})

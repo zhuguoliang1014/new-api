@@ -6,13 +6,8 @@ it under the terms of the GNU Affero General Public License as
 published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 */
-import {
-  Check,
-  ArrowUpRight,
-  Image as ImageIcon,
-  Maximize2,
-  Plus,
-} from 'lucide-react'
+import { Check, Maximize2 } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { lazy, Suspense, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -21,6 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { MOTION_TRANSITION } from '@/lib/motion'
 
 import type { CreativeWorkspaceState } from '../hooks/use-creative-workspace'
 import {
@@ -30,11 +26,8 @@ import {
 } from '../lib/portrait-elements'
 import { referenceDisplayName } from '../lib/reference-names'
 import { useImagePlaygroundStore } from '../store'
-import { GenerationProgress } from './generation-progress'
-import { ReferenceSlotArtwork } from './reference-slot-artwork'
-import { ReferenceThumbnail } from './reference-thumbnail'
+import { CanvasPreparation } from './canvas-preparation'
 import { ImageActions, ImageArtwork } from './studio-image'
-import { StudioImageHoverPreview } from './studio-image-hover-preview'
 
 const StudioPreview = lazy(() =>
   import('./studio-preview').then((m) => ({ default: m.StudioPreview }))
@@ -48,6 +41,11 @@ export function FashionResults(props: {
   const jobs = useImagePlaygroundStore((s) => s.jobs)
   const references = useImagePlaygroundStore((s) => s.references)
   const taskSyncError = useImagePlaygroundStore((s) => s.taskSyncError)
+  const reduce = useReducedMotion()
+  const [taskSelection, setTaskSelection] = useState<{
+    id: string
+    latestId?: string
+  }>()
   const [imageId, setImageId] = useState<string>()
   const [mode, setMode] = useState<'result' | 'side' | 'overlay'>('result')
   const [referenceId, setReferenceId] = useState<string>()
@@ -58,6 +56,22 @@ export function FashionResults(props: {
     .filter((r) => r.creativeContext?.projectId === props.state.projectId)
     .flatMap((record) => record.images.map((image) => ({ record, image })))
   const selected = items.find((item) => item.image.id === imageId) ?? items[0]
+  const projectJobs = jobs
+    .filter((job) => job.creativeContext?.projectId === props.state.projectId)
+    .sort((a, b) => b.startedAt - a.startedAt)
+  const selectedTask =
+    taskSelection?.latestId === projectJobs[0]?.id
+      ? projectJobs.find((job) => job.id === taskSelection?.id)
+      : undefined
+  const latestResultAt = Math.max(
+    0,
+    ...items.map(({ record }) => record.createdAt)
+  )
+  const activeJob =
+    selectedTask ?? projectJobs.find((job) => job.startedAt >= latestResultAt)
+  const showResult = Boolean(selected && !activeJob)
+  let canvasState = showResult ? 'ready' : 'idle'
+  if (activeJob) canvasState = activeJob.error ? 'failed' : 'generating'
   const reference =
     references.find((r) => r.id === referenceId) ??
     referenceForSlot(references, 'outfit') ??
@@ -75,7 +89,7 @@ export function FashionResults(props: {
           <span className='shoot-eyebrow'>{t('YOUR CANVAS')}</span>
           <h2>{t('Your creation')}</h2>
         </div>
-        {selected && (
+        {showResult && selected && (
           <div
             className='shoot-result-modes'
             role='group'
@@ -101,244 +115,203 @@ export function FashionResults(props: {
           {t('Connection interrupted. Tasks continue on the server.')}
         </p>
       )}
-      {jobs.length > 0 && (
-        <div className='shoot-task-list'>
-          {jobs.map((job) => (
-            <GenerationProgress
-              key={job.id}
-              job={job}
-              promptLabel={t('Creative proposal')}
-            />
-          ))}
-        </div>
-      )}
-      {selected ? (
-        <>
-          {props.state.stale && (
-            <p className='shoot-helper' role='status'>
-              {t(
-                'The combination has changed. The photo below is from the previous shoot.'
-              )}
-            </p>
-          )}
-          {showComparison && (
-            <div className='shoot-comparison-controls'>
-              <Label htmlFor='shoot-compare'>{t('Compare with')}</Label>
-              <NativeSelect
-                id='shoot-compare'
-                value={reference.id}
-                onChange={(e) => setReferenceId(e.target.value)}
-              >
-                {references.map((r, index) => (
-                  <NativeSelectOption key={r.id} value={r.id}>
-                    {labels[r.role as PortraitSlot] ||
-                      t('Reference {{index}}', { index: index + 1 })}{' '}
-                    ·{' '}
-                    {referenceDisplayName(
-                      r,
-                      t,
-                      i18n.resolvedLanguage || i18n.language
-                    )}
-                  </NativeSelectOption>
-                ))}
-              </NativeSelect>
-              {mode === 'overlay' && (
-                <>
-                  <Label htmlFor='shoot-opacity'>
-                    {t('Reference opacity')}
-                  </Label>
-                  <Input
-                    id='shoot-opacity'
-                    type='range'
-                    min={0}
-                    max={100}
-                    value={opacity}
-                    onChange={(e) => setOpacity(Number(e.target.value))}
-                  />
-                </>
-              )}
-            </div>
-          )}
+      <div
+        className='compose-canvas-card'
+        data-state={canvasState}
+        aria-busy={Boolean(activeJob && !activeJob.error)}
+      >
+        {projectJobs.length > 1 && (
           <div
-            className={`shoot-result-stage${showComparison ? ` is-${mode}` : ''}`}
-          >
-            {showComparison && mode === 'side' && (
-              <figure>
-                <img src={reference.preview} alt={t('Reference image')} />
-                <figcaption>{t('Reference image')}</figcaption>
-              </figure>
-            )}
-            <figure className='shoot-output-figure'>
-              <ImageArtwork
-                image={selected.image}
-                requestedSize={selected.record.parameters.size}
-                onPreview={() => setPreview(true)}
-              />
-              {showComparison && mode === 'overlay' && (
-                <img
-                  className='shoot-overlay-reference'
-                  src={reference.preview}
-                  alt={t('Reference image')}
-                  style={{ opacity: opacity / 100 }}
-                />
-              )}
-              <figcaption>{t('Generated photo')}</figcaption>
-            </figure>
-          </div>
-          <div className='shoot-result-actions'>
-            <ImageActions
-              image={selected.image}
-              record={selected.record}
-              continueLabel={
-                props.state.usesCharacter
-                  ? t('Change pose & shoot again')
-                  : t('Continue editing')
-              }
-              onContinue={async () => {
-                if (props.state.usesCharacter) props.onChoose('pose')
-                else {
-                  await props.state.continueFrom(
-                    selected.record,
-                    selected.image
-                  )
-                }
-              }}
-            />
-            <Button variant='ghost' size='sm' onClick={() => setPreview(true)}>
-              <Maximize2 size={14} />
-              {t('Preview')}
-            </Button>
-          </div>
-          <div
-            className='shoot-version-list'
+            className='compose-canvas-tasks'
             role='group'
-            aria-label={t('Project versions')}
+            aria-label={t('Task ID')}
           >
-            {items.map(({ image }, index) => (
+            {projectJobs.map((job, index) => (
               <Button
-                key={image.id}
+                key={job.id}
                 variant='ghost'
-                aria-label={t('Select version {{index}}', {
-                  index: items.length - index,
-                })}
-                aria-pressed={selected.image.id === image.id}
-                onClick={() => setImageId(image.id)}
+                size='sm'
+                aria-pressed={activeJob?.id === job.id}
+                aria-label={`${t('Task ID')}: ${job.id}`}
+                onClick={() =>
+                  setTaskSelection({ id: job.id, latestId: projectJobs[0]?.id })
+                }
               >
-                <img src={image.previewSrc || image.src} alt='' />
-                <span>{items.length - index}</span>
+                {index + 1} ·{' '}
+                {job.error ? t('Creation interrupted') : t('Creating...')}
               </Button>
             ))}
           </div>
-          <div className='shoot-quality-note'>
-            <Check size={15} />
-            <p>
-              {t(
-                'Compare the details with your references before using the result.'
-              )}
-            </p>
-          </div>
-          <p className='shoot-helper'>
-            {t(
-              'Download originals to keep them. Server results expire after 10 hours; local history keeps the latest 30 creations.'
-            )}
-          </p>
-        </>
-      ) : (
-        <div
-          className={`compose-empty ${props.state.usesCharacter ? 'compose-empty-portrait' : 'compose-empty-free'}`}
-        >
-          {props.state.usesCharacter ? (
-            <>
-              <div
-                className='compose-combination-preview'
-                aria-label={t('Combination preview')}
-              >
-                {(['identity', 'outfit', 'pose'] as const).map(
-                  (role, index) => {
-                    const ref = referenceForSlot(references, role)
-                    return (
-                      <div key={role} className='compose-preview-item'>
-                        {index > 0 && (
-                          <Plus className='compose-preview-plus' size={17} />
-                        )}
-                        <StudioImageHoverPreview
-                          src={ref?.preview ?? ''}
-                          label={labels[role]}
-                          enabled={Boolean(ref)}
-                          large
-                          side='left'
-                          trigger={
-                            <Button
-                              variant='outline'
-                              disabled={
-                                props.state.executing ||
-                                props.state.selectingElements
-                              }
-                              aria-label={t('Choose {{element}}', {
-                                element: labels[role],
-                              })}
-                              onClick={() => props.onChoose(role)}
-                            >
-                              {ref ? (
-                                <ReferenceThumbnail
-                                  src={ref.preview}
-                                  alt={labels[role]}
-                                />
-                              ) : (
-                                <ReferenceSlotArtwork role={role} />
-                              )}
-                            </Button>
-                          }
+        )}
+        <AnimatePresence initial={false} mode='wait'>
+          <motion.div
+            key={
+              showResult
+                ? `result-${selected?.image.id}`
+                : `preparation-${props.state.projectId}`
+            }
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={reduce ? { duration: 0 } : MOTION_TRANSITION.default}
+          >
+            {showResult && selected ? (
+              <div className='compose-canvas-result'>
+                {props.state.stale && (
+                  <p className='shoot-helper' role='status'>
+                    {t(
+                      'The combination has changed. The photo below is from the previous shoot.'
+                    )}
+                  </p>
+                )}
+                {showComparison && (
+                  <div className='shoot-comparison-controls'>
+                    <Label htmlFor='shoot-compare'>{t('Compare with')}</Label>
+                    <NativeSelect
+                      id='shoot-compare'
+                      value={reference.id}
+                      onChange={(e) => setReferenceId(e.target.value)}
+                    >
+                      {references.map((r, index) => (
+                        <NativeSelectOption key={r.id} value={r.id}>
+                          {labels[r.role as PortraitSlot] ||
+                            t('Reference {{index}}', { index: index + 1 })}{' '}
+                          ·{' '}
+                          {referenceDisplayName(
+                            r,
+                            t,
+                            i18n.resolvedLanguage || i18n.language
+                          )}
+                        </NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                    {mode === 'overlay' && (
+                      <>
+                        <Label htmlFor='shoot-opacity'>
+                          {t('Reference opacity')}
+                        </Label>
+                        <Input
+                          id='shoot-opacity'
+                          type='range'
+                          min={0}
+                          max={100}
+                          value={opacity}
+                          onChange={(e) => setOpacity(Number(e.target.value))}
                         />
-                        <span>{labels[role]}</span>
-                      </div>
-                    )
-                  }
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
-              <h3>{t('See your references come together.')}</h3>
-              <p>
-                {t(
-                  'Choose your references on the left. Your generated combination will appear here.'
-                )}
-              </p>
-            </>
-          ) : (
-            <>
-              <div className='compose-empty-art' aria-hidden='true'>
-                <span />
-                <span />
-                <div>
-                  <ImageIcon size={42} strokeWidth={1} />
+                <div
+                  className={`shoot-result-stage${showComparison ? ` is-${mode}` : ''}`}
+                >
+                  {showComparison && mode === 'side' && (
+                    <figure>
+                      <img src={reference.preview} alt={t('Reference image')} />
+                      <figcaption>{t('Reference image')}</figcaption>
+                    </figure>
+                  )}
+                  <figure className='shoot-output-figure'>
+                    <ImageArtwork
+                      image={selected.image}
+                      requestedSize={selected.record.parameters.size}
+                      onPreview={() => setPreview(true)}
+                    />
+                    {showComparison && mode === 'overlay' && (
+                      <img
+                        className='shoot-overlay-reference'
+                        src={reference.preview}
+                        alt={t('Reference image')}
+                        style={{ opacity: opacity / 100 }}
+                      />
+                    )}
+                    <figcaption>{t('Generated photo')}</figcaption>
+                  </figure>
                 </div>
-              </div>
-              <h3>{t('Give your idea a picture.')}</h3>
-              <p>
-                {t(
-                  'Describe what you imagine, or add a photo to edit. Your image will appear here.'
-                )}
-              </p>
-              <div className='compose-prompt-examples'>
-                {[
-                  t('A quiet coastline in soft morning light'),
-                  t('A perfume bottle on a sunlit stone table'),
-                  t('A playful illustrated poster for a coffee shop'),
-                ].map((prompt) => (
+                <div className='shoot-result-actions'>
+                  <ImageActions
+                    image={selected.image}
+                    record={selected.record}
+                    continueLabel={
+                      props.state.usesCharacter
+                        ? t('Change pose & shoot again')
+                        : t('Continue editing')
+                    }
+                    onContinue={async () => {
+                      if (props.state.usesCharacter) props.onChoose('pose')
+                      else {
+                        await props.state.continueFrom(
+                          selected.record,
+                          selected.image
+                        )
+                      }
+                    }}
+                  />
                   <Button
-                    key={prompt}
-                    variant='outline'
-                    disabled={props.state.executing}
-                    onClick={() => props.state.setBrief(prompt)}
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => setPreview(true)}
                   >
-                    {prompt}
-                    <ArrowUpRight size={14} aria-hidden='true' />
+                    <Maximize2 size={14} />
+                    {t('Preview')}
                   </Button>
-                ))}
+                </div>
+                <div
+                  className='shoot-version-list'
+                  role='group'
+                  aria-label={t('Project versions')}
+                >
+                  {items.map(({ image }, index) => (
+                    <Button
+                      key={image.id}
+                      variant='ghost'
+                      aria-label={t('Select version {{index}}', {
+                        index: items.length - index,
+                      })}
+                      aria-pressed={selected.image.id === image.id}
+                      onClick={() => setImageId(image.id)}
+                    >
+                      <img src={image.previewSrc || image.src} alt='' />
+                      <span>{items.length - index}</span>
+                    </Button>
+                  ))}
+                </div>
+                <div className='shoot-quality-note'>
+                  <Check size={15} />
+                  <p>
+                    {t(
+                      'Compare the details with your references before using the result.'
+                    )}
+                  </p>
+                </div>
+                <p className='shoot-helper'>
+                  {t(
+                    'Download originals to keep them. Server results expire after 10 hours; local history keeps the latest 30 creations.'
+                  )}
+                </p>
               </div>
-            </>
-          )}
-        </div>
-      )}
+            ) : (
+              <CanvasPreparation
+                portrait={props.state.usesCharacter}
+                job={activeJob}
+                selecting={props.state.selectingElements}
+                onChoose={props.onChoose}
+                onBrief={props.state.setBrief}
+                onReuse={() => {
+                  if (!activeJob) return
+                  props.state.setBrief(activeJob.parameters.prompt)
+                  useImagePlaygroundStore
+                    .getState()
+                    .setParameters(activeJob.parameters)
+                  if (props.state.submissionError) {
+                    props.state.reviewFailedSubmission()
+                  }
+                }}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      </div>
       {preview && selected && (
         <Suspense fallback={<LoadingState />}>
           <StudioPreview
