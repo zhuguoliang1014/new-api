@@ -145,6 +145,7 @@
     "0 means data is kept permanently": "0 表示永久保留数据",
     "0 means unlimited": "0 表示不限",
     "0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.": "0 表示不限量。已付款和待支付订单占用名额，赠送订阅和展示销量不计入。",
+    "0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.": "0 表示不限量。已付款订单、待支付占位和展示销量计入销售总量，赠送订阅不计入。",
     "01 Select · 02 Review · 03 Generate": "01 选择元素 · 02 确认方案 · 03 生成",
     "1 Day": "1 天",
     "1 day ago": "1 天前",

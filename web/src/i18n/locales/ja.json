@@ -145,6 +145,7 @@
     "0 means data is kept permanently": "0 はデータを永続的に保持することを意味します",
     "0 means unlimited": "0は無制限を意味します",
     "0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.": "0 は無制限。支払済み・支払待ちの注文が枠を使用し、贈呈分や表示用の販売数は含みません。",
+    "0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.": "0は無制限です。支払済み注文・支払待ち予約・表示用販売数が上限に含まれ、贈与分は含まれません。",
     "01 Select · 02 Review · 03 Generate": "01 選択 · 02 確認 · 03 生成",
     "1 Day": "1日",
     "1 day ago": "1日前",

@@ -180,6 +180,11 @@ test('the editor reports a rejected sales cap and keeps the unsaved form open', 
   const input = await screen.findByRole('spinbutton', {
     name: 'Total Sales Limit',
   })
+  expect(
+    screen.getByText(
+      '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
+    )
+  ).toBeVisible()
   await user.clear(input)
   await user.type(input, '1')
   await user.click(screen.getByRole('button', { name: 'Save changes' }))

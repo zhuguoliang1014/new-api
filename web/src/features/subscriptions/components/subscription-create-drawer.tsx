@@ -397,7 +397,7 @@ export function SubscriptionCreateDrawer({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          '0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.'
+                          '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
                         )}
                       </FormDescription>
                       <FormMessage />

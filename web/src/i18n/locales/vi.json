@@ -145,6 +145,7 @@
     "0 means data is kept permanently": "0 nghĩa là dữ liệu được giữ vĩnh viễn",
     "0 means unlimited": "0 có nghĩa là không giới hạn",
     "0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.": "0 là không giới hạn. Đơn đã thanh toán và chờ thanh toán giữ chỗ; gói tặng và số lượt bán hiển thị không được tính.",
+    "0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.": "0 là không giới hạn. Đơn đã thanh toán, đơn đang giữ chỗ và số bán hiển thị đều tính vào giới hạn; gói tặng không tính.",
     "01 Select · 02 Review · 03 Generate": "01 Chọn · 02 Duyệt · 03 Tạo",
     "1 Day": "1 ngày",
     "1 day ago": "1 ngày trước",

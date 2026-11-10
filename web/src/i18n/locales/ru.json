@@ -145,6 +145,7 @@
     "0 means data is kept permanently": "0 означает, что данные хранятся постоянно",
     "0 means unlimited": "0 означает без ограничений",
     "0 means unlimited. Paid orders and pending payments count toward this limit; gifts and display sales do not.": "0 — без ограничений. Оплаченные и ожидающие оплаты заказы занимают места; подарки и показанное число продаж не учитываются.",
+    "0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.": "0 — без ограничений. Учитываются оплаченные заказы, ожидающие оплаты места и добавленные для отображения продажи; подарки не учитываются.",
     "01 Select · 02 Review · 03 Generate": "01 Выбор · 02 Проверка · 03 Генерация",
     "1 Day": "1 день",
     "1 day ago": "1 день назад",
