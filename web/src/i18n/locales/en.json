@@ -5286,6 +5286,7 @@
     "Payment reference": "Payment reference",
     "Payment referral reward (%)": "Payment referral reward (%)",
     "Payment request failed": "Payment request failed",
+    "Payment reservations: {{count}}": "Payment reservations: {{count}}",
     "Payment return URL": "Payment return URL",
     "Payment return URL is empty. Create the product without a SuccessURL redirect?": "Payment return URL is empty. Create the product without a SuccessURL redirect?",
     "Payment service fees": "Payment service fees",

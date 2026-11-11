@@ -20,6 +20,13 @@ export function PlanSalesStatus(props: { record: PlanRecord | null }) {
         limit: formatNumber(sales.limit, locale),
         count: formatNumber(sales.remaining, locale),
       })}
+      {sales.reserved > 0 && (
+        <span className='ml-2 inline-block'>
+          {t('Payment reservations: {{count}}', {
+            count: formatNumber(sales.reserved, locale),
+          })}
+        </span>
+      )}
     </p>
   )
 }

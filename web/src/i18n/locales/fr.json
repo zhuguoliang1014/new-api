@@ -5286,6 +5286,7 @@
     "Payment reference": "Référence du paiement",
     "Payment referral reward (%)": "Prime de parrainage sur paiement (%)",
     "Payment request failed": "Requête de paiement échouée",
+    "Payment reservations: {{count}}": "Réservations de paiement : {{count}}",
     "Payment return URL": "URL de retour de paiement",
     "Payment return URL is empty. Create the product without a SuccessURL redirect?": "L’URL de retour de paiement est vide. Créer le produit sans redirection SuccessURL ?",
     "Payment service fees": "Frais du service de paiement",

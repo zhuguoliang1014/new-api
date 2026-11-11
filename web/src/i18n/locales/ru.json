@@ -5286,6 +5286,7 @@
     "Payment reference": "Номер платежа",
     "Payment referral reward (%)": "Реферальная награда за оплату (%)",
     "Payment request failed": "Запрос на оплату не удался",
+    "Payment reservations: {{count}}": "Резерв под оплату: {{count}}",
     "Payment return URL": "URL возврата после оплаты",
     "Payment return URL is empty. Create the product without a SuccessURL redirect?": "URL возврата платежа пуст. Создать продукт без перенаправления SuccessURL?",
     "Payment service fees": "Плата за платёжный сервис",

@@ -5286,6 +5286,7 @@
     "Payment reference": "Mã chứng từ thu tiền",
     "Payment referral reward (%)": "Thưởng giới thiệu khi thanh toán (%)",
     "Payment request failed": "Yêu cầu thanh toán thất bại",
+    "Payment reservations: {{count}}": "Chỗ giữ chờ thanh toán: {{count}}",
     "Payment return URL": "URL trả về thanh toán",
     "Payment return URL is empty. Create the product without a SuccessURL redirect?": "URL trả về thanh toán đang trống. Tạo sản phẩm mà không có chuyển hướng SuccessURL?",
     "Payment service fees": "Phí dịch vụ thanh toán",

@@ -36,7 +36,7 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 
 - **删除至尊月卡（2026-11-11，北京时间12:37）**：按用户要求删除商品37「至尊月卡」。删除前确认该商品无用户订阅、无订单；持商品行锁、逐字段守卫及事务ROLLBACK演练后执行，其他商品逐字段一致。当前目录11项：原上架商品剩6项，新增四档常规月卡下架；复核时星瀚47已被独立上架，此状态原样保留，本次仅删除37。应用revision15daa020610c1760ee0fc46d7fc8051899e67665保持healthy，无发布或重启。恢复材料`/root/upgrade-recovery/remove-subscription-plan37-20261111T043728Z/`含原行／SHA256／删除及恢复SQL和演练／回执；仅支持明确要求后的单商品恢复。订阅改造的catalog-rollback.sql已排除商品37，应用回退不会自动重新上架已删除商品；当前回滚事务被“新商品已上架”的保护守卫正确拒绝，需另行核对星瀚后才能回退，未执行实际回退。
 
-- **main自动部署约定（2026-11-11）**：流水线直接传本次镜像digest与完整revision，远程显式pull并仅修改new-api.image，保留pull_policy never；concurrency/flock/run_number保护部署顺序。自动全库归档与读取验证、应用镜像/版本/健康及HTTP检查，失败仅自动回旧应用、保留当前业务数据。正常push main无需Codex额外手动部署；首次实机结果见`docs/deployment/automatic-production-deploy.md`。勿恢复原先仅compose pull/up的步骤，否则固定旧digest时会误部署旧版。
+- **main自动部署约定（2026-11-11）**：流水线直接传本次镜像digest与完整revision，远程显式pull并仅修改new-api.image，保留pull_policy never；concurrency/flock/run_number保护部署顺序。自动全库归档与读取验证、应用镜像/版本/健康及HTTP检查，失败仅自动回旧应用、保留当前业务数据。正常push main无需Codex额外手动部署；首次实机a42ec4a82308edd3254fbb9c3eeb8c0a72bb857a／Actions42966171961已自动上线且健康，结果见`docs/deployment/automatic-production-deploy.md`。勿恢复原先仅compose pull/up的步骤，否则固定旧digest时会误部署旧版。
 
 ## 当前生产环境速查（sub2api 2026-10-21 核对，其他项目见各条日期）
 

@@ -5286,6 +5286,7 @@
     "Payment reference": "決済参照番号",
     "Payment referral reward (%)": "支払い紹介報酬（%）",
     "Payment request failed": "支払いリクエストが失敗しました",
+    "Payment reservations: {{count}}": "支払待ちの確保枠：{{count}}",
     "Payment return URL": "決済完了後のリダイレクトURL",
     "Payment return URL is empty. Create the product without a SuccessURL redirect?": "支払い戻り URL が空です。SuccessURL リダイレクトなしで商品を作成しますか？",
     "Payment service fees": "決済サービス費",
