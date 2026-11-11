@@ -242,3 +242,52 @@ test('a hidden advanced validation error opens advanced settings instead of bloc
   ).toBeVisible()
   expect(save).not.toHaveBeenCalled()
 })
+
+// Exercise native constraint validation, which can block submit before Zod or
+// onSubmit runs. Decimal floors must not be offset by the HTML minimum.
+test.each([0.17, 0.18, 0.180001, 0.181333, 0.23])(
+  'a minimum effective multiplier of %s passes native validation and saves unchanged',
+  async (minimum) => {
+    const plan = subscriptionPlanSchema.parse({
+      ...createFormValuesToPayload(
+        {
+          ...PLAN_CREATE_FORM_DEFAULTS,
+          title: 'Custom star month',
+          price_cny: 1360,
+          price_amount: 6000,
+          allowed_channel_types: [1],
+          minimum_effective_ratio: 0.18,
+          discount_rate: 0.8,
+          discount_ends_at: Math.floor(Date.now() / 1000) + 3600,
+        },
+        500000
+      ).plan,
+      id: 47,
+    })
+    const save = renderEditor({ plan })
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /Advanced Settings/ }))
+    const input = screen.getByRole('spinbutton', {
+      name: 'Minimum effective multiplier',
+    }) as HTMLInputElement
+    await user.clear(input)
+    await user.type(input, String(minimum))
+    expect(input.validity.stepMismatch).toBe(false)
+    expect(input.checkValidity()).toBe(true)
+    await user.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        '/api/subscription/admin/plans/47',
+        expect.objectContaining({
+          plan: expect.objectContaining({
+            price_cny: 1360,
+            price_amount: 6000,
+            total_amount: 3000000000,
+            discount_rate: 0.8,
+            minimum_effective_ratio: minimum,
+          }),
+        })
+      )
+    )
+  }
+)

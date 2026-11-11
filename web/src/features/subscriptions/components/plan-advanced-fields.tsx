@@ -348,7 +348,7 @@ export function PlanAdvancedFields(props: { groupOptions: string[] }) {
                 value={field.value ?? ''}
                 type='number'
                 min={0.000001}
-                step={0.01}
+                step='any'
                 onChange={(event) =>
                   field.onChange(
                     event.target.value === ''
