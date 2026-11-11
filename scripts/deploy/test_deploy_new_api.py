@@ -1,4 +1,9 @@
+import base64
 import io
+import os
+import re
+import subprocess
+import textwrap
 import json
 from pathlib import Path
 import tempfile
@@ -182,6 +187,18 @@ class DeploymentTests(unittest.TestCase):
     def test_run_id_cannot_escape_recovery_directory(self):
         with self.assertRaises(DeploymentError):
             Deployer(self.project,REFERENCE,REVISION,20,'../../other')
+
+    def test_ssh_plugin_line_exit_checks_cannot_corrupt_python_entrypoint(self):
+        # ssh-action v1 script_stop inserts a shell check after each script
+        # line. A Python heredoc is corrupted; a single-line -c stays valid.
+        workflow = Path(__file__).parents[2] / '.github/workflows/build-aiproxy-image.yml'
+        block = re.search(r'          script: \|\n((?:            .*\n)+)',workflow.read_text()).group(1)
+        script = textwrap.dedent(block)
+        transported = '\n'.join(line + '\nstatus=$?; if [ "$status" -ne 0 ]; then exit "$status"; fi' for line in script.splitlines())
+        env = dict(os.environ,DEPLOY_SCRIPT_B64=base64.b64encode(b'print("deployment transport ok")').decode())
+        result = subprocess.run(['/bin/sh','-c',transported],env=env,capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(result.stdout.strip(),'deployment transport ok')
 
 
 if __name__ == '__main__':

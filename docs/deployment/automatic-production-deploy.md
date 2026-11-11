@@ -14,4 +14,4 @@ Push main 后，GitHub Actions 构建 linux/amd64 镜像，并将此次构建输
 
 现有SSH／GHCR配置不变。构建／部署失败通过GitHub Actions原有通知处理，不创建本机自动化或依赖本机开机。未提交本机草稿不会进入远端构建。带`[skip ci]`的提交仍按GitHub机制跳过Actions；需要发布代码时不要使用该标记。
 
-验证：16项自动部署回归覆盖固定摘要+never、失败回滚、失败不切换、旧作业降级拦截、并发配置保护、只重建应用、HTTP版本与镜像验证。actionlint与服务器实际Compose/HTTP只读预演通过。首次实机自动部署结果在完成后记录。
+验证：17项自动部署回归覆盖固定摘要+never、失败回滚、失败不切换、旧作业降级拦截、并发配置保护、只重建应用、HTTP版本与镜像验证。额外覆盖ssh-action逐行插入退出码检查的实际Shell入口回归；入口使用单行python3 -c，避免heredoc被插件插入语句破坏。actionlint与服务器实际Compose/HTTP只读预演通过。首次实机自动部署结果在完成后记录。

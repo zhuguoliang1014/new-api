@@ -122,11 +122,7 @@ jobs:
           script_stop: true
           script: |
             set -eu
-            python3 - <<'PYTHON'
-            import base64, os
-            source = base64.b64decode(os.environ["DEPLOY_SCRIPT_B64"], validate=True)
-            exec(compile(source, "deploy_new_api.py", "exec"))
-            PYTHON
+            python3 -c 'import base64, os; exec(compile(base64.b64decode(os.environ["DEPLOY_SCRIPT_B64"], validate=True), "deploy_new_api.py", "exec"))'
 
       - name: Deployment summary
         run: |
