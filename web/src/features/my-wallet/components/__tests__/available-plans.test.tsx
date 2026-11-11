@@ -154,14 +154,9 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
   ])
   expect(
     container.querySelector('[data-slot="subscription-plan-grid"]')
-  ).toHaveClass(
-    'grid-cols-1',
-    'sm:grid-cols-2',
-    'lg:grid-cols-3',
-    'xl:grid-cols-4'
-  )
+  ).toHaveClass('grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3')
   const card = screen.getByRole('article', { name: '苍穹版' })
-  expect(card.querySelector('[data-slot=card-content]')).toHaveClass('p-4')
+  expect(card.querySelector('[data-slot=card-content]')).toHaveClass('p-5')
   expect(within(card).getByText('¥2,000')).toBeVisible()
   expect(within(card).getByText('$7,800')).toBeVisible()
   expect(within(card).getByText('/ 1 months')).toHaveClass('whitespace-nowrap')
@@ -494,7 +489,7 @@ it('updates savings explanations when the interface language changes', async () 
   expect(screen.getByRole('button', { name: '费用说明' })).toBeVisible()
 })
 
-it('highlights the localized sale countdown above the plan title and purchase action', async () => {
+it('keeps the sale countdown between the plan identity and purchase action', async () => {
   await renderPlans(
     [plan({ expires_at: now + 3 * 86400 + 23 * 3600 + 57 * 60 + 31 })],
     { language: 'zhCN' }
@@ -504,7 +499,7 @@ it('highlights the localized sale countdown above the plan title and purchase ac
   const title = screen.getByRole('heading', { name: '苍穹版' })
   const button = screen.getByRole('button', { name: '立即订阅' })
   expect(
-    timer.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING
+    title.compareDocumentPosition(timer) & Node.DOCUMENT_POSITION_FOLLOWING
   ).toBeTruthy()
   expect(
     timer.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING
@@ -571,4 +566,213 @@ it('deducts two display sales from five available places while keeping the remai
   ])
   expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
   expect(screen.getByText('Limited to 5 · 3 available')).toBeVisible()
+})
+
+it('uses the editorial title font and a neutral two-column price and quota hierarchy', async () => {
+  await renderPlans([plan()])
+  const card = screen.getByRole('article', { name: '苍穹版' })
+  expect(within(card).getByRole('heading', { name: '苍穹版' })).toHaveClass(
+    'font-serif'
+  )
+  const metrics = card.querySelector('[data-slot=plan-price-quota]')
+  expect(metrics).toHaveClass('grid-cols-2')
+  expect(metrics).toHaveTextContent('¥2,000')
+  expect(metrics).toHaveTextContent('$7,800')
+  expect(
+    within(card).getByRole('button', { name: 'Subscribe Now' })
+  ).toHaveClass('border-border')
+})
+
+it('shows an active price discount independently from sales limits and wallet savings', async () => {
+  await renderPlans(
+    [
+      {
+        ...plan({
+          price_cny: 1088,
+          total_amount: 3000000000,
+          discount_rate: 0.8,
+          discount_starts_at: now - 100,
+          discount_ends_at: now + 100,
+          limited_sale: true,
+          sales_limit: 5,
+        }),
+        regular_price_cny: 1360,
+        regular_price_amount: 280,
+        discount_price_cny: 1088,
+        paid_count: 1,
+        reserved_count: 1,
+        remaining_count: 3,
+        sold_count: 1,
+      },
+    ],
+    {
+      planSavings: new Map([
+        [1, { planRatio: 0.1813, rechargeRatio: 0.36, savings: 0.4963 }],
+      ]),
+    }
+  )
+  const card = screen.getByRole('article', { name: '苍穹版' })
+  expect(within(card).getByText('Limited-time offer')).toBeVisible()
+  expect(within(card).getByText('Save ¥272')).toBeVisible()
+  expect(within(card).getByLabelText('20% off')).toBeVisible()
+  expect(within(card).getByText('¥1,360').tagName).toBe('DEL')
+  expect(within(card).getByText('¥1,088')).toBeVisible()
+  expect(within(card).getByText('$6,000')).toBeVisible()
+  expect(
+    within(card).getByText('Save about 50% vs wallet payment')
+  ).toBeVisible()
+  expect(within(card).getByText('Limited to 5 · 3 available')).toBeVisible()
+  expect(within(card).getByText('Payment reservations: 1')).toBeVisible()
+  expect(
+    within(card).getByRole('button', { name: 'Subscribe Now' })
+  ).toBeEnabled()
+})
+
+it.each([
+  { state: 'future discount', starts: now + 10, ends: now + 20 },
+  { state: 'expired discount', starts: now - 20, ends: now },
+])(
+  'keeps $state at regular price without promotional urgency',
+  async ({ starts, ends }) => {
+    await renderPlans([
+      {
+        ...plan({
+          price_cny: 1088,
+          discount_rate: 0.8,
+          discount_starts_at: starts,
+          discount_ends_at: ends,
+        }),
+        regular_price_cny: 1360,
+        regular_price_amount: 280,
+      },
+    ])
+    expect(screen.getByText('¥1,360')).toBeVisible()
+    expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
+    expect(screen.queryByText('¥1,088')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
+  }
+)
+
+it('restores the regular price at discount expiry without changing quota or ending sales', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  vi.spyOn(Date, 'now').mockRestore()
+  vi.setSystemTime(now * 1000)
+  try {
+    await renderPlans([
+      {
+        ...plan({
+          price_cny: 1088,
+          total_amount: 3000000000,
+          discount_rate: 0.8,
+          discount_starts_at: now - 100,
+          discount_ends_at: now + 1,
+        }),
+        regular_price_cny: 1360,
+        regular_price_amount: 280,
+      },
+    ])
+    expect(screen.getByText('¥1,088')).toBeVisible()
+    await act(async () => {
+      vi.setSystemTime((now + 2) * 1000)
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.getByText('¥1,360')).toBeVisible()
+    expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
+    expect(screen.getByText('$6,000')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('stops a timed sale even if its price discount still has time remaining', async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true })
+  vi.spyOn(Date, 'now').mockRestore()
+  vi.setSystemTime(now * 1000)
+  try {
+    await renderPlans([
+      {
+        ...plan({
+          expires_at: now + 1,
+          discount_rate: 0.8,
+          discount_starts_at: now - 100,
+          discount_ends_at: now + 100,
+        }),
+        regular_price_cny: 2000,
+        regular_price_amount: 280,
+      },
+    ])
+    expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
+    await act(async () => {
+      vi.setSystemTime((now + 2) * 1000)
+      vi.advanceTimersByTime(1000)
+    })
+    expect(screen.getByRole('button', { name: 'Sale Ended' })).toBeDisabled()
+    expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
+it('keeps zero-stock editions and future sales unavailable without misleading discount claims', async () => {
+  await renderPlans([
+    plan({ limited_sale: true, sales_limit: 0 }),
+    {
+      ...plan({
+        id: 2,
+        title: 'Future plan',
+        starts_at: now + 86400,
+        discount_rate: 0.8,
+        discount_starts_at: now - 100,
+        discount_ends_at: now + 100,
+      }),
+      regular_price_cny: 2000,
+      regular_price_amount: 280,
+    },
+  ])
+  expect(screen.getByRole('button', { name: 'Sold Out' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Not Started' })).toBeDisabled()
+  expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
+})
+
+it('renders the Chinese eight-tenths discount without confusing it with 80% off', async () => {
+  await renderPlans(
+    [
+      {
+        ...plan({
+          price_cny: 1088,
+          discount_rate: 0.8,
+          discount_starts_at: now - 1,
+          discount_ends_at: now + 100,
+        }),
+        regular_price_cny: 1360,
+        regular_price_amount: 280,
+      },
+    ],
+    { language: 'zhCN' }
+  )
+  const discount = screen.getByLabelText('优惠 20%')
+  expect(discount).toHaveTextContent('8折')
+  expect(screen.getByText('立省 ¥272')).toBeVisible()
+  expect(screen.getByText('¥1,360').tagName).toBe('DEL')
+})
+
+it('preserves USD-only discount currency in its original price and saving', async () => {
+  await renderPlans([
+    {
+      ...plan({
+        price_cny: 0,
+        price_amount: 8,
+        discount_rate: 0.8,
+        discount_starts_at: now - 1,
+        discount_ends_at: now + 100,
+      }),
+      regular_price_cny: 0,
+      regular_price_amount: 10,
+    },
+  ])
+  expect(screen.getByText('$8')).toBeVisible()
+  expect(screen.getByText('$10').tagName).toBe('DEL')
+  expect(screen.getByText('Save $2')).toBeVisible()
+  expect(screen.queryByText(/¥/)).not.toBeInTheDocument()
 })

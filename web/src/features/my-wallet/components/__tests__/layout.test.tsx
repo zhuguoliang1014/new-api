@@ -164,19 +164,10 @@ it('keeps multiple subscriptions compact until keyboard expansion enables orderi
 
 it('keeps the empty subscription overview short and the catalog visible', async () => {
   await renderSubscriptions([])
-  const note = screen.getByRole('note')
-  expect(note).toHaveClass(
-    'border-amber-200',
-    'bg-amber-50',
-    'text-amber-900',
-    'dark:border-amber-800',
-    'dark:bg-amber-950/30',
-    'dark:text-amber-200'
-  )
-  expect(note).toHaveTextContent(
-    /^GPT subscriptions only support GPT models\.$/
-  )
-  expect(note.querySelector('[data-slot="alert-title"]')).toBeNull()
+  expect(screen.queryByRole('note')).not.toBeInTheDocument()
+  expect(
+    screen.queryByText('GPT subscriptions only support GPT models.')
+  ).not.toBeInTheDocument()
   const overview = screen.getByRole('region', { name: 'My Subscriptions' })
   const title = within(overview).getByRole('heading', {
     name: 'My Subscriptions',
