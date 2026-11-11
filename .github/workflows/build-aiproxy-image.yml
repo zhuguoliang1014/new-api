@@ -5,12 +5,19 @@ on:
     branches:
       - main
 
+# Finish an active deployment; replace older pending work with the newest push.
+concurrency:
+  group: aiproxy-production-main
+  cancel-in-progress: false
+
 env:
   IMAGE_NAME: ghcr.io/zhuguoliang1014/new-api
 
 jobs:
   docker:
     runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.image.outputs.digest }}
     permissions:
       contents: read
       packages: write
@@ -20,6 +27,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Test deployment automation
+        run: python3 -m unittest discover -s scripts/deploy -p 'test_*.py' -v
 
       - name: Resolve version
         id: version
@@ -63,6 +73,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push (linux/amd64)
+        id: image
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -83,18 +94,42 @@ jobs:
     permissions:
       contents: read
       packages: read
+    timeout-minutes: 20
     steps:
-      - name: Deploy via SSH
+      - name: Checkout deployment automation
+        uses: actions/checkout@v4
+
+      - name: Prepare deployment script
+        id: script
+        run: echo "payload=$(base64 -w0 scripts/deploy/deploy_new_api.py)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the image built by this run
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_IMAGE: ${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}
+          DEPLOY_REVISION: ${{ github.sha }}
+          DEPLOY_RUN_NUMBER: ${{ github.run_number }}
+          DEPLOY_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+          DEPLOY_SCRIPT_B64: ${{ steps.script.outputs.payload }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 18m
+          envs: DEPLOY_PATH,DEPLOY_IMAGE,DEPLOY_REVISION,DEPLOY_RUN_NUMBER,DEPLOY_RUN_ID,DEPLOY_SCRIPT_B64
           script_stop: true
           script: |
-            set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
-            docker compose pull new-api
-            docker compose up -d --force-recreate new-api
-            docker image prune -f
+            set -eu
+            python3 - <<'PYTHON'
+            import base64, os
+            source = base64.b64decode(os.environ["DEPLOY_SCRIPT_B64"], validate=True)
+            exec(compile(source, "deploy_new_api.py", "exec"))
+            PYTHON
+
+      - name: Deployment summary
+        run: |
+          echo "Deployed commit ${{ github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Image: ${{ env.IMAGE_NAME }}@${{ needs.docker.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Container health and application version verified automatically." >> "$GITHUB_STEP_SUMMARY"

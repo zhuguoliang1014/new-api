@@ -456,7 +456,7 @@ ssh aliyun '/usr/local/sbin/backup-aiproxy-databases'
 | `DEPLOY_PATH` | `/root/new-api` |
 | `SSH_PRIVATE_KEY` | 专用部署私钥；对应公钥须已在香港授权。此项不能填写公钥 |
 
-部署执行 `docker compose pull new-api` 和 `docker compose up -d --force-recreate new-api`，之后清理未使用镜像。不要因为只改应用就重建 PostgreSQL/Redis；不要执行 `docker compose down -v`。
+部署由 `.github/workflows/build-aiproxy-image.yml` 自动完成：将本次 `build-push-action` 输出的镜像摘要传入服务器，显式pull该摘要、核验完整revision，仅更新Compose的new-api.image再使用`--no-deps`重建应用。保留原`pull_policy: never`也不会误用旧镜像，因为每轮更新的是本次不可变摘要。容器健康与本机HTTP状态／定价／版本核验自动完成，失败自动恢复原应用并让Actions失败，不恢复数据库。工作流concurrency与服务器文件锁串行化，已发布的run_number阻止旧作业重跑降级。入口脚本`scripts/deploy/deploy_new_api.py`，只需正常push main；无需Codex另行SSH切镜像。每次应用切换前自动完整pg_dump、SHA256和pg_restore完整读取，恢复材料在`/root/upgrade-recovery/newapi-auto-deploy/<run_id>-<attempt>/`。不全局prune镜像，已知良好版本留回滚标签；不重建数据库／Redis，不执行`docker compose down -v`。
 
 只读核查：
 

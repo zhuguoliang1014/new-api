@@ -36,6 +36,8 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 
 - **删除至尊月卡（2026-11-11，北京时间12:37）**：按用户要求删除商品37「至尊月卡」。删除前确认该商品无用户订阅、无订单；持商品行锁、逐字段守卫及事务ROLLBACK演练后执行，其他商品逐字段一致。当前目录11项：原上架商品剩6项，新增四档常规月卡下架；复核时星瀚47已被独立上架，此状态原样保留，本次仅删除37。应用revision15daa020610c1760ee0fc46d7fc8051899e67665保持healthy，无发布或重启。恢复材料`/root/upgrade-recovery/remove-subscription-plan37-20261111T043728Z/`含原行／SHA256／删除及恢复SQL和演练／回执；仅支持明确要求后的单商品恢复。订阅改造的catalog-rollback.sql已排除商品37，应用回退不会自动重新上架已删除商品；当前回滚事务被“新商品已上架”的保护守卫正确拒绝，需另行核对星瀚后才能回退，未执行实际回退。
 
+- **main自动部署约定（2026-11-11）**：流水线直接传本次镜像digest与完整revision，远程显式pull并仅修改new-api.image，保留pull_policy never；concurrency/flock/run_number保护部署顺序。自动全库归档与读取验证、应用镜像/版本/健康及HTTP检查，失败仅自动回旧应用、保留当前业务数据。正常push main无需Codex额外手动部署；首次实机结果见`docs/deployment/automatic-production-deploy.md`。勿恢复原先仅compose pull/up的步骤，否则固定旧digest时会误部署旧版。
+
 ## 当前生产环境速查（sub2api 2026-10-21 核对，其他项目见各条日期）
 
 - **订阅展示销量占位与rc.49上线（2026-11-10）**：用户授权修复、提交push并部署，功能615e06d4c、说明补齐133128e47732f6083d2adfca9fe897a068732e97，Actions42798889955、42799498839均success，最终应用revision为后者。展示销量作为额外已售占名额，库存统一按成功付款＋展示销量＋待支付占位计算；编辑及下单共用套餐锁，赠送不占名额，不伪造订单/收入。113项前端回归及补文案后的110项复测、native类型/lint/格式、637.5KiB构建、Go订阅/返利回归/vet/root构建、SQLite3.50.4/MySQL8.4.11/PostgreSQL15.17真实库存/API及race通过。核验完整revision后将new-api镜像固定到sha256:a578141829f6b5ba3b8cfdb63b85f9ac88672f499d5bd26588eb7ff0c64f6eef，保留pull_policy never；healthy、三入口状态/定价/素材、新JS/CSS及旧敏感样例404通过。正式站现有会话将套餐37展示销量从0保存为2，后台和钱包均核验限量5、已售2、剩余3，优惠50%；仅该字段和updated_at改变，价格/额度/其他套餐、options/渠道/abilities/模型和原令牌配置不变，正常新增1令牌保留，其余六容器未重启。原41文件草稿恢复并与本次修改兼容，支付过期草稿未发布。恢复目录/root/upgrade-recovery/newapi-display-sales-20261110T181442含149642820字节全库归档、SHA-256 6eeb72deffec91fb1fef12d9fc14bcc741810dfcce5f1a3e2f8cac4abef56dad与完整读取校验、配置/测试/部署/浏览器及仅切应用的保护性回滚；不整库恢复，未实际回退。未发起付费订单或发送公告。
