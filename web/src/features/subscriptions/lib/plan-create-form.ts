@@ -7,37 +7,61 @@ import type { PlanPayload, SubscriptionPlan } from '../types'
 // 第三方支付相关 ID（stripe_price_id / creem_product_id）在新面板中不展示，
 // 编辑已有套餐时在 payload 里原样透传，避免被清空。
 export function getPlanCreateFormSchema(t: TFunction) {
-  return z.object({
-    title: z.string().min(1, t('Please enter plan title')),
-    subtitle: z.string().optional(),
-    price_amount: z.coerce.number().min(0, t('Please enter amount')),
-    price_cny: z.coerce.number().min(0.01, t('Please enter CNY price')),
-    duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
-    duration_value: z.coerce.number().min(1),
-    custom_seconds: z.coerce.number().min(0).optional(),
-    quota_reset_period: z.enum([
-      'never',
-      'daily',
-      'weekly',
-      'monthly',
-      'custom',
-    ]),
-    quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
-    enabled: z.boolean(),
-    sort_order: z.coerce.number(),
-    max_purchase_per_user: z.coerce.number().min(0),
-    sales_limit: z.coerce.number().int().min(0).max(2147483647),
-    display_sold_count: z.coerce.number().int().min(0).max(2147483647),
-    upgrade_group: z.string().optional(),
-    starts_at: z.coerce.number().min(0).optional(),
-    expires_at: z.coerce.number().min(0).optional(),
-    allowed_channel_types: z.array(z.number()).optional(),
-    billing_ratio: z.coerce
-      .number()
-      .positive(t('Billing multiplier must be greater than zero'))
-      .nullable()
-      .optional(),
-  })
+  return z
+    .object({
+      title: z.string().min(1, t('Please enter plan title')),
+      subtitle: z.string().optional(),
+      price_amount: z.coerce.number().min(0, t('Please enter amount')),
+      price_cny: z.coerce.number().min(0.01, t('Please enter CNY price')),
+      duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
+      duration_value: z.coerce.number().min(1),
+      custom_seconds: z.coerce.number().min(0).optional(),
+      quota_reset_period: z.enum([
+        'never',
+        'daily',
+        'weekly',
+        'monthly',
+        'custom',
+      ]),
+      quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
+      enabled: z.boolean(),
+      sort_order: z.coerce.number(),
+      max_purchase_per_user: z.coerce.number().min(0),
+      limited_sale: z.boolean().optional(),
+      minimum_effective_ratio: z.coerce
+        .number()
+        .positive()
+        .nullable()
+        .optional(),
+      discount_rate: z.coerce.number().gt(0).max(1).nullable().optional(),
+      discount_starts_at: z.coerce.number().int().min(0).optional(),
+      discount_ends_at: z.coerce.number().int().min(0).optional(),
+      sales_limit: z.coerce.number().int().min(0).max(2147483647),
+      display_sold_count: z.coerce.number().int().min(0).max(2147483647),
+      upgrade_group: z.string().optional(),
+      starts_at: z.coerce.number().min(0).optional(),
+      expires_at: z.coerce.number().min(0).optional(),
+      allowed_channel_types: z.array(z.number()).optional(),
+      billing_ratio: z.coerce
+        .number()
+        .positive(t('Billing multiplier must be greater than zero'))
+        .nullable()
+        .optional(),
+    })
+    .superRefine((values, context) => {
+      if (
+        values.discount_rate != null &&
+        values.discount_rate < 1 &&
+        (!values.discount_ends_at ||
+          values.discount_ends_at <= (values.discount_starts_at || 0))
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['discount_ends_at'],
+          message: t('Discount end time must be later than start time'),
+        })
+      }
+    })
 }
 
 export type PlanCreateFormValues = z.infer<
@@ -58,6 +82,11 @@ export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
   sort_order: 0,
   max_purchase_per_user: 0,
   sales_limit: 0,
+  limited_sale: false,
+  minimum_effective_ratio: null,
+  discount_rate: 1,
+  discount_starts_at: 0,
+  discount_ends_at: 0,
   display_sold_count: 0,
   upgrade_group: '',
   starts_at: 0,
@@ -83,6 +112,11 @@ export function planToCreateFormValues(
     sort_order: Number(plan.sort_order || 0),
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     sales_limit: Number(plan.sales_limit || 0),
+    limited_sale: plan.limited_sale ?? false,
+    discount_rate: plan.discount_rate ?? 1,
+    minimum_effective_ratio: plan.minimum_effective_ratio ?? null,
+    discount_starts_at: plan.discount_starts_at || 0,
+    discount_ends_at: plan.discount_ends_at || 0,
     display_sold_count: Number(plan.display_sold_count || 0),
     upgrade_group: plan.upgrade_group || '',
     starts_at: Number(plan.starts_at || 0),
@@ -94,7 +128,7 @@ export function planToCreateFormValues(
           .map((s) => s.trim())
           .filter(Boolean)
           .map(Number)
-          .filter((n) => !isNaN(n))
+          .filter((n) => !Number.isNaN(n))
       : [],
   }
 }
@@ -134,6 +168,11 @@ export function createFormValuesToPayload(
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       sales_limit: Number(values.sales_limit || 0),
+      limited_sale: values.limited_sale ?? false,
+      discount_rate: values.discount_rate ?? 1,
+      minimum_effective_ratio: values.minimum_effective_ratio ?? null,
+      discount_starts_at: Number(values.discount_starts_at || 0),
+      discount_ends_at: Number(values.discount_ends_at || 0),
       display_sold_count: Number(values.display_sold_count || 0),
       total_amount: totalAmount,
       upgrade_group: values.upgrade_group || '',

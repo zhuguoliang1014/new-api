@@ -9,7 +9,7 @@ export function getPlanSalesState(record: PlanRecord | null | undefined) {
     0,
     record?.remaining_count ?? limit - sold - (record?.reserved_count || 0)
   )
-  const limited = limit > 0
+  const limited = record?.plan.limited_sale === true || limit > 0
   const soldOut = limited && (record?.sold_out === true || sold >= limit)
   return {
     limit,

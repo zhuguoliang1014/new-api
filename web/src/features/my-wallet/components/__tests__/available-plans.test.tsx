@@ -1,4 +1,11 @@
-import { act, cleanup, render, screen, within } from '@testing-library/react'
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createInstance } from 'i18next'
 import { I18nextProvider } from 'react-i18next'
@@ -175,9 +182,11 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
   await act(async () => {
     await vi.dynamicImportSettled()
   })
-  expect(
-    card.querySelector('[data-slot="plan-provider-icon"] svg')
-  ).toBeInTheDocument()
+  await waitFor(() =>
+    expect(
+      card.querySelector('[data-slot="plan-provider-icon"] svg')
+    ).toBeInTheDocument()
+  )
 })
 
 it('keeps long plan names, descriptions and details contained without losing their full text', async () => {
@@ -370,6 +379,7 @@ it('submits the native Epay subscription checkout when the original gateway is d
   await userEvent.click(within(dialog).getByRole('button', { name: 'Alipay' }))
   expect(post).toHaveBeenCalledWith('/api/subscription/epay/pay', {
     plan_id: 1,
+    expected_price_cny: 2000,
     payment_method: 'alipay',
   })
   expect(submit).toHaveBeenCalledOnce()

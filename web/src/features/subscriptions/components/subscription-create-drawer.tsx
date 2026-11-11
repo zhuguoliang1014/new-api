@@ -55,6 +55,7 @@ import {
   type PlanCreateFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
+import { PlanPromotionFields } from './plan-promotion-fields'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -321,7 +322,7 @@ export function SubscriptionCreateDrawer({
                         <Input
                           {...field}
                           type='number'
-                          step='0.01'
+                          step='0.000001'
                           min={0}
                           placeholder='0.00'
                           onChange={(e) =>
@@ -396,9 +397,13 @@ export function SubscriptionCreateDrawer({
                         />
                       </FormControl>
                       <FormDescription>
-                        {t(
-                          '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
-                        )}
+                        {form.watch('limited_sale')
+                          ? t(
+                              'For limited editions, 0 means no stock. Paid orders, pending payments and display sales count toward the total.'
+                            )
+                          : t(
+                              '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
+                            )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -674,6 +679,12 @@ export function SubscriptionCreateDrawer({
                 />
               </div>
             </section>
+
+            <PlanPromotionFields
+              quotaUSD={Number(usdQuotaAmount || 0)}
+              priceCNY={Number(form.watch('price_cny') || 0)}
+              billingRatio={Number(form.watch('billing_ratio') ?? 1)}
+            />
 
             {/* 促销时段 */}
             <section className='space-y-4'>

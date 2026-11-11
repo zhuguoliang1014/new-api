@@ -159,6 +159,12 @@ type SubscriptionPlan struct {
 	PriceCNY    float64 `json:"price_cny" gorm:"type:decimal(10,2);not null;default:0"`
 	Currency    string  `json:"currency" gorm:"type:varchar(8);not null;default:'USD'"`
 
+	// Promotion changes purchase prices only; quota and billing terms stay fixed.
+	MinimumEffectiveRatio *float64 `json:"minimum_effective_ratio"`
+	DiscountRate          *float64 `json:"discount_rate"`
+	DiscountStartsAt      int64    `json:"discount_starts_at" gorm:"type:bigint;not null;default:0"`
+	DiscountEndsAt        int64    `json:"discount_ends_at" gorm:"type:bigint;not null;default:0"`
+
 	DurationUnit  string `json:"duration_unit" gorm:"type:varchar(16);not null;default:'month'"`
 	DurationValue int    `json:"duration_value" gorm:"type:int;not null;default:1"`
 	CustomSeconds int64  `json:"custom_seconds" gorm:"type:bigint;not null;default:0"`
@@ -177,8 +183,9 @@ type SubscriptionPlan struct {
 
 	// Max purchases per user (0 = unlimited)
 	MaxPurchasePerUser int `json:"max_purchase_per_user" gorm:"type:int;default:0"`
-	// Lifetime paid and display sales cap; pending checkouts reserve a place. 0 = unlimited.
-	SalesLimit int `json:"sales_limit" gorm:"type:int;not null;default:0"`
+	// Lifetime stock cap; zero is unlimited unless LimitedSale is enabled.
+	LimitedSale bool `json:"limited_sale" gorm:"not null;default:false"`
+	SalesLimit  int  `json:"sales_limit" gorm:"type:int;not null;default:0"`
 
 	// AllowedChannelTypes stores model-provider identifiers using legacy channel-type IDs.
 	// It matches the requested model family, never the selected transport (1=OpenAI, 14=Anthropic).
@@ -282,10 +289,12 @@ func (p *SubscriptionPlan) NormalizeDefaults() {
 
 // Subscription order (payment -> webhook -> create UserSubscription)
 type SubscriptionOrder struct {
-	Id     int     `json:"id"`
-	UserId int     `json:"user_id" gorm:"index"`
-	PlanId int     `json:"plan_id" gorm:"index"`
-	Money  float64 `json:"money"`
+	PlanSnapshot string            `json:"-" gorm:"type:text"`
+	QuotedPlan   *SubscriptionPlan `json:"-" gorm:"-"`
+	Id           int               `json:"id"`
+	UserId       int               `json:"user_id" gorm:"index"`
+	PlanId       int               `json:"plan_id" gorm:"index"`
+	Money        float64           `json:"money"`
 
 	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
@@ -306,7 +315,30 @@ func (o *SubscriptionOrder) Insert() error {
 		if err != nil {
 			return err
 		}
+		if err := plan.ValidatePromotion(); err != nil {
+			return err
+		}
+		quoteTime := common.GetTimestamp()
+		if o.QuotedPlan != nil {
+			if err := validateSubscriptionQuote(plan, o.QuotedPlan, quoteTime); err != nil {
+				return err
+			}
+		}
+		if !plan.Enabled {
+			return common.NewMessage("Subscription plan is not enabled")
+		}
+		if ok, _ := plan.CheckSaleWindow(); !ok {
+			return common.NewMessage("Subscription plan is outside its sale window")
+		}
 		if err := checkSubscriptionSaleCapacityTx(tx, plan); err != nil {
+			return err
+		}
+		quote := plan.PurchaseQuote(quoteTime)
+		if quote.DiscountFactor(quoteTime) < 1 && (o.PaymentProvider == PaymentProviderStripe || o.PaymentProvider == PaymentProviderCreem) {
+			return common.NewMessage("Scheduled discounts require a payment method with dynamic pricing")
+		}
+		o.PlanSnapshot, err = encodeSubscriptionPlan(&quote)
+		if err != nil {
 			return err
 		}
 		return tx.Create(o).Error
@@ -330,9 +362,10 @@ func GetSubscriptionOrderByTradeNo(tradeNo string) *SubscriptionOrder {
 
 // User subscription instance
 type UserSubscription struct {
-	Id     int `json:"id"`
-	UserId int `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
-	PlanId int `json:"plan_id" gorm:"index"`
+	PlanSnapshot string `json:"-" gorm:"type:text"`
+	Id           int    `json:"id"`
+	UserId       int    `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
+	PlanId       int    `json:"plan_id" gorm:"index"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -618,7 +651,12 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if plan.AllowWalletOverflow != nil {
 		allowWalletOverflow = *plan.AllowWalletOverflow
 	}
+	snapshot, err := encodeSubscriptionPlan(plan)
+	if err != nil {
+		return nil, err
+	}
 	sub := &UserSubscription{
+		PlanSnapshot:        snapshot,
 		UserId:              userId,
 		PlanId:              plan.Id,
 		AmountTotal:         plan.TotalAmount,
@@ -665,7 +703,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logPaymentMethod string
 	var upgradeGroup string
 	var orderInfo SubscriptionOrder
-	if err := DB.Select("plan_id", "status", "payment_provider").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
+	if err := DB.Select("plan_id", "status", "payment_provider", "plan_snapshot", "trade_no").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
 		return ErrSubscriptionOrderNotFound
 	}
 	if expectedPaymentProvider != "" && orderInfo.PaymentProvider != expectedPaymentProvider {
@@ -677,7 +715,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		// All sales paths acquire the plan before order/user locks. Completion
 		// converts an existing reservation; it must not reserve a second place.
-		plan, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId)
+		plan, err := lockSubscriptionOrderPlanTx(tx, &orderInfo)
 		if err != nil {
 			return err
 		}
@@ -694,8 +732,9 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status != common.TopUpStatusPending && !(expectedPaymentProvider == PaymentProviderEpay && (order.Status == common.TopUpStatusExpired || order.Status == common.TopUpStatusCanceled)) {
 			return ErrSubscriptionOrderStatusInvalid
 		}
-		if !plan.Enabled {
-			// still allow completion for already purchased orders
+		plan, err = subscriptionPlanFromSnapshot(order.PlanSnapshot, plan)
+		if err != nil {
+			return err
 		}
 		// 锁定用户行：并发完成同一用户的不同订单（包括多实例部署下）时，
 		// 使 CreateUserSubscriptionFromPlanTx 的 MaxPurchasePerUser 检查按用户串行。
@@ -849,12 +888,14 @@ func AdminBindSubscription(userId int, planId int, sourceNote string) (*common.M
 	if userId <= 0 || planId <= 0 {
 		return nil, errors.New("invalid userId or planId")
 	}
-	plan, err := GetSubscriptionPlanById(planId)
-	if err != nil {
-		return nil, err
-	}
+	var plan *SubscriptionPlan
 	groupChanged := false
-	err = DB.Transaction(func(tx *gorm.DB) error {
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var err error
+		plan, err = lockSubscriptionSalePlanTx(tx, planId)
+		if err != nil {
+			return err
+		}
 		// 与 CompleteSubscriptionOrder 一致：先锁用户行，再做购买次数检查。
 		var userRow User
 		if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&userRow).Error; err != nil {
@@ -890,7 +931,7 @@ func calcSubscriptionBalanceQuota(priceAmount float64) (int, error) {
 }
 
 // PurchaseSubscriptionWithBalance creates a subscription by deducting the user's wallet quota.
-func PurchaseSubscriptionWithBalance(userId int, planId int) error {
+func PurchaseSubscriptionWithBalance(userId int, planId int, expectedPrice ...*float64) error {
 	if userId <= 0 || planId <= 0 {
 		return errors.New("invalid userId or planId")
 	}
@@ -902,6 +943,9 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		plan, err := lockSubscriptionSalePlanTx(tx, planId)
 		if err != nil {
+			return err
+		}
+		if err := plan.ValidatePromotion(); err != nil {
 			return err
 		}
 		if !plan.Enabled {
@@ -917,6 +961,16 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 			return err
 		}
 
+		if ok, _ := plan.CheckSaleWindow(); !ok {
+			return common.NewMessage("Subscription plan is outside its sale window")
+		}
+		quote := plan.PurchaseQuote(common.GetTimestamp())
+		plan = &quote
+		if len(expectedPrice) > 0 {
+			if err := plan.CheckExpectedPrice(expectedPrice[0], false); err != nil {
+				return err
+			}
+		}
 		requiredQuota, err := calcSubscriptionBalanceQuota(plan.PriceAmount)
 		if err != nil {
 			return err
@@ -944,6 +998,7 @@ func PurchaseSubscriptionWithBalance(userId int, planId int) error {
 		now := common.GetTimestamp()
 		tradeNo := fmt.Sprintf("SUBBALUSR%dNO%s%d", userId, common.GetRandomString(6), time.Now().UnixNano())
 		order := &SubscriptionOrder{
+			PlanSnapshot:    subscription.PlanSnapshot,
 			UserId:          userId,
 			PlanId:          plan.Id,
 			Money:           plan.PriceAmount,
@@ -1089,6 +1144,9 @@ func buildSubscriptionSummariesWithDB(db *gorm.DB, subs []UserSubscription) []Su
 		if hasPlan {
 			plan = &planCopy
 		}
+		if snapshotPlan, err := subscriptionPlanFromSnapshot(sub.PlanSnapshot, plan); err == nil && snapshotPlan != nil {
+			plan = snapshotPlan
+		}
 		planTitle := ""
 		if plan != nil {
 			planTitle = plan.Title
@@ -1221,6 +1279,11 @@ func resetUserSubscriptionTx(tx *gorm.DB, sub *UserSubscription, plan *Subscript
 	if tx == nil || sub == nil || plan == nil {
 		return errors.New("invalid reset args")
 	}
+	purchasedPlan, err := subscriptionPlanFromSnapshot(sub.PlanSnapshot, plan)
+	if err != nil {
+		return err
+	}
+	plan = purchasedPlan
 	sub.AmountUsed = 0
 	if advanceResetTime {
 		nextReset := calcNextResetTime(time.Unix(now, 0), plan, sub.EndTime)
@@ -1303,7 +1366,7 @@ func AdminResetUserSubscriptionsByPlan(userId int, planId int, advanceResetTime 
 	var result *SubscriptionResetResult
 	now := GetDBTimestamp()
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		plan, err := getSubscriptionResetPlanTx(tx, planId, userId)
 		if err != nil {
 			return err
 		}
@@ -1323,7 +1386,7 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 	var result *SubscriptionResetResult
 	now := GetDBTimestamp()
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		plan, err := getSubscriptionPlanByIdTx(tx, planId)
+		plan, err := getSubscriptionResetPlanTx(tx, planId, 0)
 		if err != nil {
 			return err
 		}
@@ -1563,7 +1626,7 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 			if err := tx.Where("id = ?", existing.UserSubscriptionId).First(&sub).Error; err != nil {
 				return err
 			}
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			plan, err := getUserSubscriptionPlanTx(tx, &sub)
 			if err != nil {
 				return err
 			}
@@ -1593,7 +1656,7 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 		}
 		for _, candidate := range subs {
 			sub := candidate
-			plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+			plan, err := getUserSubscriptionPlanTx(tx, &sub)
 			if err != nil {
 				return err
 			}
@@ -1655,7 +1718,7 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 						returnValue.UsePlanRatio = *dup.BillingRatio > 0
 						returnValue.BillingRatio = *dup.BillingRatio
 					} else {
-						plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+						plan, err := getUserSubscriptionPlanTx(tx, &sub)
 						if err != nil {
 							return err
 						}
@@ -1735,7 +1798,7 @@ func ResetDueSubscriptions(limit int) (int, error) {
 	resetCount := 0
 	for _, sub := range subs {
 		subCopy := sub
-		plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+		plan, err := getUserSubscriptionPlanTx(nil, &sub)
 		if err != nil || plan == nil {
 			continue
 		}
@@ -1786,7 +1849,7 @@ func GetSubscriptionPlanInfoByUserSubscriptionId(userSubscriptionId int) (*Subsc
 	if err := DB.Where("id = ?", userSubscriptionId).First(&sub).Error; err != nil {
 		return nil, err
 	}
-	plan, err := getSubscriptionPlanByIdTx(nil, sub.PlanId)
+	plan, err := getUserSubscriptionPlanTx(nil, &sub)
 	if err != nil {
 		return nil, err
 	}

@@ -233,6 +233,33 @@ func TestSubscriptionSalesDatabaseMatrix(t *testing.T) {
 				require.NoError(t, err)
 				return counts[p.Id]
 			}
+			t.Run("promotion_order_terms_and_zero_stock", func(t *testing.T) {
+				p := newPlan(1)
+				p.DiscountRate = common.GetPointer(0.8)
+				p.DiscountEndsAt = common.GetTimestamp() + 3600
+				p.PriceCNY = 100
+				require.NoError(t, db.Save(p).Error)
+				quote := p.PurchaseQuote(common.GetTimestamp())
+				order := newOrder(p, SubscriptionPaymentProviderHupijiao, "discount")
+				order.Money = 80
+				order.QuotedPlan = &quote
+				require.NoError(t, order.Insert())
+				require.NoError(t, db.Model(p).Updates(map[string]any{"title": "edited", "total_amount": 1, "allowed_channel_types": "14"}).Error)
+				require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 80, ""))
+				var sub UserSubscription
+				require.NoError(t, db.Where("plan_id = ?", p.Id).First(&sub).Error)
+				require.EqualValues(t, 1000, sub.AmountTotal)
+				snapshot, err := subscriptionPlanFromSnapshot(sub.PlanSnapshot, nil)
+				require.NoError(t, err)
+				require.Equal(t, 80.0, snapshot.PriceCNY)
+				require.Equal(t, "limited plan", snapshot.Title)
+				p2 := newPlan(0)
+				require.NoError(t, db.Model(p2).Update("limited_sale", true).Error)
+				require.ErrorIs(t, newOrder(p2, PaymentProviderEpay, "zero").Insert(), ErrSubscriptionSoldOut)
+				require.NoError(t, db.Model(p2).Update("sales_limit", 1).Error)
+				require.NoError(t, newOrder(p2, PaymentProviderEpay, "restock").Insert())
+			})
+
 			t.Run("reservation_completes_once_and_cancellation_does_not_restock", func(t *testing.T) {
 				p := newPlan(1)
 				order := newOrder(p, PaymentProviderEpay, "first")

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -42,14 +43,18 @@ func subscriptionOrderCreationError(err error) error {
 // ---- Shared types ----
 
 type SubscriptionPlanDTO struct {
-	Plan             model.SubscriptionPlan `json:"plan"`
-	TotalAmountUSD   float64                `json:"total_amount_usd"`
-	SoldCount        int64                  `json:"sold_count"`
-	PaidCount        int64                  `json:"paid_count"`
-	ReservedCount    int64                  `json:"reserved_count"`
-	RemainingCount   int64                  `json:"remaining_count"`
-	SoldOut          bool                   `json:"sold_out"`
-	SalesUnavailable bool                   `json:"sales_unavailable"`
+	DiscountPriceCNY    float64                `json:"discount_price_cny"`
+	DiscountPriceAmount float64                `json:"discount_price_amount"`
+	RegularPriceCNY     float64                `json:"regular_price_cny"`
+	RegularPriceAmount  float64                `json:"regular_price_amount"`
+	Plan                model.SubscriptionPlan `json:"plan"`
+	TotalAmountUSD      float64                `json:"total_amount_usd"`
+	SoldCount           int64                  `json:"sold_count"`
+	PaidCount           int64                  `json:"paid_count"`
+	ReservedCount       int64                  `json:"reserved_count"`
+	RemainingCount      int64                  `json:"remaining_count"`
+	SoldOut             bool                   `json:"sold_out"`
+	SalesUnavailable    bool                   `json:"sales_unavailable"`
 }
 
 func newSubscriptionPlanDTO(plan model.SubscriptionPlan, soldCount int64) SubscriptionPlanDTO {
@@ -57,10 +62,15 @@ func newSubscriptionPlanDTO(plan model.SubscriptionPlan, soldCount int64) Subscr
 	if plan.TotalAmount > 0 && common.QuotaPerUnit > 0 {
 		totalAmountUSD = float64(plan.TotalAmount) / common.QuotaPerUnit
 	}
+	discountCNY, discountAmount := plan.PromotionPrices()
 	return SubscriptionPlanDTO{
-		Plan:           plan,
-		TotalAmountUSD: totalAmountUSD,
-		SoldCount:      soldCount + max(0, plan.DisplaySoldCount),
+		DiscountPriceCNY:    discountCNY,
+		DiscountPriceAmount: discountAmount,
+		RegularPriceCNY:     plan.PriceCNY,
+		RegularPriceAmount:  plan.PriceAmount,
+		Plan:                plan,
+		TotalAmountUSD:      totalAmountUSD,
+		SoldCount:           soldCount + max(0, plan.DisplaySoldCount),
 	}
 }
 
@@ -82,7 +92,7 @@ func buildSubscriptionPlanDTOs(plans []model.SubscriptionPlan) ([]SubscriptionPl
 		record := newSubscriptionPlanDTO(p, sales.Sold)
 		record.PaidCount = sales.Sold
 		record.ReservedCount = sales.Reserved
-		if p.SalesLimit > 0 {
+		if p.IsLimitedSale() {
 			record.RemainingCount = max(0, int64(p.SalesLimit)-record.SoldCount-sales.Reserved)
 			record.SoldOut = record.SoldCount >= int64(p.SalesLimit)
 			record.SalesUnavailable = record.RemainingCount == 0
@@ -115,7 +125,8 @@ func UpdateSubscriptionPriority(c *gin.Context) {
 }
 
 type SubscriptionBalancePayRequest struct {
-	PlanId int `json:"plan_id"`
+	ExpectedPriceAmount *float64 `json:"expected_price_amount"`
+	PlanId              int      `json:"plan_id"`
 }
 
 // ---- User APIs ----
@@ -138,6 +149,9 @@ func GetSubscriptionPlans(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	for i := range result {
+		result[i].Plan = result[i].Plan.PurchaseQuote(time.Now().Unix())
 	}
 	common.ApiSuccess(c, result)
 }
@@ -235,7 +249,7 @@ func SubscriptionRequestBalancePay(c *gin.Context) {
 		return
 	}
 
-	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId); err != nil {
+	if err := model.PurchaseSubscriptionWithBalance(userId, req.PlanId, req.ExpectedPriceAmount); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -320,7 +334,7 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Display sold count must be an integer between 0 and 2147483647")
 		return
 	}
-	if req.Plan.SalesLimit > 0 && req.Plan.DisplaySoldCount > int64(req.Plan.SalesLimit) {
+	if req.Plan.IsLimitedSale() && req.Plan.DisplaySoldCount > int64(req.Plan.SalesLimit) {
 		common.ApiError(c, model.ErrSubscriptionSalesLimitTooLow)
 		return
 	}
@@ -346,6 +360,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if err := req.Plan.ValidatePromotion(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if _, err := req.Plan.EffectiveBillingRatio(); err != nil {
 		common.ApiError(c, err)
 		return
@@ -361,7 +379,21 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Custom reset cycle must be greater than 0 seconds")
 		return
 	}
-	err := model.DB.Create(&req.Plan).Error
+	enabled := req.Plan.Enabled
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&req.Plan).Error; err != nil {
+			return err
+		}
+		// GORM's default:true tag replaces a zero bool during creation. Honor
+		// an explicitly disabled draft before the transaction is visible.
+		if !enabled {
+			if err := tx.Model(&req.Plan).UpdateColumn("enabled", false).Error; err != nil {
+				return err
+			}
+			req.Plan.Enabled = false
+		}
+		return nil
+	})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -446,6 +478,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return
 		}
 	}
+	if err := req.Plan.ValidatePromotion(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if _, err := req.Plan.EffectiveBillingRatio(); err != nil {
 		common.ApiError(c, err)
 		return
@@ -463,7 +499,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 	}
 
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
-		if err := model.ValidateSubscriptionSalesLimitTx(tx, id, req.Plan.SalesLimit, req.Plan.DisplaySoldCount); err != nil {
+		if err := model.ValidateSubscriptionSalesLimitTx(tx, id, req.Plan.SalesLimit, req.Plan.DisplaySoldCount, req.Plan.LimitedSale); err != nil {
+			return err
+		}
+		if err := model.SnapshotLegacySubscriptionPlanTx(tx, id); err != nil {
 			return err
 		}
 		// update plan (allow zero values updates with map)
@@ -472,6 +511,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"subtitle":                   req.Plan.Subtitle,
 			"price_amount":               req.Plan.PriceAmount,
 			"price_cny":                  req.Plan.PriceCNY,
+			"discount_rate":              req.Plan.DiscountRate,
+			"minimum_effective_ratio":    req.Plan.MinimumEffectiveRatio,
+			"discount_starts_at":         req.Plan.DiscountStartsAt,
+			"discount_ends_at":           req.Plan.DiscountEndsAt,
 			"currency":                   req.Plan.Currency,
 			"duration_unit":              req.Plan.DurationUnit,
 			"duration_value":             req.Plan.DurationValue,
@@ -483,6 +526,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"waffo_pancake_product_id":   req.Plan.WaffoPancakeProductId,
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"sales_limit":                req.Plan.SalesLimit,
+			"limited_sale":               req.Plan.LimitedSale,
 			"allowed_channel_types":      req.Plan.AllowedChannelTypes,
 			"billing_ratio":              req.Plan.BillingRatio,
 			"total_amount":               req.Plan.TotalAmount,

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { getPublicPlans } from '@/features/subscriptions/api'
+import { usePromotionClock } from '@/features/subscriptions/hooks/use-promotion-clock'
 import { useTopupInfoQuery } from '@/features/wallet/hooks/use-topup-info-query'
 import { getUserGroups } from '@/lib/api'
 import { statusQueryOptions } from '@/lib/status-query'
@@ -63,17 +64,25 @@ export function useSubscriptionSavings(
   const comparisonRatio = gptGroups[0]?.ratio ?? 0
 
   const plans = plansQuery.data?.data
+  const promotionNow = usePromotionClock(
+    !!plans?.some((record) => record.plan.discount_ends_at)
+  )
   const result = useMemo(() => {
     if (!plans || !sharedPricing || comparisonRatio <= 0) {
       return { byPlan: new Map<number, PlanSavings>(), maxSavings: 0 }
     }
-    const byPlan = computeSavingsByPlan(plans, comparisonRatio, sharedPricing)
+    const byPlan = computeSavingsByPlan(
+      plans,
+      comparisonRatio,
+      sharedPricing,
+      promotionNow
+    )
     let maxSavings = 0
     for (const item of byPlan.values()) {
       maxSavings = Math.max(maxSavings, item.savings)
     }
     return { byPlan, maxSavings }
-  }, [plans, comparisonRatio, sharedPricing])
+  }, [plans, comparisonRatio, sharedPricing, promotionNow])
 
   return { ...result, comparisonGroup: gptGroups[0]?.name }
 }

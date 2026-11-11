@@ -1,3 +1,4 @@
+import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import type { PlanRecord } from '@/features/subscriptions/types'
 
 export interface RechargePricing {
@@ -29,9 +30,10 @@ export function getSavingsPercent(savings: number): number {
 export function computePlanSavings(
   record: PlanRecord,
   comparisonRatio: number,
-  pricing: RechargePricing
+  pricing: RechargePricing,
+  now = Math.floor(Date.now() / 1000)
 ): PlanSavings | null {
-  const plan = record.plan
+  const plan = getPromotionQuote(record, now).plan
   if (!plan) {
     return null
   }
@@ -67,12 +69,13 @@ export function computePlanSavings(
 export function computeSavingsByPlan(
   plans: PlanRecord[],
   comparisonRatio: number,
-  pricing: RechargePricing
+  pricing: RechargePricing,
+  now = Math.floor(Date.now() / 1000)
 ): Map<number, PlanSavings> {
   const result = new Map<number, PlanSavings>()
   for (const record of plans) {
     if (!record.plan?.enabled) continue
-    const savings = computePlanSavings(record, comparisonRatio, pricing)
+    const savings = computePlanSavings(record, comparisonRatio, pricing, now)
     if (savings) result.set(record.plan.id, savings)
   }
   return result

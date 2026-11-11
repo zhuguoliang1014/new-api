@@ -16,7 +16,8 @@ import (
 
 // HupijiaoSubscriptionPayRequest 虎皮椒订阅支付请求
 type HupijiaoSubscriptionPayRequest struct {
-	PlanId int `json:"plan_id" binding:"required"`
+	ExpectedPriceCNY *float64 `json:"expected_price_cny"`
+	PlanId           int      `json:"plan_id" binding:"required"`
 }
 
 // SubscriptionRequestHupijiao 创建虎皮椒订阅支付订单
@@ -36,12 +37,16 @@ func SubscriptionRequestHupijiao(c *gin.Context) {
 	username := c.GetString("username")
 
 	// 获取套餐信息
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := model.GetSubscriptionPurchasePlanById(req.PlanId)
 	if err != nil {
 		common.ApiErrorMsg(c, "套餐不存在")
 		return
 	}
 
+	if err := plan.CheckExpectedPrice(req.ExpectedPriceCNY, true); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if !plan.Enabled {
 		common.ApiErrorMsg(c, "套餐已下架")
 		return
@@ -76,6 +81,7 @@ func SubscriptionRequestHupijiao(c *gin.Context) {
 
 	// 创建订阅支付订单
 	order := &model.SubscriptionOrder{
+		QuotedPlan:      plan,
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           payMoney,

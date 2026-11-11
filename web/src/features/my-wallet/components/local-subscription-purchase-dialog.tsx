@@ -24,7 +24,9 @@ import {
   paySubscriptionHupijiao,
 } from '@/features/subscriptions/api'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
+import { usePromotionClock } from '@/features/subscriptions/hooks/use-promotion-clock'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type { PlanRecord } from '@/features/subscriptions/types'
 import { submitPaymentForm } from '@/features/wallet/lib'
@@ -64,7 +66,9 @@ export function LocalSubscriptionPurchaseDialog({
     create_time?: number
   } | null>(null)
 
-  const plan = planRecord?.plan
+  const now = usePromotionClock(!!planRecord?.plan.discount_ends_at)
+  const quotedRecord = planRecord ? getPromotionQuote(planRecord, now) : null
+  const plan = quotedRecord?.plan
   if (!plan) return null
 
   const sales = getPlanSalesState(planRecord)
@@ -87,6 +91,7 @@ export function LocalSubscriptionPurchaseDialog({
       if (enableEpay) {
         const res = await paySubscriptionEpay({
           plan_id: plan.id,
+          expected_price_cny: priceCNY,
           payment_method: 'alipay',
         })
         if (res.message !== 'success' || !res.url) {
@@ -98,7 +103,10 @@ export function LocalSubscriptionPurchaseDialog({
         onOpenChange(false)
         return
       }
-      const res = await paySubscriptionHupijiao({ plan_id: plan.id })
+      const res = await paySubscriptionHupijiao({
+        plan_id: plan.id,
+        expected_price_cny: priceCNY,
+      })
       if (res.success && res.data?.pay_url) {
         setHupijiaoPayment({
           order_id: res.data.order_id,

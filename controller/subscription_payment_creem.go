@@ -16,7 +16,8 @@ import (
 )
 
 type SubscriptionCreemPayRequest struct {
-	PlanId int `json:"plan_id"`
+	ExpectedPriceAmount *float64 `json:"expected_price_amount"`
+	PlanId              int      `json:"plan_id"`
 }
 
 func SubscriptionRequestCreemPay(c *gin.Context) {
@@ -40,8 +41,12 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := model.GetSubscriptionPurchasePlanById(req.PlanId)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := plan.CheckExpectedPrice(req.ExpectedPriceAmount, false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -90,6 +95,7 @@ func SubscriptionRequestCreemPay(c *gin.Context) {
 
 	// create pending order first
 	order := &model.SubscriptionOrder{
+		QuotedPlan:      plan,
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,

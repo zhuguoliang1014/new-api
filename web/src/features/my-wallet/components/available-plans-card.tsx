@@ -22,12 +22,14 @@ import {
   getPublicPlans,
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
+import { PlanPromotionPrice } from '@/features/subscriptions/components/plan-promotion-price'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
 import {
   formatDuration,
   formatResetPeriod,
   formatTimestamp,
 } from '@/features/subscriptions/lib'
+import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type {
   PlanRecord,
@@ -145,7 +147,8 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       plans.some(
         (p) =>
           Number(p.plan?.starts_at || 0) > 0 ||
-          Number(p.plan?.expires_at || 0) > 0
+          Number(p.plan?.expires_at || 0) > 0 ||
+          Number(p.plan?.discount_ends_at || 0) > 0
       ),
     [plans]
   )
@@ -235,7 +238,8 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
           data-slot='subscription-plan-grid'
           className='grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
         >
-          {plans.map((p, index) => {
+          {plans.map((raw, index) => {
+            const p = getPromotionQuote(raw, nowSec)
             const plan = p?.plan
             if (!plan) return null
 
@@ -407,6 +411,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                       <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                         {priceLabel}
                       </p>
+                      <PlanPromotionPrice record={p} now={nowSec} />
                       <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
                         / {duration}
                       </p>
@@ -415,7 +420,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
                       <p className='text-muted-foreground text-[11px]'>
                         {t('Available Quota')}
                       </p>
-                      <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                      <p className='mt-1 text-xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
                         {quotaLabel}
                       </p>
                       {soldCount > 0 && (

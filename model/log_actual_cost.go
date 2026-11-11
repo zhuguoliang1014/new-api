@@ -74,6 +74,7 @@ func populateActualCost(query *gorm.DB, stat *Stat) error {
 	}
 	type purchaseBasis struct {
 		ID               int
+		PlanSnapshot     string
 		AmountTotal      int64
 		PriceCNY         float64
 		QuotaResetPeriod string
@@ -86,12 +87,19 @@ func populateActualCost(query *gorm.DB, stat *Stat) error {
 		batch := ids[start:min(start+500, len(ids))]
 		var plans []purchaseBasis
 		if err := DB.Table("user_subscriptions AS s").
-			Select("s.id, s.amount_total, p.price_cny, p.quota_reset_period").
-			Joins("JOIN subscription_plans AS p ON p.id = s.plan_id").
+			Select("s.id, s.amount_total, s.plan_snapshot, p.price_cny, p.quota_reset_period").
+			Joins("LEFT JOIN subscription_plans AS p ON p.id = s.plan_id").
 			Where("s.id IN ?", batch).Scan(&plans).Error; err != nil {
 			return err
 		}
 		for _, basis := range plans {
+			if basis.PlanSnapshot != "" {
+				plan, err := subscriptionPlanFromSnapshot(basis.PlanSnapshot, nil)
+				if err != nil {
+					return err
+				}
+				basis.PriceCNY, basis.QuotaResetPeriod = plan.PriceCNY, plan.QuotaResetPeriod
+			}
 			bases[basis.ID] = basis
 		}
 		var orders []purchaseBasis

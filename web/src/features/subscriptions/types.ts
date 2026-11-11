@@ -41,6 +41,11 @@ export const subscriptionPlanSchema = z.object({
   max_purchase_per_user: z.number(),
   display_sold_count: z.number().optional(),
   sales_limit: z.number().optional(),
+  limited_sale: z.boolean().optional(),
+  minimum_effective_ratio: z.number().nullable().optional(),
+  discount_rate: z.number().nullable().optional(),
+  discount_starts_at: z.number().optional(),
+  discount_ends_at: z.number().optional(),
   total_amount: z.number(),
   upgrade_group: z.string().optional(),
   downgrade_group: z.string().optional(),
@@ -56,6 +61,10 @@ export const subscriptionPlanSchema = z.object({
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>
 
 export interface PlanRecord {
+  discount_price_cny?: number
+  discount_price_amount?: number
+  regular_price_cny?: number
+  regular_price_amount?: number
   plan: SubscriptionPlan
   total_amount_usd?: number
   sold_count?: number
@@ -107,6 +116,8 @@ export interface PlanPayload {
 }
 
 export interface SubscriptionPayRequest {
+  expected_price_cny?: number
+  expected_price_amount?: number
   plan_id: number
   payment_method?: string
 }

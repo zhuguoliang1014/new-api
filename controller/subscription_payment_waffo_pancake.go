@@ -17,7 +17,8 @@ import (
 )
 
 type SubscriptionWaffoPancakePayRequest struct {
-	PlanId int `json:"plan_id"`
+	ExpectedPriceAmount *float64 `json:"expected_price_amount"`
+	PlanId              int      `json:"plan_id"`
 }
 
 func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
@@ -31,8 +32,12 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := model.GetSubscriptionPurchasePlanById(req.PlanId)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := plan.CheckExpectedPrice(req.ExpectedPriceAmount, false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -80,6 +85,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("WAFFO_PANCAKE_SUB-%d-%d-%s", userId, time.Now().UnixMilli(), randstr.String(6))
 
 	order := &model.SubscriptionOrder{
+		QuotedPlan:      plan,
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,

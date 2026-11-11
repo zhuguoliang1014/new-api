@@ -32,7 +32,7 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 	}
 
 	var orderInfo SubscriptionOrder
-	if err := DB.Select("plan_id", "status", "payment_provider").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
+	if err := DB.Select("plan_id", "status", "payment_provider", "plan_snapshot", "trade_no").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
 		return ErrSubscriptionOrderNotFound
 	}
 	if orderInfo.PaymentProvider != SubscriptionPaymentProviderHupijiao {
@@ -42,7 +42,7 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 		return nil
 	}
 	err := DB.Transaction(func(tx *gorm.DB) error {
-		plan, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId)
+		plan, err := lockSubscriptionOrderPlanTx(tx, &orderInfo)
 		if err != nil {
 			return err
 		}
@@ -89,6 +89,10 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 		}
 
 		// 创建用户订阅
+		plan, err = subscriptionPlanFromSnapshot(order.PlanSnapshot, plan)
+		if err != nil {
+			return err
+		}
 		_, err = CreateUserSubscriptionFromPlanTx(tx, order.UserId, plan, "hupijiao")
 		if err != nil {
 			return fmt.Errorf("创建订阅失败: %w", err)

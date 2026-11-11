@@ -75,7 +75,7 @@ func lockSubscriptionSalePlanTx(tx *gorm.DB, planID int) (*SubscriptionPlan, err
 }
 
 func checkSubscriptionSaleCapacityTx(tx *gorm.DB, plan *SubscriptionPlan) error {
-	if plan.SalesLimit <= 0 {
+	if !plan.IsLimitedSale() {
 		return nil
 	}
 	var occupied int64
@@ -98,12 +98,12 @@ func checkSubscriptionSaleCapacityTx(tx *gorm.DB, plan *SubscriptionPlan) error 
 
 // ValidateSubscriptionSalesLimitTx locks the plan until its new cap is saved.
 // Paid orders, pending reservations and the proposed display sales all consume
-// the cap. Setting zero removes the cap.
-func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int, displaySoldCount int64) error {
+// the cap. Zero removes the cap only when limited-sale mode is disabled.
+func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int, displaySoldCount int64, limitedSale ...bool) error {
 	if _, err := lockSubscriptionSalePlanTx(tx, planID); err != nil {
 		return err
 	}
-	if limit == 0 {
+	if limit == 0 && (len(limitedSale) == 0 || !limitedSale[0]) {
 		return nil
 	}
 	var occupied int64
