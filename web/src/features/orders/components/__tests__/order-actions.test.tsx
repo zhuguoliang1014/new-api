@@ -199,7 +199,9 @@ it('refreshes status from the server without manual refresh and translates cance
     await vi.advanceTimersByTimeAsync(5000)
   })
   expect(await screen.findByText('已过期')).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: '去支付' })).toBeEnabled()
+  expect(
+    screen.queryByRole('button', { name: '去支付' })
+  ).not.toBeInTheDocument()
 })
 
 it.each([false, true])(
@@ -248,4 +250,40 @@ it('shows an error instead of a success toast when copying the order number fail
 
   expect(error).toHaveBeenCalledWith('复制到剪贴板失败')
   expect(success).not.toHaveBeenCalled()
+})
+
+it('shows a closed-payment exception without reporting the order as paid', async () => {
+  status = 'canceled'
+  vi.mocked(api.get).mockResolvedValue({
+    data: {
+      success: true,
+      data: {
+        items: [{ ...order, status, payment_exception: true }],
+        total: 1,
+      },
+    },
+  })
+  render(
+    <QueryClientProvider client={client}>
+      <BillingHistoryList />
+    </QueryClientProvider>
+  )
+  expect(await screen.findByRole('alert')).toHaveTextContent(
+    i18next.t(
+      'Payment received for a cancelled order. Please contact support for review.'
+    )
+  )
+})
+
+it('personal expired orders have no pay-again action', async () => {
+  status = 'expired'
+  render(
+    <QueryClientProvider client={client}>
+      <BillingHistoryList userOnly />
+    </QueryClientProvider>
+  )
+  expect(await screen.findByText('已过期')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: '立即支付' })
+  ).not.toBeInTheDocument()
 })

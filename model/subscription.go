@@ -702,6 +702,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 	var logMoney float64
 	var logPaymentMethod string
 	var upgradeGroup string
+	closedPayment := false
 	var orderInfo SubscriptionOrder
 	if err := DB.Select("plan_id", "status", "payment_provider", "plan_snapshot", "trade_no").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
 		return ErrSubscriptionOrderNotFound
@@ -729,8 +730,13 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
 		}
-		if order.Status != common.TopUpStatusPending && !(expectedPaymentProvider == PaymentProviderEpay && (order.Status == common.TopUpStatusExpired || order.Status == common.TopUpStatusCanceled)) {
-			return ErrSubscriptionOrderStatusInvalid
+		closed, err := rejectClosedSubscriptionPaymentTx(tx, &order, order.Money, providerPayload)
+		if err != nil {
+			return err
+		}
+		if closed {
+			closedPayment = true
+			return nil
 		}
 		plan, err = subscriptionPlanFromSnapshot(order.PlanSnapshot, plan)
 		if err != nil {
@@ -769,6 +775,10 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		logPaymentMethod = order.PaymentMethod
 		return nil
 	})
+	if err == nil && closedPayment {
+		common.SysError(fmt.Sprintf("PAYMENT_REVIEW_REQUIRED provider=%s trade_no=%s: closed subscription received a payment; no entitlement issued", expectedPaymentProvider, tradeNo))
+		return ErrSubscriptionPaymentClosed
+	}
 	if err != nil {
 		return err
 	}
@@ -841,7 +851,14 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
+	var info SubscriptionOrder
+	if err := DB.Select("plan_id").Where("trade_no = ?", tradeNo).First(&info).Error; err != nil {
+		return ErrSubscriptionOrderNotFound
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockSubscriptionSalePlanTx(tx, info.PlanId); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
@@ -854,7 +871,10 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		}
 		order.Status = common.TopUpStatusExpired
 		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		return tx.Model(&TopUp{}).Where("trade_no = ? AND payment_provider = ? AND status = ?", tradeNo, order.PaymentProvider, common.TopUpStatusPending).Updates(map[string]any{"status": order.Status, "complete_time": order.CompleteTime}).Error
 	})
 }
 
@@ -866,7 +886,14 @@ func CancelSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
+	var info SubscriptionOrder
+	if err := DB.Select("plan_id").Where("trade_no = ?", tradeNo).First(&info).Error; err != nil {
+		return ErrSubscriptionOrderNotFound
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockSubscriptionSalePlanTx(tx, info.PlanId); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
@@ -879,7 +906,10 @@ func CancelSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 		}
 		order.Status = common.TopUpStatusCanceled
 		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		return tx.Model(&TopUp{}).Where("trade_no = ? AND payment_provider = ? AND status = ?", tradeNo, order.PaymentProvider, common.TopUpStatusPending).Updates(map[string]any{"status": order.Status, "complete_time": order.CompleteTime}).Error
 	})
 }
 
@@ -1893,26 +1923,9 @@ func postConsumeUserSubscriptionDeltaTx(tx *gorm.DB, userSubscriptionId int, del
 func CountUserPendingSubscriptionOrders(userId int, paymentProvider string) (int64, error) {
 	var count int64
 	err := DB.Model(&SubscriptionOrder{}).
-		Where("user_id = ? AND payment_provider = ? AND status = ?", userId, paymentProvider, common.TopUpStatusPending).
+		Where("user_id = ? AND payment_provider = ? AND status = ? AND create_time > ?", userId, paymentProvider, common.TopUpStatusPending, common.GetTimestamp()-SubscriptionPendingOrderTTLSeconds).
 		Count(&count).Error
 	return count, err
-}
-
-// ExpirePendingSubscriptionOrders 批量取消过期的待支付订阅订单
-// expireTimestamp: 创建时间早于此时间戳的订单将被取消
-// limit: 每次批量处理的数量
-// 返回实际取消的订单数量
-func ExpirePendingSubscriptionOrders(expireTimestamp int64, limit int) (int, error) {
-	result := DB.Model(&SubscriptionOrder{}).
-		Where("status = ? AND create_time < ?", common.TopUpStatusPending, expireTimestamp).
-		Limit(limit).
-		Update("status", common.TopUpStatusExpired)
-
-	if result.Error != nil {
-		return 0, result.Error
-	}
-
-	return int(result.RowsAffected), nil
 }
 
 // SubscriptionPriorityItem is one entry in a bulk-priority update request.

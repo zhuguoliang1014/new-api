@@ -103,7 +103,7 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 					if tc.provider == PaymentProviderHupijiao {
 						amount = 10000
 					}
-					order := &TopUp{UserId: invitee.Id, Amount: amount, Money: 100, TradeNo: "referral-" + tc.name, PaymentProvider: tc.provider, PaymentMethod: "alipay", Status: common.TopUpStatusPending}
+					order := &TopUp{UserId: invitee.Id, Amount: amount, Money: 100, TradeNo: "referral-" + tc.name, PaymentProvider: tc.provider, PaymentMethod: "alipay", Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 					require.NoError(t, db.Create(order).Error)
 					var wg sync.WaitGroup
 					results := make(chan error, 2)
@@ -126,7 +126,7 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 				})
 			}
 			t.Run("reward uses paid amount rather than promotional quota", func(t *testing.T) {
-				order := &TopUp{UserId: invitee.Id, Amount: 50000, Money: 80, TradeNo: "discount-reward", PaymentProvider: PaymentProviderHupijiao, Status: common.TopUpStatusPending}
+				order := &TopUp{UserId: invitee.Id, Amount: 50000, Money: 80, TradeNo: "discount-reward", PaymentProvider: PaymentProviderHupijiao, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 				require.NoError(t, db.Create(order).Error)
 				require.NoError(t, RechargeByHupijiao(order.TradeNo, 80))
 				require.NoError(t, db.First(order, order.Id).Error)
@@ -137,10 +137,10 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 					require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
 					plan := &SubscriptionPlan{Title: "Referral subscription", PriceCNY: 100, PriceAmount: 100, Currency: "USD", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, Enabled: true, TotalAmount: 50000000}
 					require.NoError(t, db.Create(plan).Error)
-					order := &SubscriptionOrder{UserId: invitee.Id, PlanId: plan.Id, Money: 100, TradeNo: "subscription-reward-" + provider, PaymentMethod: "alipay", PaymentProvider: provider, Status: common.TopUpStatusPending}
+					order := &SubscriptionOrder{UserId: invitee.Id, PlanId: plan.Id, Money: 100, TradeNo: "subscription-reward-" + provider, PaymentMethod: "alipay", PaymentProvider: provider, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 					require.NoError(t, order.Insert())
 					if provider == PaymentProviderEpay {
-						require.NoError(t, db.Create(&TopUp{UserId: invitee.Id, Money: 100, TradeNo: order.TradeNo, PaymentProvider: provider, Status: common.TopUpStatusPending}).Error)
+						require.NoError(t, db.Create(&TopUp{UserId: invitee.Id, Money: 100, TradeNo: order.TradeNo, PaymentProvider: provider, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}).Error)
 					}
 					var buyerBefore User
 					require.NoError(t, db.First(&buyerBefore, invitee.Id).Error)
@@ -186,7 +186,7 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 			})
 			t.Run("failed subscription payment rolls back receipt and rewards", func(t *testing.T) {
 				require.NoError(t, db.Model(inviter).Updates(map[string]any{"aff_quota": 0, "aff_history": 0}).Error)
-				order := &SubscriptionOrder{UserId: invitee.Id, PlanId: 999999, Money: 100, TradeNo: "subscription-invalid-plan", PaymentMethod: "alipay", PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending}
+				order := &SubscriptionOrder{UserId: invitee.Id, PlanId: 999999, Money: 100, TradeNo: "subscription-invalid-plan", PaymentMethod: "alipay", PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 				// Seed a historical invalid order directly: new checkout validation
 				// rejects it before the settlement rollback path can be exercised.
 				require.NoError(t, db.Create(order).Error)
@@ -222,7 +222,7 @@ func TestTopUpReferralSettlementDatabaseMatrix(t *testing.T) {
 					case "overflow":
 						require.NoError(t, db.Model(inviter).Update("aff_quota", common.MaxWalletQuota).Error)
 					}
-					order := &TopUp{UserId: invitee.Id, Amount: 10000, Money: 100, TradeNo: "boundary-" + name, PaymentProvider: PaymentProviderHupijiao, Status: common.TopUpStatusPending}
+					order := &TopUp{UserId: invitee.Id, Amount: 10000, Money: 100, TradeNo: "boundary-" + name, PaymentProvider: PaymentProviderHupijiao, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp()}
 					require.NoError(t, db.Create(order).Error)
 					if name == "rollback" {
 						require.NoError(t, db.Model(invitee).Update("quota", common.MaxWalletQuota).Error)

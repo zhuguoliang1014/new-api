@@ -1082,14 +1082,14 @@ func TestNativeEpayRejectsMismatchedCNYAmountBeforeGrantingCredit(t *testing.T) 
 
 func TestNativeEpayReconciliationRecoversWalletAndSubscriptionWithoutCallbacks(t *testing.T) {
 	db, user := nativeEpayFixture(t)
-	wallet := model.TopUp{UserId: user.Id, Amount: 50, Money: 47.5, TradeNo: "native-reconcile-wallet", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 3600}
+	wallet := model.TopUp{UserId: user.Id, Amount: 50, Money: 47.5, TradeNo: "native-reconcile-wallet", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 600}
 	unpaid := model.TopUp{UserId: user.Id, Amount: 10, Money: 10, TradeNo: "native-reconcile-unpaid", PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 60}
 	require.NoError(t, db.Create(&wallet).Error)
 	require.NoError(t, db.Create(&unpaid).Error)
 	plan := model.SubscriptionPlan{Title: "native reconcile", PriceAmount: 1155, PriceCNY: 300, TotalAmount: 577500000, Enabled: true, DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, UpgradeGroup: "vip"}
 	require.NoError(t, db.Create(&plan).Error)
 	t.Cleanup(func() { require.NoError(t, db.Delete(&plan).Error); model.InvalidateSubscriptionPlanCache(plan.Id) })
-	sub := model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: "native-reconcile-sub", Money: 300, PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 3600}
+	sub := model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: "native-reconcile-sub", Money: 300, PaymentMethod: "alipay", PaymentProvider: model.PaymentProviderEpay, Status: common.TopUpStatusPending, CreateTime: common.GetTimestamp() - 600}
 	require.NoError(t, db.Create(&sub).Error)
 	fail := true
 	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
@@ -1225,7 +1225,7 @@ func TestSubscriptionSalesLimitAPI(t *testing.T) {
 		if i == 2 {
 			status = common.TopUpStatusPending
 		}
-		require.NoError(t, db.Create(&model.SubscriptionOrder{PlanId: plan.Id, TradeNo: fmt.Sprintf("stock-%d", i), Status: status}).Error)
+		require.NoError(t, db.Create(&model.SubscriptionOrder{PlanId: plan.Id, TradeNo: fmt.Sprintf("stock-%d", i), Status: status, CreateTime: common.GetTimestamp()}).Error)
 	}
 	checkCatalog := func(soldOut bool) {
 		records, err := buildSubscriptionPlanDTOs([]model.SubscriptionPlan{plan})

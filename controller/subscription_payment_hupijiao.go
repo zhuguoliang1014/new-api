@@ -246,6 +246,17 @@ func GetSubscriptionOrderStatus(c *gin.Context) {
 		return
 	}
 
+	if order.Status != common.TopUpStatusPending || order.CreateTime+model.SubscriptionPendingOrderTTLSeconds <= common.GetTimestamp() {
+		if order.Status == common.TopUpStatusPending {
+			if err := model.ExpireSubscriptionOrder(order.TradeNo, order.PaymentProvider); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			order.Status = common.TopUpStatusExpired
+		}
+		common.ApiSuccess(c, gin.H{"paid": false, "status": order.Status})
+		return
+	}
 	if order.PaymentProvider != model.SubscriptionPaymentProviderHupijiao {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该订单不支持查询"})
 		return

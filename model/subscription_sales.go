@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
@@ -19,15 +21,15 @@ type SubscriptionSalesCounts struct {
 	Reserved int64
 }
 
+const SubscriptionPendingOrderTTLSeconds int64 = 30 * 60
+
 func subscriptionSaleOrders(tx *gorm.DB) *gorm.DB {
-	// Epay and Hupijiao accept authenticated late payments after a local timeout.
-	// Those checkouts must keep their place until payment is settled. A browser
-	// countdown or an unpaid status query is not proof that payment is impossible.
+	// Only live pending orders reserve a place. At the 30-minute boundary
+	// inventory is released even if the periodic worker has not run yet.
 	return tx.Model(&SubscriptionOrder{}).Where(
-		"status IN ? OR (payment_provider IN ? AND status IN ?)",
-		[]string{common.TopUpStatusSuccess, common.TopUpStatusPending},
-		[]string{PaymentProviderEpay, SubscriptionPaymentProviderHupijiao},
-		[]string{common.TopUpStatusExpired, common.TopUpStatusCanceled},
+		"status = ? OR (status = ? AND create_time > ?)",
+		common.TopUpStatusSuccess, common.TopUpStatusPending,
+		common.GetTimestamp()-SubscriptionPendingOrderTTLSeconds,
 	)
 }
 
@@ -114,4 +116,105 @@ func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int, displaySol
 		return ErrSubscriptionSalesLimitTooLow
 	}
 	return nil
+}
+
+// ExpirePendingSubscriptionOrders closes unpaid checkouts and their mirrored
+// billing rows under the same plan -> order -> top-up locks as settlement.
+func ExpirePendingSubscriptionOrders(expireTimestamp int64, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	var candidates []SubscriptionOrder
+	if err := DB.Select("trade_no", "plan_id", "payment_provider").Where("status = ? AND create_time <= ?", common.TopUpStatusPending, expireTimestamp).Order("id asc").Limit(limit).Find(&candidates).Error; err != nil {
+		return 0, err
+	}
+	changed := 0
+	for _, candidate := range candidates {
+		updated := false
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			if _, err := lockSubscriptionSalePlanTx(tx, candidate.PlanId); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
+			var order SubscriptionOrder
+			if err := lockForUpdate(tx).Where("trade_no = ?", candidate.TradeNo).First(&order).Error; err != nil {
+				return err
+			}
+			if order.PaymentProvider != candidate.PaymentProvider {
+				return ErrPaymentMethodMismatch
+			}
+			if order.Status != common.TopUpStatusPending || order.CreateTime > expireTimestamp {
+				return nil
+			}
+			now := common.GetTimestamp()
+			if err := tx.Model(&order).Updates(map[string]any{"status": common.TopUpStatusExpired, "complete_time": now}).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&TopUp{}).Where("trade_no = ? AND payment_provider = ? AND status = ?", order.TradeNo, order.PaymentProvider, common.TopUpStatusPending).Updates(map[string]any{"status": common.TopUpStatusExpired, "complete_time": now}).Error; err != nil {
+				return err
+			}
+			updated = true
+			return nil
+		})
+		if err != nil {
+			return changed, err
+		}
+		if updated {
+			changed++
+		}
+	}
+	return changed, nil
+}
+
+var ErrSubscriptionPaymentClosed = common.NewMessage("Payment received for a cancelled order. Please contact support for review.")
+
+// A real payment notification cannot reopen a checkout after cancellation.
+// Preserve the authenticated receipt for reconciliation; do not grant a
+// subscription, credit a wallet or record successful revenue for this order.
+func rejectClosedSubscriptionPaymentTx(tx *gorm.DB, order *SubscriptionOrder, amount float64, payload string) (bool, error) {
+	now := common.GetTimestamp()
+	if order.Status == common.TopUpStatusPending && order.CreateTime > now-SubscriptionPendingOrderTTLSeconds {
+		return false, nil
+	}
+	if order.Status != common.TopUpStatusPending && order.Status != common.TopUpStatusExpired && order.Status != common.TopUpStatusCanceled {
+		return false, ErrSubscriptionOrderStatusInvalid
+	}
+	status := order.Status
+	if status == common.TopUpStatusPending {
+		status = common.TopUpStatusExpired
+	}
+	var previous struct {
+		PaymentException string `json:"payment_exception"`
+	}
+	_ = common.UnmarshalJsonStr(order.ProviderPayload, &previous)
+	if previous.PaymentException == "closed_order_received_payment" {
+		return true, nil
+	}
+	receipt, err := common.Marshal(map[string]any{"payment_exception": "closed_order_received_payment", "received_at": now, "amount": amount, "status": status, "provider_payload": payload})
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Model(order).Updates(map[string]any{"status": status, "provider_payload": string(receipt), "complete_time": now}).Error; err != nil {
+		return false, err
+	}
+	var billing TopUp
+	err = lockForUpdate(tx).Where("trade_no = ?", order.TradeNo).First(&billing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		billing = TopUp{UserId: order.UserId, Money: order.Money, TradeNo: order.TradeNo, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, CreateTime: order.CreateTime, CompleteTime: now, Status: status, PaymentReceivedAfterClose: now}
+		if err := tx.Create(&billing).Error; err != nil {
+			return false, err
+		}
+	} else if err != nil {
+		return false, err
+	} else {
+		if billing.UserId != order.UserId || billing.PaymentProvider != order.PaymentProvider {
+			return false, ErrPaymentMethodMismatch
+		}
+		if billing.Status == common.TopUpStatusSuccess {
+			return false, ErrTopUpStatusInvalid
+		}
+		if err := tx.Model(&billing).Updates(map[string]any{"status": status, "complete_time": now, "payment_received_after_close": now}).Error; err != nil {
+			return false, err
+		}
+	}
+	return true, nil
 }

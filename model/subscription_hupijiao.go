@@ -25,6 +25,7 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 	}
 
 	var order SubscriptionOrder
+	closedPayment := false
 
 	refCol := "`trade_no`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
@@ -65,18 +66,21 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 			return nil // 已成功，直接返回
 		}
 
-		// 验证订单状态
-		// A checkout timeout does not revoke an authenticated payment.
-		if order.Status != common.TopUpStatusPending && order.Status != common.TopUpStatusExpired && order.Status != common.TopUpStatusCanceled {
-			return ErrSubscriptionOrderStatusInvalid
-		}
-
 		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 || math.IsNaN(order.Money) || math.IsInf(order.Money, 0) || order.Money <= 0 {
 			return errors.New("无效的支付金额")
 		}
 		// 金额验证（允许0.01元误差）
 		if order.Money < amount-0.01 || order.Money > amount+0.01 {
 			return fmt.Errorf("金额不匹配: 期望%.2f, 实际%.2f", order.Money, amount)
+		}
+
+		closed, err := rejectClosedSubscriptionPaymentTx(tx, &order, amount, providerPayload)
+		if err != nil {
+			return err
+		}
+		if closed {
+			closedPayment = true
+			return nil
 		}
 
 		// 更新订单状态
@@ -105,6 +109,10 @@ func CompleteHupijiaoSubscriptionOrder(tradeNo string, amount float64, providerP
 		return nil
 	})
 
+	if err == nil && closedPayment {
+		common.SysError(fmt.Sprintf("PAYMENT_REVIEW_REQUIRED provider=hupijiao trade_no=%s: closed subscription received a payment; no entitlement issued", tradeNo))
+		return ErrSubscriptionPaymentClosed
+	}
 	if err != nil {
 		common.SysError("hupijiao subscription failed: " + err.Error())
 		return err

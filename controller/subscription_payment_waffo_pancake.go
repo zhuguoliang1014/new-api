@@ -101,7 +101,7 @@ func SubscriptionRequestWaffoPancakePay(c *gin.Context) {
 		return
 	}
 
-	expiresInSeconds := 45 * 60
+	expiresInSeconds := int(model.SubscriptionPendingOrderTTLSeconds)
 	session, err := service.CreateWaffoPancakeCheckoutSession(c.Request.Context(), &service.WaffoPancakeCreateSessionParams{
 		ProductID:     plan.WaffoPancakeProductId,
 		BuyerIdentity: service.WaffoPancakeBuyerIdentityFromUserID(user.Id),

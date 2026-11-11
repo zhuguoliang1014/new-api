@@ -5283,6 +5283,7 @@
     "Payment methods": "支払方法",
     "Payment Methods": "決済方法",
     "Payment page opened": "決済ページが開きました",
+    "Payment received for a cancelled order. Please contact support for review.": "キャンセル済み注文への入金を検出しました。サポートへご連絡ください。",
     "Payment reference": "決済参照番号",
     "Payment referral reward (%)": "支払い紹介報酬（%）",
     "Payment request failed": "支払いリクエストが失敗しました",

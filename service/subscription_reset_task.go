@@ -53,6 +53,27 @@ func runSubscriptionQuotaResetOnce() {
 	totalReset := 0
 	totalExpired := 0
 	for {
+		n, err := model.ExpirePendingSubscriptionOrders(common.GetTimestamp()-model.SubscriptionPendingOrderTTLSeconds, subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, common.LogText("subscription payment expiry failed: %v", err))
+			break
+		}
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+	for {
+		n, err := model.ExpirePendingTopUpOrders(common.GetTimestamp()-model.SubscriptionPendingOrderTTLSeconds, subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, common.LogText("wallet payment expiry failed: %v", err))
+			break
+		}
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+
+	for {
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
 			logger.LogWarn(ctx, common.LogText("subscription expire task failed: %v", err))

@@ -21,7 +21,7 @@ func ListUnsettledEpayOrders(ctx context.Context, subscription bool, minTime, ma
 	if subscription {
 		query = DB.WithContext(ctx).Model(&SubscriptionOrder{})
 	}
-	err := query.Select("id", "trade_no", "money", "user_id").
+	err := query.Where("trade_no NOT IN (?)", DB.Model(&TopUp{}).Select("trade_no").Where("payment_received_after_close > 0")).Select("id", "trade_no", "money", "user_id").
 		Where("payment_provider = ? AND status IN ?", PaymentProviderEpay, []string{common.TopUpStatusPending, common.TopUpStatusExpired, common.TopUpStatusCanceled}).
 		Where("create_time >= ? AND create_time < ? AND id > ?", minTime, maxTime, afterID).
 		Order("id ASC").Limit(min(max(limit, 1), 100)).Find(&orders).Error
