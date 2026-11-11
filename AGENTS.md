@@ -38,7 +38,7 @@ This is an AI API gateway/proxy built with Go. It aggregates 40+ upstream AI pro
 
 - **main自动部署约定（2026-11-11）**：流水线直接传本次镜像digest与完整revision，远程显式pull并仅修改new-api.image，保留pull_policy never；concurrency/flock/run_number保护部署顺序。自动全库归档与读取验证、应用镜像/版本/健康及HTTP检查，失败仅自动回旧应用、保留当前业务数据。正常push main无需Codex额外手动部署；首次实机a42ec4a82308edd3254fbb9c3eeb8c0a72bb857a／Actions42966171961已自动上线且健康，结果见`docs/deployment/automatic-production-deploy.md`。勿恢复原先仅compose pull/up的步骤，否则固定旧digest时会误部署旧版。
 
-- **支付30分钟失效最终约定（2026-11-11）**：用户重申30分钟未付自动取消并释放库存；canceled／expired不能因查单或回调恢复成功，更不能转余额。pending仅30分钟内占位，后台每分钟同步关闭订阅及账单；旧取消订单立即不占位。异常真实收款只留凭证／订单告警供核对，不发权益／余额／返利。此项覆盖旧“迟到付款长期占位并允许恢复”的文档与测试约定，不合入原工作区5分钟草稿。详见`docs/subscriptions/payment-timeout-20261111.md`；发布状态另记。
+- **支付30分钟失效最终约定（2026-11-11）**：用户重申30分钟未付自动取消并释放库存；canceled／expired不能因查单或回调恢复成功，更不能转余额。pending仅30分钟内占位，后台每分钟同步关闭订阅及账单；旧取消订单立即不占位。异常真实收款只留凭证／订单告警供核对，不发权益／余额／返利。此项覆盖旧“迟到付款长期占位并允许恢复”的文档与测试约定，不合入原工作区5分钟草稿。详见`docs/subscriptions/payment-timeout-20261111.md`；f3b1600c00212641c94923e23a74d69762da86fc／Actions42969858369已自动上线healthy，套餐36已售6／占位0／剩余14，超时pending均0。
 
 ## 当前生产环境速查（sub2api 2026-10-21 核对，其他项目见各条日期）
 
