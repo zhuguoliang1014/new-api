@@ -54,4 +54,10 @@
 
 复用 `drawer-layout` 统一区块、间距与固定操作栏，用现有 `Collapsible` 和 `ToggleGroup` 组织高级项和计价方式，没有新建通用表单控件。增加独立业务组件 `PlanPricingFields` / `PlanAdvancedFields`，将原单文件860余行的杂糅区块分开。窄屏高级说明允许换行，已检查根节点与表单自身在320宽英文深色下均无横向溢出。
 
-发布结果在完成实机核验后补充；当前文档不代表已部署。
+2026-11-11北京时间12:24完成上线与核验。功能revision `18dc7152c2183b1e84f8325b55018d42a5a3f8c4`，表单优化及最终应用revision `15daa020610c1760ee0fc46d7fc8051899e67665`；Actions `42956420604`／`42958231505`均success。因原`pull_policy: never`，另行拉取并验证完整revision后仅固定new-api镜像到 `ghcr.io/zhuguoliang1014/new-api@sha256:9c204d207ba348ae5b4faeed8622eb15b8d46647f20dfdb05d63117130ecdde5`，保留never。最终healthy，三入口状态／定价／保留素材／新JS与CSS正常，旧敏感素材样例404；其他六容器未重启，138项options、39渠道、abilities、101模型、原2499令牌配置保持一致。
+
+生产目录33项整理为12项：原7上架商品逐字段保留，26下架旧目录项删除，新增5下架草稿（逐光43／启航44／凌云45／苍穹46／星瀚47）。5草稿均1个月、GPT专属、单用户不限购买次数、日常折扣1、没有活动或销售时间；前四档无限总量，星瀚限量开关启用且0库存，全部没有订单或订阅。原124条用户订阅与151条订单全部保留，快照齐全；迁移事务确认除快照外逐字段不变，后续3条订阅正常消费引起amount_used／updated_at变化保留，未覆盖。
+
+最终128项相关前端、native类型、改动lint/格式、640.6/650KiB首屏构建和root构建通过。Go model／controller／service／router／middleware全量（controller取消不适用的混合DSN后复测）、相关race/vet，SQLite3.50.4／MySQL8.4.11／PostgreSQL15.17订阅迁移／库存／报价与回调／API回归通过。新版表单桌面、390／320宽、中英浅深主题本地独立预览通过；未声称正式站已登录界面验收，未发起真实付费订单，未发送公告。
+
+恢复目录 `/root/upgrade-recovery/newapi-subscription-catalog-20261111/` 含最近150823228字节全库归档、SHA256 `e7575ff57879acddebbba075e3c9e31f10ac817c8c1426af0d15043451a1ac06`、完整读取验证、配置／目录／订单／订阅快照、迁移演练与生产回执、测试和核验。保护性目录恢复在本地副本ROLLBACK／COMMIT及生产ROLLBACK演练通过，rollback.sh的语法与Compose配置通过，未实际回切；回滚先插回被移除旧目录，再只切旧应用，不整库恢复。原工作区运维／支付过期／机器人草稿未纳入发布。
