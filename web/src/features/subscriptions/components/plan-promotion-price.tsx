@@ -1,3 +1,4 @@
+import { TicketPercent } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { toIntlLocale } from '@/i18n/languages'
@@ -41,7 +42,7 @@ export function PlanPromotionPrice(props: {
   if (props.variant === 'original') {
     return (
       <p className='text-muted-foreground mt-1 text-[11px]'>
-        <span className='sr-only'>{t('Regular price')}: </span>
+        <span className='mr-1'>{t('Regular price')}</span>
         <del>{originalPrice}</del>
       </p>
     )
@@ -50,14 +51,18 @@ export function PlanPromotionPrice(props: {
     return (
       <div
         data-slot='plan-promotion'
-        className='mt-3 flex min-w-0 items-center justify-between gap-2 rounded-lg bg-rose-50 px-2.5 py-2 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
+        className='mt-4 flex min-w-0 items-center justify-between gap-2 rounded-xl bg-[#fff2e8] px-3 py-2.5 text-[#b54214] dark:bg-orange-950/30 dark:text-orange-300'
       >
         <div className='min-w-0'>
-          <div className='flex flex-wrap items-baseline gap-x-2 gap-y-0.5'>
+          <div className='flex flex-wrap items-center gap-x-1.5 gap-y-0.5'>
+            <TicketPercent className='size-3.5 shrink-0' aria-hidden='true' />
             <p className='text-[11px] font-semibold'>
               {t('Limited-time offer')}
             </p>
             <p className='text-xs font-semibold tabular-nums'>
+              <span aria-hidden='true' className='mr-1'>
+                ·
+              </span>
               {t('Save {{amount}}', { amount: saved })}
             </p>
           </div>
@@ -74,14 +79,11 @@ export function PlanPromotionPrice(props: {
         </div>
         <div
           aria-label={t('{{percent}}% off', { percent })}
-          className='shrink-0 border-l border-rose-200 pl-2 text-right dark:border-rose-800'
+          className='shrink-0 border-l border-orange-200 pl-3 text-right dark:border-orange-800'
         >
-          <p aria-hidden='true' className='text-[10px]'>
-            {t('Discount')}
-          </p>
           <p
             aria-hidden='true'
-            className='mt-0.5 text-xl leading-none font-semibold tracking-tight tabular-nums'
+            className='text-[1.75rem] leading-none font-bold tracking-tight tabular-nums'
           >
             {chineseDiscount ? formatNumber(rate * 10, locale) : percent}
             <span className='text-sm'>

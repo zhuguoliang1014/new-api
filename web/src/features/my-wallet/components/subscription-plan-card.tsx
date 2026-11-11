@@ -1,5 +1,5 @@
 import OpenAI from '@lobehub/icons/es/OpenAI/components/Mono'
-import { ArrowRight, Timer } from 'lucide-react'
+import { ArrowRight, BadgeCheck, Timer } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -9,6 +9,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -188,7 +189,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
       aria-labelledby={`subscription-plan-${plan.id}`}
       data-card-hover='false'
       className={cn(
-        'relative min-w-0 gap-0 rounded-[12px] border py-0 shadow-none ring-0 transition-colors duration-200',
+        'relative min-w-0 gap-0 rounded-[16px] border py-0 shadow-none ring-0 transition-colors duration-200',
         isRecommended
           ? 'border-foreground/25'
           : 'border-border hover:border-foreground/25'
@@ -200,7 +201,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             <span
               data-slot='plan-provider-icon'
               aria-hidden='true'
-              className='text-foreground mt-0.5 flex size-5 shrink-0 items-center justify-center'
+              className='text-foreground flex size-8 shrink-0 items-center justify-center rounded-[10px] border'
             >
               <OpenAI size={20} />
             </span>
@@ -209,7 +210,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
                 <h3
                   id={`subscription-plan-${plan.id}`}
                   title={plan.title || t('Subscription Plans')}
-                  className='font-serif text-lg leading-snug font-semibold tracking-tight break-words'
+                  className='text-base leading-snug font-semibold tracking-tight break-words'
                 >
                   {plan.title || t('Subscription Plans')}
                 </h3>
@@ -233,6 +234,13 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
               )}
             </div>
           </div>
+          <Badge
+            data-slot='plan-duration'
+            variant='secondary'
+            className='bg-muted text-muted-foreground h-auto max-w-[35%] shrink-0 rounded-[6px] px-1.5 py-1 text-[10px] whitespace-normal'
+          >
+            {duration}
+          </Badge>
         </div>
 
         {showPromotion && (
@@ -247,7 +255,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             className={cn(
               'mt-3 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] leading-snug font-medium tabular-nums',
               sale.status === 'live'
-                ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
+                ? 'bg-[#fff2e8] text-[#b54214] dark:bg-orange-950/30 dark:text-orange-300'
                 : 'border-border bg-muted/50 text-muted-foreground'
             )}
           >
@@ -261,13 +269,14 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           className='mt-3 grid grid-cols-2 gap-2'
         >
           <div className='min-w-0'>
-            <p className='text-muted-foreground text-[11px]'>
-              {showPromotion ? t('Discounted price') : t('Price')}
-            </p>
+            <div className='text-muted-foreground flex flex-wrap items-baseline gap-x-1 text-[11px]'>
+              <span>{showPromotion ? t('Discounted price') : t('Price')}</span>
+              <span className='whitespace-nowrap'>/ {duration}</span>
+            </div>
             <p
               className={cn(
-                priceLabel.length > 8 ? 'text-xl' : 'text-2xl',
-                'mt-1 leading-tight font-semibold tracking-tight break-words tabular-nums'
+                priceLabel.length > 8 ? 'text-lg' : 'text-2xl',
+                'mt-2 leading-tight font-bold tracking-tight break-words tabular-nums'
               )}
             >
               {priceLabel}
@@ -280,38 +289,45 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
                   variant='original'
                 />
               )}
-              <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
-                / {duration}
-              </p>
             </div>
           </div>
-          <div className='min-w-0 border-l pl-2'>
-            <p className='text-muted-foreground text-[11px]'>
-              {t('Available Quota')}
-            </p>
+          <div
+            data-slot='plan-quota'
+            className='min-w-0 border-l pl-3 text-[#1762c2] dark:text-blue-300'
+          >
+            <p className='text-[11px] font-semibold'>{t('Available Quota')}</p>
             <p
               className={cn(
-                quotaLabel.length > 8 ? 'text-xl' : 'text-2xl',
-                'mt-1 leading-tight font-semibold tracking-tight break-words tabular-nums'
+                quotaLabel.length > 8 ? 'text-lg' : 'text-2xl',
+                'mt-2 leading-tight font-bold tracking-tight break-words tabular-nums'
               )}
             >
               {quotaLabel}
+            </p>
+            <p className='text-muted-foreground mt-2 text-[11px]'>
+              {t('Site credits')}
             </p>
           </div>
         </div>
         <div className='min-w-0'>
           {savings && (
-            <div data-slot='plan-savings' className='mt-1'>
+            <div data-slot='plan-savings' className='mt-3'>
               <Accordion>
                 <AccordionItem value='savings-details'>
                   <AccordionTrigger
                     aria-label={t('How savings are calculated')}
                     className='gap-2 py-1 text-xs font-semibold text-green-700 dark:text-green-400'
                   >
-                    <span>
-                      {t('Save about {{percent}}% vs wallet payment', {
-                        percent: getSavingsPercent(savings.savings),
-                      })}
+                    <span className='flex min-w-0 items-start gap-1.5'>
+                      <BadgeCheck
+                        className='mt-0.5 size-3.5 shrink-0'
+                        aria-hidden='true'
+                      />
+                      <span>
+                        {t('Save about {{percent}}% vs wallet payment', {
+                          percent: getSavingsPercent(savings.savings),
+                        })}
+                      </span>
                     </span>
                   </AccordionTrigger>
                   <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
@@ -345,7 +361,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           )}
         </div>
 
-        <dl className='mt-2 grid grid-cols-2 gap-2 border-t pt-2'>
+        <dl className='mt-3 grid grid-cols-2 gap-2 border-t pt-3'>
           {details.map((detail) => (
             <div key={detail.label} className='min-w-0 space-y-1 text-[11px]'>
               <dt className='text-muted-foreground min-w-0 break-words'>
@@ -356,12 +372,16 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           ))}
         </dl>
 
-        <div className='mt-auto pt-2'>
+        <div className='mt-auto pt-3'>
           <div
             data-slot='plan-stock'
             className='mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 empty:hidden'
           >
-            <PlanSalesStatus record={p} className='my-0 text-[11px]' />
+            <PlanSalesStatus
+              record={p}
+              variant='split'
+              className='my-0 w-full text-[11px]'
+            />
             {soldCount > 0 && (
               <p className='text-muted-foreground text-[11px]'>
                 {t('Sold {{count}}', {
@@ -377,7 +397,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             <Tooltip>
               <TooltipTrigger render={<div />}>
                 <Button
-                  variant='outline'
+                  variant='default'
                   className='h-auto min-h-11 w-full px-3 py-2 text-sm whitespace-normal'
                   disabled
                 >
@@ -390,9 +410,9 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             </Tooltip>
           ) : (
             <Button
-              variant='outline'
+              variant='default'
               className={cn(
-                'h-auto min-h-11 w-full justify-between gap-3 rounded-[8px] px-3 py-2 text-sm font-medium whitespace-normal',
+                'h-auto min-h-11 w-full justify-center gap-3 rounded-[8px] bg-[#216bd1] px-3 py-2 text-sm font-semibold whitespace-normal text-white hover:bg-[#1a5ab7] dark:bg-blue-500 dark:hover:bg-blue-600',
                 sale.status === 'upcoming' && 'tabular-nums'
               )}
               disabled={!purchasable}
@@ -400,7 +420,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
                 props.onPurchase(p)
               }}
             >
-              <span className='min-w-0 flex-1'>{buttonLabel}</span>
+              <span className='min-w-0'>{buttonLabel}</span>
               {purchasable && (
                 <ArrowRight className='size-4' aria-hidden='true' />
               )}

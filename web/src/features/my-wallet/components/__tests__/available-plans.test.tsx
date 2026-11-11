@@ -156,7 +156,7 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
     container.querySelector('[data-slot="subscription-plan-grid"]')
   ).toHaveClass(
     'grid-cols-1',
-    'sm:grid-cols-[repeat(auto-fill,minmax(15.5rem,1fr))]',
+    'sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]',
     'items-stretch',
     'auto-rows-fr'
   )
@@ -555,7 +555,7 @@ it('shows temporary unavailability when pending payments reserve the remaining p
     },
   ])
   expect(screen.getByRole('button', { name: 'Places reserved' })).toBeDisabled()
-  expect(screen.getByText('Limited to 30 · 0 available')).toBeVisible()
+  expect(screen.getByLabelText('Limited to 30 · 0 available')).toBeVisible()
 })
 
 it('deducts two display sales from five available places while keeping the remaining three purchasable', async () => {
@@ -570,22 +570,29 @@ it('deducts two display sales from five available places while keeping the remai
     },
   ])
   expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
-  expect(screen.getByText('Limited to 5 · 3 available')).toBeVisible()
+  expect(screen.getByLabelText('Limited to 5 · 3 available')).toBeVisible()
 })
 
-it('uses the editorial title font and a neutral two-column price and quota hierarchy', async () => {
+it('matches the reference with a duration badge, blue quota and a filled purchase action', async () => {
   await renderPlans([plan()])
   const card = screen.getByRole('article', { name: '苍穹版' })
-  expect(within(card).getByRole('heading', { name: '苍穹版' })).toHaveClass(
+  expect(within(card).getByRole('heading', { name: '苍穹版' })).not.toHaveClass(
     'font-serif'
   )
   const metrics = card.querySelector('[data-slot=plan-price-quota]')
   expect(metrics).toHaveClass('grid-cols-2')
   expect(metrics).toHaveTextContent('¥2,000')
   expect(metrics).toHaveTextContent('$7,800')
+  expect(card.querySelector('[data-slot=plan-duration]')).toHaveTextContent(
+    '1 months'
+  )
+  expect(card.querySelector('[data-slot=plan-quota]')).toHaveClass(
+    'text-[#1762c2]'
+  )
+  expect(within(card).getByText('Site credits')).toBeVisible()
   expect(
     within(card).getByRole('button', { name: 'Subscribe Now' })
-  ).toHaveClass('border-border')
+  ).toHaveClass('bg-[#216bd1]')
 })
 
 it('shows an active price discount independently from sales limits and wallet savings', async () => {
@@ -626,7 +633,9 @@ it('shows an active price discount independently from sales limits and wallet sa
   expect(
     within(card).getByText('Save about 50% vs wallet payment')
   ).toBeVisible()
-  expect(within(card).getByText('Limited to 5 · 3 available')).toBeVisible()
+  expect(
+    within(card).getByLabelText('Limited to 5 · 3 available')
+  ).toBeVisible()
   expect(within(card).getByText('Payment reservations: 1')).toBeVisible()
   expect(
     within(card).getByRole('button', { name: 'Subscribe Now' })
@@ -803,6 +812,6 @@ it('keeps plain and timed cards at a shared row height while preserving touch-si
       within(card).getByRole('button', { name: 'Subscribe Now' })
     ).toHaveClass('min-h-11')
   }
-  expect(screen.getByText('Limited to 20 · 20 available')).toBeVisible()
+  expect(screen.getByLabelText('Limited to 20 · 20 available')).toBeVisible()
   expect(screen.getByRole('timer', { name: 'Ends in' })).toBeVisible()
 })
