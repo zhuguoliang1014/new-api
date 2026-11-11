@@ -154,9 +154,14 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
   ])
   expect(
     container.querySelector('[data-slot="subscription-plan-grid"]')
-  ).toHaveClass('grid-cols-1', 'md:grid-cols-2', 'xl:grid-cols-3')
+  ).toHaveClass(
+    'grid-cols-1',
+    'sm:grid-cols-[repeat(auto-fill,minmax(15.5rem,1fr))]',
+    'items-stretch',
+    'auto-rows-fr'
+  )
   const card = screen.getByRole('article', { name: '苍穹版' })
-  expect(card.querySelector('[data-slot=card-content]')).toHaveClass('p-5')
+  expect(card.querySelector('[data-slot=card-content]')).toHaveClass('p-4')
   expect(within(card).getByText('¥2,000')).toBeVisible()
   expect(within(card).getByText('$7,800')).toBeVisible()
   expect(within(card).getByText('/ 1 months')).toHaveClass('whitespace-nowrap')
@@ -654,8 +659,8 @@ it.each([
 )
 
 it('restores the regular price at discount expiry without changing quota or ending sales', async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.spyOn(Date, 'now').mockRestore()
+  vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(now * 1000)
   try {
     await renderPlans([
@@ -673,8 +678,7 @@ it('restores the regular price at discount expiry without changing quota or endi
     ])
     expect(screen.getByText('¥1,088')).toBeVisible()
     await act(async () => {
-      vi.setSystemTime((now + 2) * 1000)
-      vi.advanceTimersByTime(1000)
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(screen.getByText('¥1,360')).toBeVisible()
     expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
@@ -686,8 +690,8 @@ it('restores the regular price at discount expiry without changing quota or endi
 })
 
 it('stops a timed sale even if its price discount still has time remaining', async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.spyOn(Date, 'now').mockRestore()
+  vi.useFakeTimers({ shouldAdvanceTime: true })
   vi.setSystemTime(now * 1000)
   try {
     await renderPlans([
@@ -704,8 +708,7 @@ it('stops a timed sale even if its price discount still has time remaining', asy
     ])
     expect(screen.getByRole('button', { name: 'Subscribe Now' })).toBeEnabled()
     await act(async () => {
-      vi.setSystemTime((now + 2) * 1000)
-      vi.advanceTimersByTime(1000)
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(screen.getByRole('button', { name: 'Sale Ended' })).toBeDisabled()
     expect(screen.queryByText('Limited-time offer')).not.toBeInTheDocument()
@@ -775,4 +778,31 @@ it('preserves USD-only discount currency in its original price and saving', asyn
   expect(screen.getByText('$10').tagName).toBe('DEL')
   expect(screen.getByText('Save $2')).toBeVisible()
   expect(screen.queryByText(/¥/)).not.toBeInTheDocument()
+})
+
+it('keeps plain and timed cards at a shared row height while preserving touch-sized purchase actions', async () => {
+  const { container } = await renderPlans([
+    plan({ sales_limit: 20 }),
+    plan({ id: 2, title: 'Timed plan', expires_at: now + 3600 }),
+  ])
+  expect(
+    container.querySelector('[data-slot="subscription-plan-grid"]')
+  ).toHaveClass('items-stretch', 'auto-rows-fr')
+  for (const card of screen.getAllByRole('article')) {
+    expect(card.querySelector('[data-slot="card-content"]')).toHaveClass(
+      'h-full'
+    )
+    expect(card.querySelector('[data-slot="plan-price-quota"]')).toHaveClass(
+      'grid-cols-2',
+      'mt-3'
+    )
+    expect(card.querySelector('[data-slot="plan-stock"]')).toHaveClass(
+      'flex-wrap'
+    )
+    expect(
+      within(card).getByRole('button', { name: 'Subscribe Now' })
+    ).toHaveClass('min-h-11')
+  }
+  expect(screen.getByText('Limited to 20 · 20 available')).toBeVisible()
+  expect(screen.getByRole('timer', { name: 'Ends in' })).toBeVisible()
 })

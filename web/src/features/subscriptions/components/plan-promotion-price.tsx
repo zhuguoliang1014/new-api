@@ -50,29 +50,38 @@ export function PlanPromotionPrice(props: {
     return (
       <div
         data-slot='plan-promotion'
-        className='mt-4 flex min-w-0 items-center justify-between gap-3 rounded-lg bg-rose-50 px-3 py-3 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
+        className='mt-3 flex min-w-0 items-center justify-between gap-2 rounded-lg bg-rose-50 px-2.5 py-2 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300'
       >
-        <div className='min-w-0 space-y-1'>
-          <p className='text-xs font-semibold'>{t('Limited-time offer')}</p>
-          <p className='text-sm font-semibold tabular-nums'>
-            {t('Save {{amount}}', { amount: saved })}
-          </p>
-          <p className='text-[11px] leading-relaxed break-words'>
+        <div className='min-w-0'>
+          <div className='flex flex-wrap items-baseline gap-x-2 gap-y-0.5'>
+            <p className='text-[11px] font-semibold'>
+              {t('Limited-time offer')}
+            </p>
+            <p className='text-xs font-semibold tabular-nums'>
+              {t('Save {{amount}}', { amount: saved })}
+            </p>
+          </div>
+          <p
+            className='mt-0.5 text-[11px] leading-snug break-words'
+            title={formatTimestamp(props.record.plan.discount_ends_at || 0)}
+          >
             {t('Discount until {{time}}', {
-              time: formatTimestamp(props.record.plan.discount_ends_at || 0),
+              time: formatTimestamp(
+                props.record.plan.discount_ends_at || 0
+              ).slice(5, 16),
             })}
           </p>
         </div>
         <div
           aria-label={t('{{percent}}% off', { percent })}
-          className='shrink-0 border-l border-rose-200 pl-3 text-right dark:border-rose-800'
+          className='shrink-0 border-l border-rose-200 pl-2 text-right dark:border-rose-800'
         >
-          <p aria-hidden='true' className='text-xs'>
+          <p aria-hidden='true' className='text-[10px]'>
             {t('Discount')}
           </p>
           <p
             aria-hidden='true'
-            className='mt-1 text-2xl leading-none font-semibold tracking-tight tabular-nums'
+            className='mt-0.5 text-xl leading-none font-semibold tracking-tight tabular-nums'
           >
             {chineseDiscount ? formatNumber(rate * 10, locale) : percent}
             <span className='text-sm'>

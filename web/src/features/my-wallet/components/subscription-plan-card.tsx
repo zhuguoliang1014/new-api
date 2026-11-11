@@ -194,22 +194,22 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           : 'border-border hover:border-foreground/25'
       )}
     >
-      <CardContent className='flex h-full min-w-0 flex-col p-5'>
+      <CardContent className='flex h-full min-w-0 flex-col p-4'>
         <div className='flex items-start justify-between gap-2'>
           <div className='flex min-w-0 flex-1 items-start gap-2'>
             <span
               data-slot='plan-provider-icon'
               aria-hidden='true'
-              className='text-foreground mt-0.5 flex size-6 shrink-0 items-center justify-center'
+              className='text-foreground mt-0.5 flex size-5 shrink-0 items-center justify-center'
             >
-              <OpenAI size={24} />
+              <OpenAI size={20} />
             </span>
             <div className='min-w-0 flex-1'>
               <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
                 <h3
                   id={`subscription-plan-${plan.id}`}
                   title={plan.title || t('Subscription Plans')}
-                  className='font-serif text-xl leading-snug font-semibold tracking-tight break-words'
+                  className='font-serif text-lg leading-snug font-semibold tracking-tight break-words'
                 >
                   {plan.title || t('Subscription Plans')}
                 </h3>
@@ -226,7 +226,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
               {plan.subtitle && (
                 <p
                   title={plan.subtitle}
-                  className='text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed break-words'
+                  className='text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-snug break-words'
                 >
                   {plan.subtitle}
                 </p>
@@ -245,7 +245,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             aria-label={saleHintLabel}
             aria-live='off'
             className={cn(
-              'mt-4 flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11px] leading-snug font-medium tabular-nums',
+              'mt-3 flex items-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] leading-snug font-medium tabular-nums',
               sale.status === 'live'
                 ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
                 : 'border-border bg-muted/50 text-muted-foreground'
@@ -258,38 +258,50 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
 
         <div
           data-slot='plan-price-quota'
-          className='mt-5 grid grid-cols-2 gap-3 pb-3'
+          className='mt-3 grid grid-cols-2 gap-2'
         >
           <div className='min-w-0'>
             <p className='text-muted-foreground text-[11px]'>
               {showPromotion ? t('Discounted price') : t('Price')}
             </p>
-            <p className='mt-1 text-[clamp(1.375rem,2.8vw,2rem)] leading-tight font-semibold tracking-tight break-words tabular-nums'>
+            <p
+              className={cn(
+                priceLabel.length > 8 ? 'text-xl' : 'text-2xl',
+                'mt-1 leading-tight font-semibold tracking-tight break-words tabular-nums'
+              )}
+            >
               {priceLabel}
             </p>
-            {showPromotion && (
-              <PlanPromotionPrice
-                record={p}
-                now={props.now}
-                variant='original'
-              />
-            )}
-            <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
-              / {duration}
-            </p>
+            <div className='flex flex-wrap items-baseline gap-x-2'>
+              {showPromotion && (
+                <PlanPromotionPrice
+                  record={p}
+                  now={props.now}
+                  variant='original'
+                />
+              )}
+              <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
+                / {duration}
+              </p>
+            </div>
           </div>
-          <div className='min-w-0 border-l pl-3'>
+          <div className='min-w-0 border-l pl-2'>
             <p className='text-muted-foreground text-[11px]'>
               {t('Available Quota')}
             </p>
-            <p className='mt-1 text-[clamp(1.375rem,2.8vw,2rem)] leading-tight font-semibold tracking-tight break-words tabular-nums'>
+            <p
+              className={cn(
+                quotaLabel.length > 8 ? 'text-xl' : 'text-2xl',
+                'mt-1 leading-tight font-semibold tracking-tight break-words tabular-nums'
+              )}
+            >
               {quotaLabel}
             </p>
           </div>
         </div>
         <div className='min-w-0'>
           {savings && (
-            <div data-slot='plan-savings' className='mt-2'>
+            <div data-slot='plan-savings' className='mt-1'>
               <Accordion>
                 <AccordionItem value='savings-details'>
                   <AccordionTrigger
@@ -344,11 +356,14 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           ))}
         </dl>
 
-        <div className='mt-auto pt-4'>
-          <div data-slot='plan-stock' className='mb-3 empty:hidden'>
-            <PlanSalesStatus record={p} />
+        <div className='mt-auto pt-2'>
+          <div
+            data-slot='plan-stock'
+            className='mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 empty:hidden'
+          >
+            <PlanSalesStatus record={p} className='my-0 text-[11px]' />
             {soldCount > 0 && (
-              <p className='text-muted-foreground mt-1 text-[11px]'>
+              <p className='text-muted-foreground text-[11px]'>
                 {t('Sold {{count}}', {
                   count: formatNumber(soldCount, locale),
                 })}

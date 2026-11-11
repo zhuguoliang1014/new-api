@@ -113,7 +113,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         title={t('Subscription Plans')}
         icon={<Crown className='h-4 w-4' aria-hidden='true' />}
       >
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3'>
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(15.5rem,1fr))]'>
           {['first', 'second', 'third'].map((key) => (
             <Skeleton key={key} className='h-72 w-full rounded-xl' />
           ))}
@@ -162,7 +162,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       >
         <div
           data-slot='subscription-plan-grid'
-          className='grid grid-cols-1 items-stretch gap-3 md:grid-cols-2 xl:grid-cols-3'
+          className='grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-[repeat(auto-fill,minmax(15.5rem,1fr))]'
         >
           {plans.map((record, index) => (
             <SubscriptionPlanCard
