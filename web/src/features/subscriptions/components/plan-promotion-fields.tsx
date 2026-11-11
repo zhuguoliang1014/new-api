@@ -25,6 +25,7 @@ interface PromotionValues {
 export function PlanPromotionFields(props: {
   quotaUSD: number
   priceCNY: number
+  compact?: boolean
   billingRatio: number
 }) {
   const { t, i18n } = useTranslation()
@@ -39,6 +40,9 @@ export function PlanPromotionFields(props: {
     props.quotaUSD > 0
       ? (props.priceCNY / props.quotaUSD) * props.billingRatio
       : 0
+  const floor = Number(form.watch('minimum_effective_ratio') || 0)
+  const tooLow =
+    floor > 0 && regularRatio > 0 && regularRatio * discount < floor
   return (
     <section className='space-y-4'>
       <h3 className='text-sm font-medium'>{t('Scheduled price discount')}</h3>
@@ -56,6 +60,16 @@ export function PlanPromotionFields(props: {
               discounted: multiplierFormat.format(regularRatio * discount),
             }
           )}
+        </p>
+      )}
+      {props.compact && floor > 0 && (
+        <p className='text-muted-foreground text-xs'>
+          {t('Minimum effective multiplier')}: {multiplierFormat.format(floor)}×
+        </p>
+      )}
+      {tooLow && (
+        <p role='alert' className='text-destructive text-xs'>
+          {t('Discounted effective multiplier is below the configured minimum')}
         </p>
       )}
       <FormField
@@ -88,106 +102,120 @@ export function PlanPromotionFields(props: {
           </FormItem>
         )}
       />
-      <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-        <FormField
-          control={form.control}
-          name='discount_starts_at'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Discount start time')}</FormLabel>
-              <FormControl>
-                <DateTimePicker
-                  value={field.value ? new Date(field.value * 1000) : undefined}
-                  onChange={(date) =>
-                    field.onChange(date ? Math.floor(date.getTime() / 1000) : 0)
-                  }
-                />
-              </FormControl>
-              <FormDescription>
-                {t('Leave empty to start the discount immediately')}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-        <FormField
-          control={form.control}
-          name='discount_ends_at'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Discount end time')}</FormLabel>
-              <FormControl>
-                <DateTimePicker
-                  value={field.value ? new Date(field.value * 1000) : undefined}
-                  onChange={(date) =>
-                    field.onChange(date ? Math.floor(date.getTime() / 1000) : 0)
-                  }
-                />
-              </FormControl>
-              <FormDescription>
-                {t(
-                  'The product stays on sale at its regular price after this time'
-                )}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-      </div>
-      <FormField
-        control={form.control}
-        name='minimum_effective_ratio'
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel>{t('Minimum effective multiplier')}</FormLabel>
-            <FormControl>
-              <Input
-                {...field}
-                value={field.value ?? ''}
-                type='number'
-                min={0.000001}
-                step={0.01}
-                onChange={(event) =>
-                  field.onChange(
-                    event.target.value === ''
-                      ? null
-                      : Number(event.target.value)
-                  )
-                }
-              />
-            </FormControl>
-            <FormDescription>
-              {t(
-                'Optional price floor for fixed-quota GPT plans. Discounts below this effective multiplier cannot be saved.'
-              )}
-            </FormDescription>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
-      <FormField
-        control={form.control}
-        name='limited_sale'
-        render={({ field }) => (
-          <FormItem className='flex items-start justify-between gap-4 rounded-md border p-3'>
-            <div>
-              <FormLabel>{t('Limited edition')}</FormLabel>
-              <FormDescription>
-                {t(
-                  'When enabled, a sales limit of 0 means no stock. Increase the total sales limit to restock; sales never reset automatically.'
-                )}
-              </FormDescription>
-            </div>
-            <FormControl>
-              <Switch
-                checked={field.value ?? false}
-                onCheckedChange={field.onChange}
-              />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      {discount < 1 && (
+        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
+          <FormField
+            control={form.control}
+            name='discount_starts_at'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Discount start time')}</FormLabel>
+                <FormControl>
+                  <DateTimePicker
+                    value={
+                      field.value ? new Date(field.value * 1000) : undefined
+                    }
+                    onChange={(date) =>
+                      field.onChange(
+                        date ? Math.floor(date.getTime() / 1000) : 0
+                      )
+                    }
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t('Leave empty to start the discount immediately')}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='discount_ends_at'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Discount end time')}</FormLabel>
+                <FormControl>
+                  <DateTimePicker
+                    value={
+                      field.value ? new Date(field.value * 1000) : undefined
+                    }
+                    onChange={(date) =>
+                      field.onChange(
+                        date ? Math.floor(date.getTime() / 1000) : 0
+                      )
+                    }
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'The product stays on sale at its regular price after this time'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+      )}
+      {!props.compact && (
+        <>
+          <FormField
+            control={form.control}
+            name='minimum_effective_ratio'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t('Minimum effective multiplier')}</FormLabel>
+                <FormControl>
+                  <Input
+                    {...field}
+                    value={field.value ?? ''}
+                    type='number'
+                    min={0.000001}
+                    step={0.01}
+                    onChange={(event) =>
+                      field.onChange(
+                        event.target.value === ''
+                          ? null
+                          : Number(event.target.value)
+                      )
+                    }
+                  />
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Optional price floor for fixed-quota GPT plans. Discounts below this effective multiplier cannot be saved.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='limited_sale'
+            render={({ field }) => (
+              <FormItem className='flex items-start justify-between gap-4 rounded-md border p-3'>
+                <div>
+                  <FormLabel>{t('Limited edition')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, a sales limit of 0 means no stock. Increase the total sales limit to restock; sales never reset automatically.'
+                    )}
+                  </FormDescription>
+                </div>
+                <FormControl>
+                  <Switch
+                    checked={field.value ?? false}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </>
+      )}
     </section>
   )
 }

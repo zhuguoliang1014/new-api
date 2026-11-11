@@ -11,6 +11,7 @@ export function getPlanCreateFormSchema(t: TFunction) {
     .object({
       title: z.string().min(1, t('Please enter plan title')),
       subtitle: z.string().optional(),
+      pricing_ratio: z.coerce.number().positive().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       price_cny: z.coerce.number().min(0.01, t('Please enter CNY price')),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -96,9 +97,19 @@ export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
 }
 
 export function planToCreateFormValues(
-  plan: SubscriptionPlan
+  plan: SubscriptionPlan,
+  quotaPerUnit = 500000
 ): PlanCreateFormValues {
   return {
+    pricing_ratio:
+      plan.total_amount > 0 && plan.price_cny
+        ? Number(
+            (
+              (plan.price_cny * (plan.billing_ratio ?? 1)) /
+              (plan.total_amount / quotaPerUnit)
+            ).toPrecision(8)
+          )
+        : undefined,
     title: plan.title || '',
     subtitle: plan.subtitle || '',
     price_amount: Number(plan.price_amount || 0),
@@ -112,7 +123,8 @@ export function planToCreateFormValues(
     sort_order: Number(plan.sort_order || 0),
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     sales_limit: Number(plan.sales_limit || 0),
-    limited_sale: plan.limited_sale ?? false,
+    limited_sale:
+      plan.limited_sale === true || Number(plan.sales_limit || 0) > 0,
     discount_rate: plan.discount_rate ?? 1,
     minimum_effective_ratio: plan.minimum_effective_ratio ?? null,
     discount_starts_at: plan.discount_starts_at || 0,
@@ -143,13 +155,21 @@ export function createFormValuesToPayload(
   const usdQuotaAmount = Number(values.price_amount || 0)
   const priceCny = Number(values.price_cny || 0)
   const perUnit = quotaPerUnit > 0 ? quotaPerUnit : 500000
-  const totalAmount = Math.round(usdQuotaAmount * perUnit)
+  const quotaUnchanged =
+    existing != null && usdQuotaAmount === existing.price_amount
+  const totalAmount = quotaUnchanged
+    ? existing.total_amount
+    : Math.floor(usdQuotaAmount * perUnit)
 
   return {
     plan: {
       // 保留 existing 里新面板不涉及的字段（第三方支付 ID）
       stripe_price_id: existing?.stripe_price_id ?? '',
       creem_product_id: existing?.creem_product_id ?? '',
+      waffo_pancake_product_id: existing?.waffo_pancake_product_id ?? '',
+      allow_balance_pay: existing?.allow_balance_pay ?? existing != null,
+      allow_wallet_overflow: existing?.allow_wallet_overflow ?? true,
+      downgrade_group: existing?.downgrade_group ?? '',
       // 新面板管理的字段
       title: values.title,
       subtitle: values.subtitle || '',

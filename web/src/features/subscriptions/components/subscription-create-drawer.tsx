@@ -1,13 +1,25 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { CalendarClock, Coins, RefreshCw, Sparkles, Tag } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { ChevronDown } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { DateTimePicker } from '@/components/datetime-picker'
-import { MultiSelect } from '@/components/multi-select'
+import {
+  SideDrawerSection,
+  SideDrawerSectionHeader,
+  sideDrawerContentClassName,
+  sideDrawerHeaderClassName,
+  sideDrawerFormClassName,
+  sideDrawerFooterClassName,
+} from '@/components/drawer-layout'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleTrigger,
+  CollapsibleContent,
+} from '@/components/ui/collapsible'
 import {
   Form,
   FormControl,
@@ -19,14 +31,6 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Sheet,
   SheetClose,
   SheetContent,
@@ -36,17 +40,11 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { createPlan, getGroups, updatePlan } from '../api'
-import {
-  getDurationUnitOptions,
-  getResetPeriodOptions,
-  SUBSCRIPTION_MODEL_PROVIDERS,
-} from '../constants'
 import {
   getPlanCreateFormSchema,
   PLAN_CREATE_FORM_DEFAULTS,
@@ -55,8 +53,18 @@ import {
   type PlanCreateFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
+import { PlanAdvancedFields } from './plan-advanced-fields'
+import { PlanPricingFields } from './plan-pricing-fields'
 import { PlanPromotionFields } from './plan-promotion-fields'
 import { useSubscriptions } from './subscriptions-provider'
+
+const NEW_GPT_MONTHLY_PLAN: PlanCreateFormValues = {
+  ...PLAN_CREATE_FORM_DEFAULTS,
+  enabled: false,
+  allowed_channel_types: [1],
+  pricing_ratio: 0.29,
+  minimum_effective_ratio: 0.18,
+}
 
 interface Props {
   open: boolean
@@ -73,6 +81,7 @@ export function SubscriptionCreateDrawer({
   const isEdit = !!currentRow?.plan?.id
   const { triggerRefresh } = useSubscriptions()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [groupOptions, setGroupOptions] = useState<string[]>([])
 
   const quotaPerUnit = useSystemConfigStore(
@@ -82,15 +91,16 @@ export function SubscriptionCreateDrawer({
   const schema = getPlanCreateFormSchema(t)
   const form = useForm<PlanCreateFormValues>({
     resolver: zodResolver(schema) as unknown as Resolver<PlanCreateFormValues>,
-    defaultValues: PLAN_CREATE_FORM_DEFAULTS,
+    defaultValues: NEW_GPT_MONTHLY_PLAN,
   })
 
   useEffect(() => {
     if (open) {
+      setAdvancedOpen(false)
       if (currentRow?.plan) {
-        form.reset(planToCreateFormValues(currentRow.plan))
+        form.reset(planToCreateFormValues(currentRow.plan, quotaPerUnit))
       } else {
-        form.reset(PLAN_CREATE_FORM_DEFAULTS)
+        form.reset(NEW_GPT_MONTHLY_PLAN)
       }
       getGroups()
         .then((res) => {
@@ -98,35 +108,13 @@ export function SubscriptionCreateDrawer({
         })
         .catch(() => {})
     }
-  }, [open, currentRow, form])
+  }, [open, currentRow, form, quotaPerUnit])
 
-  const durationUnit = form.watch('duration_unit')
-  const resetPeriod = form.watch('quota_reset_period')
   const usdQuotaAmount = form.watch('price_amount')
-  const startsAt = form.watch('starts_at')
-  const expiresAt = form.watch('expires_at')
-
-  // 美元 × quotaPerUnit 自动折算的预览值
-  const autoTotalQuota = useMemo(() => {
-    const v = Number(usdQuotaAmount || 0)
-    return Math.round(v * quotaPerUnit)
-  }, [usdQuotaAmount, quotaPerUnit])
-
-  // 日期选择的最小可选日期（今天零点）
-  const todayStart = useMemo(() => {
-    const d = new Date()
-    d.setHours(0, 0, 0, 0)
-    return d
-  }, [])
-  // 结束时间的最小日期：若设置了开始时间，则不能早于开始日期；否则不早于今天
-  const endMinDate = useMemo(() => {
-    if (startsAt && startsAt > 0) {
-      const d = new Date(startsAt * 1000)
-      d.setHours(0, 0, 0, 0)
-      return d > todayStart ? d : todayStart
-    }
-    return todayStart
-  }, [startsAt, todayStart])
+  const pricingQuotaUSD =
+    currentRow?.plan && Number(usdQuotaAmount) === currentRow.plan.price_amount
+      ? currentRow.plan.total_amount / quotaPerUnit
+      : Number(usdQuotaAmount || 0)
 
   const onSubmit = async (values: PlanCreateFormValues) => {
     // 促销窗口校验：结束时间必须晚于开始时间（两者都设置的情况下）
@@ -170,28 +158,25 @@ export function SubscriptionCreateDrawer({
     }
   }
 
-  const durationUnitOpts = getDurationUnitOptions(t)
-  const resetPeriodOpts = getResetPeriodOptions(t)
-
-  // 促销窗口状态提示
-  const saleWindowHint = useMemo(() => {
-    const now = Math.floor(Date.now() / 1000)
-    const s = Number(startsAt || 0)
-    const e = Number(expiresAt || 0)
-    if (!s && !e) return t('On sale immediately, never expires')
-    if (s && !e) {
-      if (s <= now) return t('Already on sale, never expires')
-      return t('Scheduled to go on sale')
+  const onInvalid = (errors: FieldErrors<PlanCreateFormValues>) => {
+    const visible = new Set([
+      'title',
+      'subtitle',
+      'price_cny',
+      'price_amount',
+      'pricing_ratio',
+      'discount_rate',
+      'discount_starts_at',
+      'discount_ends_at',
+      'enabled',
+      'limited_sale',
+      'sales_limit',
+      'max_purchase_per_user',
+    ])
+    if (Object.keys(errors).some((key) => !visible.has(key))) {
+      setAdvancedOpen(true)
     }
-    if (!s && e) {
-      if (e <= now) return t('Sale window has ended')
-      return t('On sale now, will end at end time')
-    }
-    if (e <= s) return t('Sale end time must be later than start time')
-    if (e <= now) return t('Sale window has ended')
-    if (s > now) return t('Scheduled sale window')
-    return t('On sale now, ends at end time')
-  }, [startsAt, expiresAt, t])
+  }
 
   return (
     <Sheet
@@ -201,16 +186,18 @@ export function SubscriptionCreateDrawer({
         if (!v) form.reset()
       }}
     >
-      <SheetContent className='flex h-dvh w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[620px]'>
-        <SheetHeader className='border-b px-4 py-3 text-start sm:px-6 sm:py-4'>
+      <SheetContent className={sideDrawerContentClassName('sm:max-w-[680px]')}>
+        <SheetHeader className={sideDrawerHeaderClassName()}>
           <SheetTitle>
             {isEdit ? t('Update plan info') : t('Create new subscription plan')}
           </SheetTitle>
           <SheetDescription>
             {isEdit
-              ? t('Modify existing subscription plan configuration')
+              ? t(
+                  'Update future purchases. Existing subscriptions keep their original terms.'
+                )
               : t(
-                  'Fill in the following info to create a new subscription plan'
+                  'Set a regular price, choose a multiplier, then add a promotion if needed.'
                 )}
           </SheetDescription>
         </SheetHeader>
@@ -218,16 +205,14 @@ export function SubscriptionCreateDrawer({
         <Form {...form}>
           <form
             id='subscription-create-form'
-            onSubmit={form.handleSubmit(onSubmit)}
-            className='flex-1 space-y-5 overflow-y-auto px-3 py-4 sm:space-y-6 sm:px-5 sm:py-5'
+            onSubmit={form.handleSubmit(onSubmit, onInvalid)}
+            className={sideDrawerFormClassName()}
           >
-            {/* 基本信息 */}
-            <section className='space-y-4'>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <Tag className='h-4 w-4' />
-                {t('Basic Info')}
-              </h3>
-
+            <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Basic Info')}
+                description={t('Give the plan a name customers can recognize.')}
+              />
               <FormField
                 control={form.control}
                 name='title'
@@ -241,7 +226,6 @@ export function SubscriptionCreateDrawer({
                   </FormItem>
                 )}
               />
-
               <FormField
                 control={form.control}
                 name='subtitle'
@@ -258,158 +242,120 @@ export function SubscriptionCreateDrawer({
                   </FormItem>
                 )}
               />
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='sort_order'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Sort Order')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='enabled'
-                  render={({ field }) => (
-                    <FormItem className='flex flex-row items-center gap-2 pt-8'>
-                      <FormControl>
-                        <Switch
-                          checked={field.value}
-                          onCheckedChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormLabel className='!mt-0'>
-                        {t('Enabled Status')}
-                      </FormLabel>
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </section>
-
-            {/* 价格与额度 */}
-            <section className='space-y-4'>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <Coins className='h-4 w-4' />
-                {t('Pricing & Quota')}
-              </h3>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='price_amount'
-                  render={({ field }) => (
-                    <FormItem className='grid grid-rows-[1.25rem_auto_auto] gap-2'>
-                      <FormLabel className='h-5 leading-5'>
-                        {t('USD Quota Amount')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step='0.000001'
-                          min={0}
-                          placeholder='0.00'
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription className='min-h-12 leading-6'>
-                        {t(
-                          'Enter the USD quota amount. Quota is auto-calculated by system rate.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='price_cny'
-                  render={({ field }) => (
-                    <FormItem className='grid grid-rows-[1.25rem_auto_auto] gap-2'>
-                      <FormLabel className='h-5 leading-5'>
-                        {t('Price (CNY)')}
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          step='0.01'
-                          min={0.01}
-                          placeholder='0.00'
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseFloat(e.target.value) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription className='min-h-12 leading-6'>
-                        {t(
-                          'Used for CNY payment channels. Must be greater than 0.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='sales_limit'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Total Sales Limit')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          max={2147483647}
-                          step={1}
-                          onChange={(e) =>
-                            field.onChange(
-                              e.target.value === '' ? 0 : Number(e.target.value)
-                            )
-                          }
-                        />
-                      </FormControl>
+            </SideDrawerSection>
+            <SideDrawerSection>
+              <PlanPricingFields
+                key={`${open}-${currentRow?.plan.id ?? 'new'}`}
+                quotaUSD={pricingQuotaUSD}
+                initialAutomatic={
+                  !isEdit || currentRow?.plan.minimum_effective_ratio != null
+                }
+              />
+            </SideDrawerSection>
+            <SideDrawerSection>
+              <PlanPromotionFields
+                compact
+                quotaUSD={pricingQuotaUSD}
+                priceCNY={Number(form.watch('price_cny') || 0)}
+                billingRatio={Number(form.watch('billing_ratio') ?? 1)}
+              />
+            </SideDrawerSection>
+            <SideDrawerSection>
+              <SideDrawerSectionHeader
+                title={t('Sales & inventory')}
+                description={t(
+                  'Control publication, sale dates and available stock separately from discounts.'
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='enabled'
+                render={({ field }) => (
+                  <FormItem className='flex items-center justify-between gap-4'>
+                    <div>
+                      <FormLabel>{t('Publish plan')}</FormLabel>
                       <FormDescription>
-                        {form.watch('limited_sale')
-                          ? t(
-                              'For limited editions, 0 means no stock. Paid orders, pending payments and display sales count toward the total.'
-                            )
-                          : t(
-                              '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
-                            )}
+                        {t(
+                          'When off, this plan is visible to administrators only.'
+                        )}
                       </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='limited_sale'
+                render={({ field }) => (
+                  <FormItem className='flex items-center justify-between gap-4'>
+                    <div>
+                      <FormLabel>{t('Limited edition')}</FormLabel>
+                      <FormDescription>
+                        {t(
+                          'Enable only when you want to control the total number sold.'
+                        )}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={(checked) => {
+                          field.onChange(checked)
+                          if (!checked) {
+                            form.setValue('sales_limit', 0, {
+                              shouldDirty: true,
+                            })
+                          }
+                        }}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+              <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                {form.watch('limited_sale') && (
+                  <FormField
+                    control={form.control}
+                    name='sales_limit'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Total Sales Limit')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type='number'
+                            min={0}
+                            max={2147483647}
+                            step={1}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? 0
+                                  : Number(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {form.watch('limited_sale')
+                            ? t(
+                                'For limited editions, 0 means no stock. Paid orders, pending payments and display sales count toward the total.'
+                              )
+                            : t(
+                                '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
+                              )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
                 <FormField
                   control={form.control}
                   name='max_purchase_per_user'
@@ -421,10 +367,9 @@ export function SubscriptionCreateDrawer({
                           {...field}
                           type='number'
                           min={0}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
+                          step={1}
+                          onChange={(event) =>
+                            field.onChange(Number(event.target.value))
                           }
                         />
                       </FormControl>
@@ -435,397 +380,107 @@ export function SubscriptionCreateDrawer({
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name='display_sold_count'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Display Sold Count')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t(
-                          'Added to paid sales and deducted from limited stock. Does not create orders or revenue.'
-                        )}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
               </div>
-
-              <div className='bg-muted/40 rounded-md border border-dashed p-3 text-xs'>
-                <div className='text-muted-foreground flex items-center justify-between gap-2'>
-                  <span>{t('Auto-calculated Quota')}</span>
-                  <span className='text-foreground font-medium tabular-nums'>
-                    {formatQuota(autoTotalQuota)}
-                  </span>
-                </div>
-                <div className='text-muted-foreground mt-1 flex items-center justify-between gap-2'>
-                  <span>{t('Conversion rate')}</span>
-                  <span className='tabular-nums'>
-                    1 USD = {quotaPerUnit.toLocaleString()}
-                  </span>
-                </div>
-              </div>
-
-              <FormField
-                control={form.control}
-                name='upgrade_group'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Upgrade Group')}</FormLabel>
-                    <Select
-                      items={[
-                        { value: '__none__', label: t('No Upgrade') },
-                        ...groupOptions.map((g) => ({ value: g, label: g })),
-                      ]}
-                      onValueChange={(v) =>
-                        field.onChange(v === '__none__' ? '' : v)
-                      }
-                      value={field.value || ''}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder={t('No Upgrade')} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent alignItemWithTrigger={false}>
-                        <SelectGroup>
-                          <SelectItem value='__none__'>
-                            {t('No Upgrade')}
-                          </SelectItem>
-                          {groupOptions.map((g) => (
-                            <SelectItem key={g} value={g}>
-                              {g}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </section>
-
-            {/* 有效期 */}
-            <section className='space-y-4'>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <CalendarClock className='h-4 w-4' />
-                {t('Duration Settings')}
-              </h3>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='duration_unit'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Duration Unit')}</FormLabel>
-                      <Select
-                        items={durationUnitOpts.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        }))}
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {durationUnitOpts.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {durationUnit === 'custom' ? (
-                  <FormField
-                    control={form.control}
-                    name='custom_seconds'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Custom Seconds')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type='number'
-                            min={1}
-                            onChange={(e) =>
-                              field.onChange(
-                                Number.parseInt(e.target.value, 10) || 0
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+              <Collapsible>
+                <CollapsibleTrigger
+                  render={
+                    <Button
+                      variant='ghost'
+                      className='text-muted-foreground w-full justify-between px-0'
+                    />
+                  }
+                >
+                  {t('Sale dates (optional)')}
+                  <ChevronDown className='size-4' />
+                </CollapsibleTrigger>
+                <CollapsibleContent className='space-y-3 pt-3'>
+                  <p className='text-muted-foreground text-xs'>
+                    {t(
+                      'These dates control when purchases are allowed. Set promotion dates above to restore the regular price automatically.'
                     )}
-                  />
-                ) : (
-                  <FormField
-                    control={form.control}
-                    name='duration_value'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Duration Value')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type='number'
-                            min={1}
-                            onChange={(e) =>
-                              field.onChange(
-                                Number.parseInt(e.target.value, 10) || 0
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-              </div>
-            </section>
-
-            {/* 额度重置 */}
-            <section className='space-y-4'>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <RefreshCw className='h-4 w-4' />
-                {t('Quota Reset')}
-              </h3>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='quota_reset_period'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Reset Cycle')}</FormLabel>
-                      <Select
-                        items={resetPeriodOpts.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        }))}
-                        onValueChange={field.onChange}
-                        value={field.value}
-                      >
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent alignItemWithTrigger={false}>
-                          <SelectGroup>
-                            {resetPeriodOpts.map((o) => (
-                              <SelectItem key={o.value} value={o.value}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectGroup>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='quota_reset_custom_seconds'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Custom Seconds')}</FormLabel>
-                      <FormControl>
-                        <Input
-                          {...field}
-                          type='number'
-                          min={0}
-                          disabled={resetPeriod !== 'custom'}
-                          onChange={(e) =>
-                            field.onChange(
-                              Number.parseInt(e.target.value, 10) || 0
-                            )
-                          }
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </section>
-
-            <PlanPromotionFields
-              quotaUSD={Number(usdQuotaAmount || 0)}
-              priceCNY={Number(form.watch('price_cny') || 0)}
-              billingRatio={Number(form.watch('billing_ratio') ?? 1)}
-            />
-
-            {/* 促销时段 */}
-            <section className='space-y-4'>
-              <h3 className='flex items-center gap-2 text-sm font-medium'>
-                <Sparkles className='h-4 w-4' />
-                {t('Sale Window')}
-              </h3>
-
-              <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
-                <FormField
-                  control={form.control}
-                  name='starts_at'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Sale Start Time')}</FormLabel>
-                      <FormControl>
-                        <DateTimePicker
-                          value={
-                            field.value && field.value > 0
-                              ? new Date(field.value * 1000)
-                              : undefined
-                          }
-                          onChange={(d) =>
-                            field.onChange(
-                              d ? Math.floor(d.getTime() / 1000) : 0
-                            )
-                          }
-                          minDate={todayStart}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Leave empty to go on sale immediately')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name='expires_at'
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>{t('Sale End Time')}</FormLabel>
-                      <FormControl>
-                        <DateTimePicker
-                          value={
-                            field.value && field.value > 0
-                              ? new Date(field.value * 1000)
-                              : undefined
-                          }
-                          onChange={(d) =>
-                            field.onChange(
-                              d ? Math.floor(d.getTime() / 1000) : 0
-                            )
-                          }
-                          minDate={endMinDate}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        {t('Leave empty to never expire')}
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-
-              <div className='text-muted-foreground rounded-md border border-dashed bg-amber-50/40 px-3 py-2 text-xs dark:bg-amber-500/5'>
-                {saleWindowHint}
-              </div>
-            </section>
-
-            <section className='space-y-4 px-4 sm:px-6'>
-              <h3 className='text-sm font-medium'>
-                {t('Model provider restrictions')}
-              </h3>
-              <FormField
-                control={form.control}
-                name='allowed_channel_types'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Allowed model providers')}</FormLabel>
-                    <FormControl>
-                      <MultiSelect
-                        options={SUBSCRIPTION_MODEL_PROVIDERS.map((o) => ({
-                          value: String(o.value),
-                          label: o.label,
-                        }))}
-                        selected={(field.value ?? []).map(String)}
-                        onChange={(vals) =>
-                          field.onChange(
-                            vals.map(Number).filter((n) => !Number.isNaN(n))
-                          )
-                        }
-                        placeholder={t('Allow all model providers')}
-                      />
-                    </FormControl>
-                    <FormDescription>
-                      {t(
-                        'Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.'
-                      )}{' '}
-                      {t(
-                        'Restricted plans use the plan billing multiplier, defaulting to 1x. Unrestricted plans and wallet charges use the API key group multiplier.'
+                  </p>
+                  <div className='grid grid-cols-1 gap-4 sm:grid-cols-2'>
+                    <FormField
+                      control={form.control}
+                      name='starts_at'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Sale Start Time')}</FormLabel>
+                          <FormControl>
+                            <DateTimePicker
+                              value={
+                                field.value
+                                  ? new Date(field.value * 1000)
+                                  : undefined
+                              }
+                              onChange={(date) =>
+                                field.onChange(
+                                  date ? Math.floor(date.getTime() / 1000) : 0
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
                       )}
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name='billing_ratio'
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>{t('Plan billing multiplier')}</FormLabel>
-                    <FormControl>
-                      <Input
-                        {...field}
-                        type='number'
-                        step='any'
-                        placeholder='1'
-                        value={field.value ?? ''}
-                        onChange={(event) =>
-                          field.onChange(
-                            event.target.value === ''
-                              ? null
-                              : event.target.valueAsNumber
-                          )
-                        }
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </section>
+                    />
+                    <FormField
+                      control={form.control}
+                      name='expires_at'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Sale End Time')}</FormLabel>
+                          <FormControl>
+                            <DateTimePicker
+                              value={
+                                field.value
+                                  ? new Date(field.value * 1000)
+                                  : undefined
+                              }
+                              onChange={(date) =>
+                                field.onChange(
+                                  date ? Math.floor(date.getTime() / 1000) : 0
+                                )
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </SideDrawerSection>
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger
+                render={
+                  <Button
+                    variant='ghost'
+                    className='h-auto w-full justify-between px-0 py-2 whitespace-normal'
+                  />
+                }
+              >
+                <span className='min-w-0 text-start whitespace-normal'>
+                  <span className='block font-semibold'>
+                    {t('Advanced Settings')}
+                  </span>
+                  <span className='text-muted-foreground mt-1 block text-xs font-normal'>
+                    {t(
+                      'Models, validity, quota resets, display sales and price floor'
+                    )}
+                  </span>
+                </span>
+                <ChevronDown className='size-4 shrink-0' />
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <PlanAdvancedFields groupOptions={groupOptions} />
+              </CollapsibleContent>
+            </Collapsible>
           </form>
         </Form>
 
-        <SheetFooter className='grid grid-cols-2 gap-2 border-t px-4 py-3 sm:flex sm:px-6 sm:py-4'>
+        <SheetFooter className={sideDrawerFooterClassName()}>
           <SheetClose render={<Button variant='outline' />}>
             {t('Close')}
           </SheetClose>

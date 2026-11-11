@@ -182,7 +182,7 @@ test('the editor reports a rejected sales cap and keeps the unsaved form open', 
   })
   expect(
     screen.getByText(
-      '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
+      'For limited editions, 0 means no stock. Paid orders, pending payments and display sales count toward the total.'
     )
   ).toBeVisible()
   await user.clear(input)

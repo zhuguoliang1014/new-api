@@ -79,12 +79,14 @@ test.each([
         </SubscriptionsProvider>
       </QueryClientProvider>
     )
+    await user.click(screen.getByRole('switch', { name: 'Limited edition' }))
     const salesLimit = await screen.findByRole('spinbutton', {
       name: 'Total Sales Limit',
     })
     expect(salesLimit).toHaveValue(0)
     await user.clear(salesLimit)
     await user.type(salesLimit, '30')
+    await user.click(screen.getByRole('button', { name: /Advanced Settings/ }))
     const multiplier = await screen.findByRole('spinbutton', {
       name: 'Plan billing multiplier',
     })
