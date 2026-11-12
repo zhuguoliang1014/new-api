@@ -6,26 +6,19 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { afterEach, expect, it, vi } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { expect, test, vi } from 'vitest'
 
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { UsageLogs } from '..'
 
-const clients: QueryClient[] = []
-afterEach(() => {
-  cleanup()
-  clients.splice(0).forEach((client) => client.clear())
-  useAuthStore.getState().auth.setUser(null)
-})
-
-async function renderLogs(initialEntry: string, role = 1) {
-  useAuthStore.getState().auth.setUser({ id: 7, username: 'wallet-user', role })
+test('shows gift events in common logs without a separate tab or gift-history request', async () => {
+  useAuthStore
+    .getState()
+    .auth.setUser({ id: 7, username: 'wallet-user', role: 1 })
   const request = vi.spyOn(api, 'get').mockImplementation(async (url) => {
-    if (url === '/api/status') return { data: { success: true, data: {} } }
     if (url === '/api/user/self/groups') {
       return { data: { success: true, data: {} } }
     }
@@ -40,7 +33,24 @@ async function renderLogs(initialEntry: string, role = 1) {
     return {
       data: {
         success: true,
-        data: { items: [], total: 0, quota: 0, rpm: 0, tpm: 0 },
+        data: {
+          items: url.startsWith('/api/log/self?')
+            ? [
+                {
+                  id: 1,
+                  user_id: 7,
+                  created_at: Math.floor(Date.now() / 1000),
+                  type: 4,
+                  content: 'Gift credit granted: $5',
+                  other: '',
+                },
+              ]
+            : [],
+          total: 1,
+          quota: 0,
+          rpm: 0,
+          tpm: 0,
+        },
       },
     }
   })
@@ -54,56 +64,24 @@ async function renderLogs(initialEntry: string, role = 1) {
   })
   const router = createRouter({
     routeTree: root.addChildren([auth.addChildren([logs])]),
-    history: createMemoryHistory({ initialEntries: [initialEntry] }),
+    history: createMemoryHistory({
+      initialEntries: ['/usage-logs/common?view=gifts'],
+    }),
   })
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  clients.push(client)
   render(
-    <QueryClientProvider client={client}>
+    <QueryClientProvider client={new QueryClient()}>
       <RouterProvider router={router} />
     </QueryClientProvider>
   )
-  await screen.findByRole('tab', { name: 'Gift credit history' })
-  return { router, request }
-}
 
-it('opens gift history from logs on demand and preserves common log filters when switching back', async () => {
-  const { router, request } = await renderLogs(
-    '/usage-logs/common?model=gpt-demo'
-  )
+  expect(await screen.findByText('Gift credit granted: $5')).toBeVisible()
+  expect(
+    screen.queryByRole('tab', { name: 'Gift credit history' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByRole('button', { name: 'Gift credit history' })
+  ).not.toBeInTheDocument()
   expect(
     request.mock.calls.some(([url]) => url === '/api/user/self/gifts')
   ).toBe(false)
-  await userEvent.click(
-    screen.getByRole('tab', { name: 'Gift credit history' })
-  )
-  expect(await screen.findByText('No gift credits yet')).toBeVisible()
-  expect(router.state.location.search).toMatchObject({
-    model: 'gpt-demo',
-    view: 'gifts',
-  })
-  expect(
-    screen.queryByRole('combobox', { name: 'Type' })
-  ).not.toBeInTheDocument()
-  await userEvent.click(screen.getByRole('tab', { name: 'Common Logs' }))
-  await waitFor(() => expect(router.state.location.search.view).toBeUndefined())
-  expect(router.state.location.search.model).toBe('gpt-demo')
-  expect(await screen.findByRole('combobox', { name: 'Type' })).toBeVisible()
-})
-
-it('loads a direct gift-history link for the current account even for an administrator', async () => {
-  const { request } = await renderLogs('/usage-logs/common?view=gifts', 100)
-  expect(await screen.findByText('No gift credits yet')).toBeVisible()
-  expect(
-    screen.getByRole('tab', { name: 'Gift credit history' })
-  ).toHaveAttribute('aria-selected', 'true')
-  expect(screen.queryByRole('tab', { name: 'All' })).not.toBeInTheDocument()
-  expect(request).toHaveBeenCalledWith('/api/user/self/gifts', {
-    params: { p: 1, page_size: 10 },
-  })
-  expect(request.mock.calls.some(([url]) => url.startsWith('/api/log'))).toBe(
-    false
-  )
 })

@@ -551,8 +551,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
   )
   const hasAudioTokens = other?.ws || other?.audio
   const showTiming = isTimingLogType(props.log.type)
-  const showAdminIp =
-    !!props.log.ip && (showTiming || (props.isAdmin && isTopup))
+  const showIp = !!props.log.ip
   const adminInfo = other?.admin_info
   const topupAuditFields =
     isTopup && props.isAdmin && adminInfo
@@ -773,7 +772,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             />
           )}
 
-          {showAdminIp && (
+          {showIp && (
             <DetailRow
               label={t('IP Address')}
               value={

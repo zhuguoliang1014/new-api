@@ -103,6 +103,9 @@ func AdjustUserQuota(userID, operatorRole int, mode string, value int, quotaType
 
 	if quotaType == "gift" {
 		_ = invalidateUserCache(userID)
+		if logErr := FlushGiftQuotaLogsForUser(userID, 100); logErr != nil {
+			common.SysError(common.LogText("failed to write gift quota log: %s", logErr))
+		}
 	} else {
 		if err := cacheIncrUserQuota(userID, int64(adjustment.After)-int64(adjustment.Before)); err != nil {
 			common.SysError(common.LogText("failed to sync manual quota adjustment for user %d: %s", userID, err))

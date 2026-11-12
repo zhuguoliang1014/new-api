@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -96,4 +97,61 @@ func TestProcessChannelErrorUsesSnapshotWithoutLeakingChannelMetadata(t *testing
 	for _, key := range []string{"channel_id", "channel_name", "channel_type"} {
 		assert.NotContains(t, userOther, key)
 	}
+}
+
+func TestCommonLogIPVisibilityFollowsViewerRole(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Log{}))
+	user := model.User{Username: "ip-log-owner", AffCode: "ip-log-owner", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, AuthVersion: 1}
+	require.NoError(t, db.Create(&user).Error)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	ctx.Request.RemoteAddr = "203.0.113.42:54321"
+	ctx.Set("id", user.Id)
+	ctx.Set("username", user.Username)
+	model.RecordErrorLog(ctx, user.Id, 0, "gpt-test", "test-key", "upstream failed", 1, 1, false, "default", model.NewLogOther())
+	previousConsumeLog := common.LogConsumeEnabled
+	common.LogConsumeEnabled = true
+	t.Cleanup(func() { common.LogConsumeEnabled = previousConsumeLog })
+	model.RecordConsumeLog(ctx, user.Id, model.RecordConsumeLogParams{
+		ModelName: "gpt-test", TokenName: "test-key", Other: model.NewLogOther(),
+	})
+
+	var stored model.Log
+	require.NoError(t, model.LOG_DB.Where("user_id = ? AND type = ?", user.Id, model.LogTypeError).First(&stored).Error)
+	assert.Equal(t, "203.0.113.42", stored.Ip)
+	var consume model.Log
+	require.NoError(t, model.LOG_DB.Where("user_id = ? AND type = ?", user.Id, model.LogTypeConsume).First(&consume).Error)
+	assert.Equal(t, "203.0.113.42", consume.Ip)
+	userResult := callLogHandler(t, GetUserLogs, user.Id, common.RoleCommonUser, "type=5")[0]
+	require.Equal(t, true, userResult["success"])
+	items := userResult["data"].(map[string]any)["items"].([]any)
+	require.Len(t, items, 1)
+	assert.Empty(t, items[0].(map[string]any)["ip"])
+	adminResult := callLogHandler(t, GetAllLogs, user.Id, common.RoleAdminUser, "type=5")[0]
+	adminItems := adminResult["data"].(map[string]any)["items"].([]any)
+	require.Len(t, adminItems, 1)
+	assert.Equal(t, "203.0.113.42", adminItems[0].(map[string]any)["ip"])
+	adminSelf := callLogHandler(t, GetUserLogs, user.Id, common.RoleAdminUser, "type=5")[0]
+	adminSelfItems := adminSelf["data"].(map[string]any)["items"].([]any)
+	assert.Equal(t, "203.0.113.42", adminSelfItems[0].(map[string]any)["ip"])
+	require.NoError(t, db.Model(&user).Update("setting", `{"record_ip_log":true}`).Error)
+	userResult = callLogHandler(t, GetUserLogs, user.Id, common.RoleCommonUser, "type=5")[0]
+	items = userResult["data"].(map[string]any)["items"].([]any)
+	assert.Equal(t, "203.0.113.42", items[0].(map[string]any)["ip"])
+	logSetting := operation_setting.GetLogSetting()
+	previousExport := logSetting.UserExportEnabled
+	logSetting.UserExportEnabled = true
+	t.Cleanup(func() { logSetting.UserExportEnabled = previousExport })
+	userExport := callLogHandler(t, ExportUserLogs, user.Id, common.RoleCommonUser, "type=5")
+	require.Len(t, userExport, 2)
+	assert.Equal(t, "203.0.113.42", userExport[0]["ip"])
+	require.NoError(t, db.Model(&user).Update("setting", `{}`).Error)
+	userExport = callLogHandler(t, ExportUserLogs, user.Id, common.RoleCommonUser, "type=5")
+	require.Len(t, userExport, 2)
+	assert.Empty(t, userExport[0]["ip"])
+	assert.False(t, canViewOwnLogIP(user.Id, 0))
+	require.NoError(t, db.Model(&user).Update("role", common.RoleAdminUser).Error)
+	assert.True(t, canViewOwnLogIP(user.Id, 0))
 }

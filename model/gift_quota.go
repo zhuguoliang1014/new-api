@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/logger"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 )
@@ -16,16 +17,19 @@ const GiftQuotaLifetime = int64(30 * 24 * time.Hour / time.Second)
 // User.Quota remains the spendable total for API compatibility. The permanent
 // balance is Quota minus the unexpired gift lots. Only gift lots can expire.
 type GiftQuota struct {
-	Id        int64  `json:"id" gorm:"primaryKey"`
-	UserID    int    `json:"-" gorm:"not null;index:idx_gift_user_expiry,priority:1"`
-	Source    string `json:"source" gorm:"type:varchar(40);not null"`
-	Reference string `json:"-" gorm:"type:varchar(128);not null;uniqueIndex"`
-	Granted   int    `json:"granted" gorm:"not null"`
-	Remaining int    `json:"remaining" gorm:"not null"`
-	Expired   int    `json:"expired" gorm:"not null;default:0"`
-	GrantedAt int64  `json:"granted_at" gorm:"not null"`
-	ExpiresAt int64  `json:"expires_at" gorm:"not null;index:idx_gift_user_expiry,priority:2;index"`
-	ExpiredAt int64  `json:"expired_at" gorm:"not null;default:0"`
+	Id              int64  `json:"id" gorm:"primaryKey"`
+	UserID          int    `json:"-" gorm:"not null;index:idx_gift_user_expiry,priority:1"`
+	Source          string `json:"source" gorm:"type:varchar(40);not null"`
+	Reference       string `json:"-" gorm:"type:varchar(128);not null;uniqueIndex"`
+	Granted         int    `json:"granted" gorm:"not null"`
+	Remaining       int    `json:"remaining" gorm:"not null"`
+	Expired         int    `json:"expired" gorm:"not null;default:0"`
+	GrantedAt       int64  `json:"granted_at" gorm:"not null"`
+	ExpiresAt       int64  `json:"expires_at" gorm:"not null;index:idx_gift_user_expiry,priority:2;index"`
+	ExpiredAt       int64  `json:"expired_at" gorm:"not null;default:0"`
+	GrantLogPending bool   `json:"-" gorm:"not null;default:false;index"`
+	// Set in the balance transaction, then delivered to the common log database.
+	ExpiryLogPending bool `json:"-" gorm:"not null;default:false;index"`
 }
 
 func (GiftQuota) TableName(namer schema.Namer) string { return namer.TableName("GiftQuotas") }
@@ -57,7 +61,7 @@ func expireGiftQuotaTx(tx *gorm.DB, user *User, now int64) error {
 	}
 	for _, gift := range gifts {
 		expired := gift.Remaining
-		if err := tx.Model(&gift).Updates(map[string]any{"remaining": 0, "expired": gorm.Expr("expired + ?", gift.Remaining), "expired_at": now}).Error; err != nil {
+		if err := tx.Model(&gift).Updates(map[string]any{"remaining": 0, "expired": gorm.Expr("expired + ?", gift.Remaining), "expired_at": now, "expiry_log_pending": true}).Error; err != nil {
 			return err
 		}
 		user.Quota -= expired
@@ -111,62 +115,144 @@ func GetWalletBalance(userID int) (WalletBalance, error) {
 	})
 	if err == nil && b.Quota != snapshot.Quota {
 		_ = invalidateUserCache(userID)
+		if logErr := FlushGiftQuotaLogsForUser(userID, 100); logErr != nil {
+			common.SysError(common.LogText("failed to write gift quota log: %s", logErr))
+		}
 	}
 	return b, err
 }
 
 func GrantGiftQuotaTx(tx *gorm.DB, userID, amount int, source, reference string, grantedAt int64) (*GiftQuota, error) {
+	gift, _, err := grantGiftQuotaTx(tx, userID, amount, source, reference, grantedAt)
+	return gift, err
+}
+
+func grantGiftQuotaTx(tx *gorm.DB, userID, amount int, source, reference string, grantedAt int64) (*GiftQuota, bool, error) {
 	if amount <= 0 || common.ValidateWalletQuota(amount) != nil || source == "" || len(source) > 40 || reference == "" || len(reference) > 128 || grantedAt <= 0 {
-		return nil, ErrInvalidUserQuotaAdjustment
+		return nil, false, ErrInvalidUserQuotaAdjustment
 	}
 	var user User
 	if err := lockForUpdate(tx).Select("id", "quota", "gift_wallet_enabled").First(&user, userID).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var existing GiftQuota
 	err := tx.Where("reference = ?", reference).First(&existing).Error
 	if err == nil {
 		if existing.UserID != userID || existing.Granted != amount || existing.Source != source {
-			return nil, errors.New("gift reference conflicts with an existing grant")
+			return nil, false, errors.New("gift reference conflicts with an existing grant")
 		}
-		return &existing, nil
+		return &existing, false, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
+		return nil, false, err
 	}
 	now := common.GetTimestamp()
 	if err := expireGiftQuotaTx(tx, &user, now); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if user.Quota > common.MaxWalletQuota-amount {
-		return nil, ErrWalletQuotaLimitExceeded
+		return nil, false, ErrWalletQuotaLimitExceeded
 	}
-	gift := GiftQuota{UserID: userID, Source: source, Reference: reference, Granted: amount, Remaining: amount, GrantedAt: grantedAt, ExpiresAt: grantedAt + GiftQuotaLifetime}
+	gift := GiftQuota{UserID: userID, Source: source, Reference: reference, Granted: amount, Remaining: amount, GrantedAt: grantedAt, ExpiresAt: grantedAt + GiftQuotaLifetime, GrantLogPending: true}
 	if gift.ExpiresAt <= now {
 		gift.Remaining = 0
 		gift.Expired = amount
 		gift.ExpiredAt = now
+		gift.ExpiryLogPending = true
 	}
 	if err := tx.Create(&gift).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := tx.Model(&User{}).Where("id = ?", userID).Updates(map[string]any{"quota": user.Quota + gift.Remaining, "gift_wallet_enabled": true}).Error; err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	return &gift, nil
+	return &gift, true, nil
 }
 
 func GrantGiftQuota(userID, amount int, source, reference string) (*GiftQuota, error) {
 	var gift *GiftQuota
+	var created bool
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var err error
-		gift, err = GrantGiftQuotaTx(tx, userID, amount, source, reference, common.GetTimestamp())
+		gift, created, err = grantGiftQuotaTx(tx, userID, amount, source, reference, common.GetTimestamp())
 		return err
 	})
 	if err == nil {
 		_ = invalidateUserCache(userID)
+		if created {
+			if logErr := FlushGiftQuotaLogsForUser(userID, 100); logErr != nil {
+				common.SysError(common.LogText("failed to write gift quota log: %s", logErr))
+			}
+		}
 	}
 	return gift, err
+}
+
+// FlushGiftQuotaLogsForUser projects committed grants and expirations into common logs.
+// A stable request ID lets a retry finish if the log write succeeded but the
+// pending flag could not be cleared (the log database may be separate).
+func FlushGiftQuotaLogsForUser(userID, limit int) error {
+	if LOG_DB == nil {
+		return nil
+	}
+	var ids []int64
+	query := DB.Model(&GiftQuota{}).Where("(grant_log_pending = ? OR expiry_log_pending = ?)", true, true)
+	if userID > 0 {
+		query = query.Where("user_id = ?", userID)
+	}
+	if err := query.Order("id").Limit(limit).Pluck("id", &ids).Error; err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := DB.Transaction(func(tx *gorm.DB) error {
+			var gift GiftQuota
+			if err := lockForUpdate(tx).First(&gift, id).Error; err != nil {
+				return err
+			}
+			if !gift.GrantLogPending && !gift.ExpiryLogPending {
+				return nil
+			}
+			logDB := LOG_DB
+			if LOG_DB == DB {
+				logDB = tx
+			}
+			var username string
+			if err := tx.Model(&User{}).Where("id = ?", gift.UserID).Select("username").Scan(&username).Error; err != nil {
+				return err
+			}
+			for _, event := range []struct {
+				pending   bool
+				name      string
+				amount    int
+				createdAt int64
+				key       string
+			}{
+				{gift.GrantLogPending, "grant", gift.Granted, gift.GrantedAt, "Gift credit granted: {{quota}}"},
+				{gift.ExpiryLogPending, "expiry", gift.Expired, gift.ExpiredAt, "Gift credit expired: {{quota}}"},
+			} {
+				if !event.pending {
+					continue
+				}
+				requestID := fmt.Sprintf("gift-%s:%d", event.name, gift.Id)
+				var count int64
+				if err := logDB.Model(&Log{}).Where("request_id = ?", requestID).Count(&count).Error; err != nil {
+					return err
+				}
+				if count == 0 {
+					other := NewLogOther()
+					message := common.NewMessage(event.key, map[string]any{"quota": logger.FormatQuota(event.amount)})
+					log := Log{UserId: gift.UserID, Username: username, CreatedAt: event.createdAt, Type: LogTypeSystem, RequestId: requestID, Content: other.setContent([]*common.Message{message}), Other: other.JSONString()}
+					if err := logDB.Create(&log).Error; err != nil {
+						return err
+					}
+				}
+			}
+			return tx.Model(&gift).Updates(map[string]any{"grant_log_pending": false, "expiry_log_pending": false}).Error
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func recordWalletAllocationTx(tx *gorm.DB, userID int, requestID string, giftID int64, amount int) error {
@@ -386,7 +472,7 @@ func ExpireDueGiftQuota(limit int) error {
 			return fmt.Errorf("expire gifts for user %d: %w", id, err)
 		}
 	}
-	return nil
+	return FlushGiftQuotaLogsForUser(0, limit)
 }
 
 // LegacyGiftQuotaMigration reclassifies an evidenced historical gift. It does
