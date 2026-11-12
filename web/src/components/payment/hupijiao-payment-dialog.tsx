@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
 import { ExternalLink, Copy, CheckCircle2 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { copyToClipboard } from '@/lib/copy-to-clipboard'
+
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Separator } from '@/components/ui/separator'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 export type HupijiaoPaymentData = {
   order_id?: string
@@ -33,7 +34,7 @@ interface HupijiaoPaymentDialogProps {
   onExpired?: () => void
 }
 
-const DEFAULT_PAYMENT_EXPIRES_IN_SECONDS = 3 * 60
+const DEFAULT_PAYMENT_EXPIRES_IN_SECONDS = 30 * 60
 
 function formatCountdown(seconds: number): string {
   const safeSeconds = Math.max(0, seconds)
@@ -96,6 +97,27 @@ export function HupijiaoPaymentDialog({
     }
   }
 
+  let qrContent = (
+    <div className='text-muted-foreground flex h-56 w-56 items-center justify-center text-sm'>
+      {t('No QR code available')}
+    </div>
+  )
+  if (qrcodeUrl) {
+    qrContent = (
+      <img
+        src={qrcodeUrl}
+        alt={t('Alipay QR code')}
+        className='h-56 w-56 rounded-md bg-white object-contain p-2'
+      />
+    )
+  } else if (payUrl) {
+    qrContent = (
+      <div className='rounded-md bg-white p-3'>
+        <QRCodeSVG value={payUrl} size={208} />
+      </div>
+    )
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='sm:max-w-md'>
@@ -111,21 +133,7 @@ export function HupijiaoPaymentDialog({
 
         <div className='space-y-4'>
           <div className='bg-muted/30 flex justify-center rounded-lg border p-4'>
-            {qrcodeUrl ? (
-              <img
-                src={qrcodeUrl}
-                alt={t('Alipay QR code')}
-                className='h-56 w-56 rounded-md bg-white object-contain p-2'
-              />
-            ) : payUrl ? (
-              <div className='rounded-md bg-white p-3'>
-                <QRCodeSVG value={payUrl} size={208} />
-              </div>
-            ) : (
-              <div className='text-muted-foreground flex h-56 w-56 items-center justify-center text-sm'>
-                {t('No QR code available')}
-              </div>
-            )}
+            {qrContent}
           </div>
 
           <div className='rounded-lg border'>

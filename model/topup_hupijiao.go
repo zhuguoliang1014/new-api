@@ -28,7 +28,7 @@ func ListUnsettledHupijiaoTopUps(ctx context.Context, minCreateTime, maxCreateTi
 	var orders []TopUp
 	err := DB.WithContext(ctx).
 		Where("payment_provider = ? AND status IN ? AND open_order_id <> ?", PaymentProviderHupijiao, []string{common.TopUpStatusPending, common.TopUpStatusExpired, common.TopUpStatusCanceled}, "").
-		Where("create_time >= ? AND create_time < ? AND id > ?", minCreateTime, maxCreateTime, afterID).
+		Where("create_time >= ? AND create_time < ? AND id > ? AND payment_received_after_close = 0", minCreateTime, maxCreateTime, afterID).
 		Order("id ASC").Limit(min(max(limit, 1), 100)).Find(&orders).Error
 	return orders, err
 }
@@ -60,6 +60,7 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 
 	var topUp TopUp
 	var quotaToAdd int
+	closedPayment := false
 
 	refCol := "`trade_no`"
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
@@ -83,11 +84,6 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 			return nil
 		}
 
-		// A checkout timeout does not revoke an authenticated payment.
-		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired && topUp.Status != common.TopUpStatusCanceled {
-			return ErrTopUpStatusInvalid
-		}
-
 		if math.IsNaN(amount) || math.IsInf(amount, 0) || amount <= 0 || math.IsNaN(topUp.Money) || math.IsInf(topUp.Money, 0) || topUp.Money <= 0 {
 			return errors.New("无效的支付金额")
 		}
@@ -96,6 +92,15 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 		}
 		if amount > topUp.Money+1.0 {
 			return fmt.Errorf("支付金额异常: 应付%.2f元, 实际支付%.2f元", topUp.Money, amount)
+		}
+
+		closed, err := rejectClosedTopUpPaymentTx(tx, &topUp)
+		if err != nil {
+			return err
+		}
+		if closed {
+			closedPayment = true
+			return nil
 		}
 
 		// topUp.Amount：虎皮椒配额订单为「美元分」（$1.00=100），与 controller 侧一致；站内配额 = (Amount/100)*QuotaPerUnit
@@ -118,6 +123,10 @@ func RechargeByHupijiao(tradeNo string, amount float64) error {
 		return creditPaidTopUp(tx, &topUp, quotaToAdd, nil)
 	})
 
+	if err == nil && closedPayment {
+		common.SysError("PAYMENT_REVIEW_REQUIRED: closed Hupijiao order received payment: " + tradeNo)
+		return ErrSubscriptionPaymentClosed
+	}
 	if err != nil {
 		common.SysError("hupijiao topup failed: " + err.Error())
 		return fmt.Errorf("充值失败，请稍后重试: %w", err)

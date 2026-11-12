@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -263,6 +264,59 @@ func TestGiftQuotaDatabaseMatrix(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestGiftQuotaCommonLogsAreSingleEvents(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	logDB, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	logSQLDB, err := logDB.DB()
+	require.NoError(t, err)
+	logSQLDB.SetMaxOpenConns(1)
+	previousDB, previousLogDB := DB, LOG_DB
+	previousRedis := common.RedisEnabled
+	previousMain, previousLog := common.MainDatabaseType(), common.LogDatabaseType()
+	DB, LOG_DB = db, logDB
+	common.RedisEnabled = false
+	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
+	t.Cleanup(func() {
+		DB, LOG_DB = previousDB, previousLogDB
+		common.RedisEnabled = previousRedis
+		common.SetDatabaseTypes(previousMain, previousLog)
+		require.NoError(t, sqlDB.Close())
+		require.NoError(t, logSQLDB.Close())
+	})
+	require.NoError(t, db.AutoMigrate(&User{}, &GiftQuota{}, &WalletGiftAllocation{}))
+	require.NoError(t, logDB.AutoMigrate(&Log{}))
+	user := createReserveTestUser(t, 200)
+	gift, err := GrantGiftQuota(user.Id, 500, "admin", "single-log-grant")
+	require.NoError(t, err)
+	_, err = GrantGiftQuota(user.Id, 500, "admin", "single-log-grant")
+	require.NoError(t, err)
+	var grants []Log
+	require.NoError(t, logDB.Where("user_id = ? AND request_id = ?", user.Id, fmt.Sprintf("gift-grant:%d", gift.Id)).Find(&grants).Error)
+	require.Len(t, grants, 1)
+	assert.Contains(t, grants[0].Content, "Gift credit granted")
+	require.NoError(t, db.Model(gift).Update("grant_log_pending", true).Error)
+	require.NoError(t, FlushGiftQuotaLogsForUser(user.Id, 10))
+	var grantCount int64
+	require.NoError(t, logDB.Model(&Log{}).Where("request_id = ?", fmt.Sprintf("gift-grant:%d", gift.Id)).Count(&grantCount).Error)
+	assert.EqualValues(t, 1, grantCount)
+	require.NoError(t, db.Model(gift).Update("expires_at", time.Now().Unix()-1).Error)
+	require.NoError(t, ExpireDueGiftQuota(10))
+	require.NoError(t, ExpireDueGiftQuota(10))
+	var expiries []Log
+	require.NoError(t, logDB.Where("user_id = ? AND request_id = ?", user.Id, fmt.Sprintf("gift-expiry:%d", gift.Id)).Find(&expiries).Error)
+	require.Len(t, expiries, 1)
+	assert.Contains(t, expiries[0].Content, "Gift credit expired")
+	balance, err := GetWalletBalance(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 200, balance.BalanceQuota)
+	assert.Zero(t, balance.GiftQuota)
 }
 
 func TestGiftQuotaAutomaticRewardSources(t *testing.T) {

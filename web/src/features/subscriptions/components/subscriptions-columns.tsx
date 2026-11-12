@@ -70,7 +70,7 @@ export function useSubscriptionsColumns(): ColumnDef<PlanRecord>[] {
         accessorFn: (row) => row.plan.sales_limit || 0,
         header: t('Total Sales Limit'),
         cell: ({ row }) =>
-          row.original.plan.sales_limit ? (
+          row.original.plan.sales_limit || row.original.plan.limited_sale ? (
             <PlanSalesStatus record={row.original} />
           ) : (
             t('Unlimited')

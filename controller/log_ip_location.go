@@ -17,6 +17,10 @@ func GetLogIPLocation(c *gin.Context) {
 		common.ApiErrorStatus(c, http.StatusBadRequest, err)
 		return
 	}
+	if !canViewOwnLogIP(c.GetInt("id"), c.GetInt("role")) {
+		common.ApiErrorStatus(c, http.StatusNotFound, common.NewMessage("Log not found"))
+		return
+	}
 	var log model.Log
 	tx := model.LOG_DB.WithContext(c.Request.Context()).Select("ip").Where("ip = ?", c.Query("ip"))
 	if c.GetInt("role") < common.RoleAdminUser {

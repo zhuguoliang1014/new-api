@@ -42,7 +42,9 @@ import {
   paySubscriptionWaffoPancake,
   paySubscriptionBalance,
 } from '../../api'
+import { usePromotionClock } from '../../hooks/use-promotion-clock'
 import { formatDuration, formatResetPeriod } from '../../lib'
+import { getPromotionQuote } from '../../lib/promotion'
 import type { PlanRecord } from '../../types'
 
 interface PaymentMethod {
@@ -96,7 +98,9 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
   }, [props.open, props.epayMethods])
 
-  const plan = props.plan?.plan
+  const now = usePromotionClock(!!props.plan?.plan.discount_ends_at)
+  const quote = props.plan ? getPromotionQuote(props.plan, now) : null
+  const plan = quote?.plan
   if (!plan) return null
 
   const hasStripe = props.enableStripe && !!plan.stripe_price_id
@@ -145,7 +149,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const handlePayStripe = async () => {
     setPaying(true)
     try {
-      const res = await paySubscriptionStripe({ plan_id: plan.id })
+      const res = await paySubscriptionStripe({
+        plan_id: plan.id,
+        expected_price_amount: plan.price_amount,
+      })
       if (res.message === 'success' && res.data?.pay_link) {
         window.open(res.data.pay_link, '_blank')
         toast.success(t('Payment page opened'))
@@ -163,7 +170,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const handlePayCreem = async () => {
     setPaying(true)
     try {
-      const res = await paySubscriptionCreem({ plan_id: plan.id })
+      const res = await paySubscriptionCreem({
+        plan_id: plan.id,
+        expected_price_amount: plan.price_amount,
+      })
       if (res.message === 'success' && res.data?.checkout_url) {
         window.open(res.data.checkout_url, '_blank')
         toast.success(t('Payment page opened'))
@@ -183,7 +193,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
   const handlePayWaffoPancake = async () => {
     setPaying(true)
     try {
-      const res = await paySubscriptionWaffoPancake({ plan_id: plan.id })
+      const res = await paySubscriptionWaffoPancake({
+        plan_id: plan.id,
+        expected_price_amount: plan.price_amount,
+      })
       if (res.message === 'success' && res.data?.checkout_url) {
         toast.success(t('Redirecting to payment page...'))
         window.location.href = res.data.checkout_url
@@ -210,6 +223,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
     try {
       const res = await paySubscriptionEpay({
         plan_id: plan.id,
+        expected_price_cny: priceCNY,
         payment_method: selectedEpayMethod,
       })
       if (res.message === 'success' && res.url) {
@@ -248,7 +262,10 @@ export function SubscriptionPurchaseDialog(props: Props) {
     }
     setPaying(true)
     try {
-      const res = await paySubscriptionBalance({ plan_id: plan.id })
+      const res = await paySubscriptionBalance({
+        plan_id: plan.id,
+        expected_price_amount: plan.price_amount,
+      })
       if (res.success) {
         toast.success(t('Subscription purchased successfully'))
         void props.onPurchaseSuccess?.()

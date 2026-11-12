@@ -99,6 +99,9 @@ func userCheckinWithTransaction(checkin *Checkin, userId, quotaAwarded int) (*Ch
 		return nil, err
 	}
 	_ = invalidateUserCache(userId)
+	if logErr := FlushGiftQuotaLogsForUser(userId, 100); logErr != nil {
+		common.SysError(common.LogText("failed to write gift quota log: %s", logErr))
+	}
 	return checkin, nil
 }
 

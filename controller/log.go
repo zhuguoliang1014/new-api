@@ -90,10 +90,29 @@ func GetUserLogs(c *gin.Context) {
 		return
 	}
 	populateLogSubscriptionPurchaseRatios(logs)
+	if !canViewOwnLogIP(c.GetInt("id"), c.GetInt("role")) {
+		for _, log := range logs {
+			log.Ip = ""
+		}
+	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
 	return
+}
+
+func canViewOwnLogIP(userID, role int) bool {
+	if role >= common.RoleAdminUser {
+		return true
+	}
+	// Token log queries set the user ID but do not carry a session role.
+	if role == 0 {
+		if user, err := model.GetUserCache(userID); err == nil && user.Role >= common.RoleAdminUser {
+			return true
+		}
+	}
+	setting, err := model.GetUserSetting(userID, false)
+	return err == nil && setting.RecordIpLog
 }
 
 // ExportAllLogs streams every user's logs matching the search.
@@ -124,6 +143,7 @@ func exportLogs(c *gin.Context, all bool) {
 	filter.StartTimestamp = startTimestamp
 
 	userId := c.GetInt("id")
+	showOwnIP := all || canViewOwnLogIP(userId, c.GetInt("role"))
 	release, ok, err := service.AcquireLogExportLock(userId)
 	if err != nil {
 		common.SysError(common.LogText("failed to lock log export: %s", err.Error()))
@@ -143,6 +163,9 @@ func exportLogs(c *gin.Context, all bool) {
 
 	count := 0
 	writeLog := func(log *model.Log) error {
+		if !showOwnIP {
+			log.Ip = ""
+		}
 		line, err := common.Marshal(log)
 		if err != nil {
 			return err
@@ -194,6 +217,11 @@ func GetLogByKey(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	if !canViewOwnLogIP(c.GetInt("id"), c.GetInt("role")) {
+		for _, log := range logs {
+			log.Ip = ""
+		}
 	}
 	c.JSON(200, gin.H{
 		"success": true,

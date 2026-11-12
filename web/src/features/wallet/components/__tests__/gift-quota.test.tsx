@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18next from 'i18next'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -7,14 +7,12 @@ import { afterEach, expect, it, vi } from 'vitest'
 import * as usersApi from '@/features/users/api'
 import { UserQuotaDialog } from '@/features/users/components/user-quota-dialog'
 import zh from '@/i18n/locales/zh.json'
-import { api } from '@/lib/api'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 import {
   DEFAULT_CURRENCY_CONFIG,
   useSystemConfigStore,
 } from '@/stores/system-config-store'
 
-import { GiftQuotaHistory, type GiftQuotaRecord } from '../gift-quota-history'
 import { WalletStatsCard } from '../wallet-stats-card'
 
 const clients: QueryClient[] = []
@@ -36,17 +34,7 @@ afterEach(async () => {
     .setConfig({ currency: { ...DEFAULT_CURRENCY_CONFIG } })
 })
 
-function record(id = 1): GiftQuotaRecord {
-  return {
-    id,
-    granted: 2500000,
-    remaining: 0,
-    expired: 1500000,
-    granted_at: 1794000000,
-    expires_at: 1796592000,
-    expired_at: 1796592000,
-  }
-}
+const nextExpiry = 1796592000
 
 it('shows purchased and gift balances separately and switches language', async () => {
   provider(
@@ -59,7 +47,7 @@ it('shows purchased and gift balances separately and switches language', async (
         quota: 2000000,
         balance_quota: 1500000,
         gift_quota: 500000,
-        next_gift_expiry: record().expires_at,
+        next_gift_expiry: nextExpiry,
         used_quota: 0,
         request_count: 3,
         aff_quota: 0,
@@ -97,64 +85,10 @@ it('shows purchased and gift balances separately and switches language', async (
     )
   ).toBeVisible()
   expect(screen.getByText('最近一笔到期时间')).toBeVisible()
-  expect(screen.getByText(formatTimestamp(record().expires_at))).toBeVisible()
+  expect(screen.getByText(formatTimestamp(nextExpiry))).toBeVisible()
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
   await userEvent.keyboard('{Escape}')
   await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
-})
-
-it('loads only the current account history in logs and preserves expired amounts and dates', async () => {
-  const request = vi.spyOn(api, 'get').mockResolvedValue({
-    data: { success: true, data: { items: [record()], total: 1 } },
-  })
-  provider(<GiftQuotaHistory userId={7} />)
-  const dialog = screen.getByRole('region', { name: 'Gift credit history' })
-  expect(await within(dialog).findByText(formatQuota(1500000))).toBeVisible()
-  expect(within(dialog).getByText(formatQuota(1500000))).toBeVisible()
-  expect(
-    within(dialog).queryByRole('columnheader', { name: 'Source' })
-  ).not.toBeInTheDocument()
-  expect(
-    within(dialog).queryByText(/Administrator gift|Yaohuo registration gift/)
-  ).not.toBeInTheDocument()
-  expect(
-    within(dialog).getByText(formatTimestamp(record().expires_at))
-  ).toBeVisible()
-  expect(within(dialog).getByText(formatQuota(1000000))).toBeVisible()
-  expect(request).toHaveBeenCalledWith('/api/user/self/gifts', {
-    params: { p: 1, page_size: 10 },
-  })
-})
-
-it('paginates expired records through the shared pagination controls', async () => {
-  const request = vi.spyOn(api, 'get').mockResolvedValue({
-    data: { success: true, data: { items: [record()], total: 11 } },
-  })
-  provider(<GiftQuotaHistory userId={7} />)
-  await screen.findByText(formatQuota(1500000))
-  await userEvent.click(screen.getByRole('button', { name: 'Go to next page' }))
-  await waitFor(() =>
-    expect(request).toHaveBeenLastCalledWith('/api/user/self/gifts', {
-      params: { p: 2, page_size: 10 },
-    })
-  )
-})
-
-it('keeps server failures visible with a retry instead of showing an empty history', async () => {
-  const request = vi
-    .spyOn(api, 'get')
-    .mockResolvedValueOnce({
-      data: { success: false, message: 'History unavailable' },
-    })
-    .mockResolvedValue({
-      data: { success: true, data: { items: [], total: 0 } },
-    })
-  provider(<GiftQuotaHistory userId={7} />)
-  expect(await screen.findByRole('button', { name: 'Retry' })).toBeVisible()
-  expect(screen.queryByText('No gift credits yet')).not.toBeInTheDocument()
-  await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
-  expect(await screen.findByText('No gift credits yet')).toBeVisible()
-  expect(request).toHaveBeenCalledTimes(2)
 })
 
 it('defaults administrator grants to gifts and sends the explicit quota type', async () => {

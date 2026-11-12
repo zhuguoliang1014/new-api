@@ -16,6 +16,7 @@ import {
 import { getPlanSalesState } from '../../lib/sales'
 import { subscriptionPlanSchema, type PlanRecord } from '../../types'
 import { SubscriptionPurchaseDialog } from '../dialogs/subscription-purchase-dialog'
+import { PlanSalesStatus } from '../plan-sales-status'
 import { SubscriptionCreateDrawer } from '../subscription-create-drawer'
 import { SubscriptionsProvider } from '../subscriptions-provider'
 
@@ -182,7 +183,7 @@ test('the editor reports a rejected sales cap and keeps the unsaved form open', 
   })
   expect(
     screen.getByText(
-      '0 means unlimited. Paid orders, pending payments and display sales count toward this limit; gifts do not.'
+      'For limited editions, 0 means no stock. Paid orders, pending payments and display sales count toward the total.'
     )
   ).toBeVisible()
   await user.clear(input)
@@ -191,4 +192,20 @@ test('the editor reports a rejected sales cap and keeps the unsaved form open', 
   expect(error).toHaveBeenCalledWith(message)
   expect(input).toHaveValue(1)
   expect(close).not.toHaveBeenCalled()
+})
+
+test('limited stock explains the difference between paid sales and remaining places', () => {
+  const offer = record(6, 1)
+  offer.plan.sales_limit = 20
+  offer.remaining_count = 13
+  render(<PlanSalesStatus record={offer} />)
+  expect(
+    screen.getByText('Limited to 20 · 13 available', { exact: false })
+  ).toBeVisible()
+  expect(screen.getByText('Payment reservations: 1')).toBeVisible()
+})
+
+test('zero reservations do not add an unnecessary inventory label', () => {
+  render(<PlanSalesStatus record={record(6)} />)
+  expect(screen.queryByText(/Payment reservations:/)).not.toBeInTheDocument()
 })

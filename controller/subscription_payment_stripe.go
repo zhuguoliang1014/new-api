@@ -17,7 +17,8 @@ import (
 )
 
 type SubscriptionStripePayRequest struct {
-	PlanId int `json:"plan_id"`
+	ExpectedPriceAmount *float64 `json:"expected_price_amount"`
+	PlanId              int      `json:"plan_id"`
 }
 
 func SubscriptionRequestStripePay(c *gin.Context) {
@@ -31,8 +32,12 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := model.GetSubscriptionPurchasePlanById(req.PlanId)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := plan.CheckExpectedPrice(req.ExpectedPriceAmount, false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -84,6 +89,7 @@ func SubscriptionRequestStripePay(c *gin.Context) {
 	referenceId := "sub_ref_" + common.Sha1([]byte(reference))
 
 	order := &model.SubscriptionOrder{
+		QuotedPlan:      plan,
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           plan.PriceAmount,
@@ -118,6 +124,7 @@ func genStripeSubscriptionLink(referenceId string, customerId string, email stri
 
 	params := &stripe.CheckoutSessionParams{
 		ClientReferenceID: stripe.String(referenceId),
+		ExpiresAt:         stripe.Int64(time.Now().Unix() + model.SubscriptionPendingOrderTTLSeconds),
 		SuccessURL:        stripe.String(paymentReturnPath("/wallet")),
 		CancelURL:         stripe.String(paymentReturnPath("/wallet")),
 		LineItems: []*stripe.CheckoutSessionLineItemParams{

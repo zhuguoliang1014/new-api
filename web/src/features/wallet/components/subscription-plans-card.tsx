@@ -41,8 +41,11 @@ import {
   getSelfSubscriptionFull,
 } from '@/features/subscriptions/api'
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
+import { PlanPromotionPrice } from '@/features/subscriptions/components/plan-promotion-price'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
+import { usePromotionClock } from '@/features/subscriptions/hooks/use-promotion-clock'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type {
   PlanRecord,
@@ -77,6 +80,9 @@ export function SubscriptionPlansCard({
   const { t } = useTranslation()
 
   const [plans, setPlans] = useState<PlanRecord[]>([])
+  const promotionNow = usePromotionClock(
+    plans.some((record) => !!record.plan.discount_ends_at)
+  )
   const [activeSubscriptions, setActiveSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
@@ -399,7 +405,8 @@ export function SubscriptionPlansCard({
         {/* Available plans grid */}
         {plans.length > 0 ? (
           <div className='grid grid-cols-1 gap-3 2xl:grid-cols-2 2xl:gap-4'>
-            {plans.map((p, index) => {
+            {plans.map((raw, index) => {
+              const p = getPromotionQuote(raw, promotionNow)
               const plan = p?.plan
               if (!plan) return null
               const totalAmount = Number(plan.total_amount || 0)
@@ -464,6 +471,7 @@ export function SubscriptionPlansCard({
                       <span className='text-primary text-2xl font-bold'>
                         ${price}
                       </span>
+                      <PlanPromotionPrice record={p} now={promotionNow} />
                     </div>
 
                     <div className='flex-1 space-y-1.5 pb-3'>

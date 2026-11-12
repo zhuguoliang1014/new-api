@@ -111,7 +111,7 @@ func setUserSubscriptionFrozenTx(tx *gorm.DB, userId, subscriptionId int, frozen
 		if !policy.Allowed {
 			return nil, errors.New("仅中国大陆法定节假日（含调休休息日）可冻结订阅")
 		}
-		plan, err := getSubscriptionPlanByIdTx(tx, sub.PlanId)
+		plan, err := getUserSubscriptionPlanTx(tx, &sub)
 		if err != nil {
 			return nil, err
 		}

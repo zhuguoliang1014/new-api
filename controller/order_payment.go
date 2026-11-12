@@ -37,7 +37,8 @@ func verifyOrderPayment(ctx context.Context, order *model.TopUp, source string) 
 		if err != nil {
 			return false, err
 		}
-		return true, completeHupijiaoPaidOrder(order.TradeNo, status.Amount, string(payload))
+		err = completeHupijiaoPaidOrder(order.TradeNo, status.Amount, string(payload))
+		return err == nil, err
 	case model.PaymentProviderEpay:
 		status, err := queryEpayOrder(ctx, order.TradeNo)
 		if err != nil || status.Status != 1 {
@@ -48,7 +49,7 @@ func verifyOrderPayment(ctx context.Context, order *model.TopUp, source string) 
 			return false, err
 		}
 		_, err = completeEpayPaidOrder(order.TradeNo, status.Method, status.Money, string(payload), "")
-		return true, err
+		return err == nil, err
 	default:
 		return false, fmt.Errorf("该支付渠道暂不支持主动查单，请联系管理员核实")
 	}
@@ -89,8 +90,8 @@ func AdminCloseTopUp(c *gin.Context) {
 	closeOrder(c, order)
 }
 
-// RepayTopUpOrder resumes a saved checkout. Legacy/expired checkouts get a new
-// direct Hupijiao order with the original quote; the old provider ID is retained.
+// RepayTopUpOrder resumes a live checkout. An unexpired legacy checkout can
+// migrate to a new link; closed or timed-out checkouts must use a new purchase.
 func RepayTopUpOrder(c *gin.Context) {
 	if !isHupijiaoTopUpEnabled() {
 		common.ApiErrorMsg(c, "虎皮椒支付未启用")
@@ -101,7 +102,7 @@ func RepayTopUpOrder(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "订单不存在"})
 		return
 	}
-	if order.Status == common.TopUpStatusCanceled {
+	if order.Status == common.TopUpStatusCanceled || order.Status == common.TopUpStatusExpired || order.CreateTime+model.SubscriptionPendingOrderTTLSeconds <= common.GetTimestamp() {
 		common.ApiErrorMsg(c, "订单已取消，请重新下单")
 		return
 	}

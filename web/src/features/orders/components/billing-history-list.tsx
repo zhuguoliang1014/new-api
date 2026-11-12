@@ -267,6 +267,13 @@ export function BillingHistoryList({
                         <div className='text-muted-foreground text-xs'>
                           {formatTimestamp(record.create_time)}
                         </div>
+                        {record.payment_exception && (
+                          <p role='alert' className='text-destructive text-xs'>
+                            {t(
+                              'Payment received for a cancelled order. Please contact support for review.'
+                            )}
+                          </p>
+                        )}
                       </div>
                       <StatusBadge
                         label={t(status.label)}
@@ -321,7 +328,7 @@ export function BillingHistoryList({
                       </div>
                     </div>
                     {(record.status === 'pending' ||
-                      record.status === 'expired' ||
+                      (isAdmin && record.status === 'expired') ||
                       (isAdmin && record.status === 'canceled')) &&
                       (record.payment_provider === 'hupijiao' ||
                         record.payment_provider === 'epay') && (
@@ -355,7 +362,7 @@ export function BillingHistoryList({
                                 : t('Pay now')}
                             </Button>
                           )}
-                          {record.status !== 'canceled' && (
+                          {record.status === 'pending' && (
                             <Button
                               size='sm'
                               variant='outline'

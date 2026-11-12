@@ -82,6 +82,7 @@ import {
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
+import { PlanPromotionFields } from './plan-promotion-fields'
 import { useSubscriptions } from './subscriptions-provider'
 
 interface Props {
@@ -292,6 +293,11 @@ export function SubscriptionsMutateDrawer({
             className={sideDrawerFormClassName()}
           >
             {/* Basic Info */}
+            <PlanPromotionFields
+              quotaUSD={Number(form.watch('total_amount') || 0)}
+              priceCNY={Number(form.watch('price_cny') || 0)}
+              billingRatio={Number(form.watch('billing_ratio') ?? 1)}
+            />
             <SideDrawerSection>
               <h3 className='flex items-center gap-2 text-sm font-medium'>
                 <IconBadge tone='info' size='xs'>

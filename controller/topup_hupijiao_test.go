@@ -79,15 +79,15 @@ func hupijiaoTestResponse(t *testing.T, request *http.Request, trade, openid, st
 	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body))), Header: make(http.Header)}, nil
 }
 
-func TestHupijiaoLatePaidCallbacksSettleExactlyOnce(t *testing.T) {
+func TestHupijiaoCallbacksNeverReopenClosedOrders(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
 	previousSecret := setting.HupijiaoAppSecret
 	setting.HupijiaoAppSecret = "test-callback-secret"
 	t.Cleanup(func() { setting.HupijiaoAppSecret = previousSecret })
 	for _, kind := range []string{"wallet", "subscription"} {
-		for _, status := range []string{common.TopUpStatusPending, common.TopUpStatusExpired} {
+		for _, status := range []string{common.TopUpStatusPending, common.TopUpStatusExpired, common.TopUpStatusCanceled} {
 			t.Run(kind+"-"+status, func(t *testing.T) {
-				order := hupijiaoTestOrder(t, db, user, kind+status, status, time.Now().Add(-time.Hour).Unix())
+				order := hupijiaoTestOrder(t, db, user, kind+status, status, time.Now().Add(-10*time.Minute).Unix())
 				if kind == "subscription" {
 					plan := &model.SubscriptionPlan{Title: "payment recovery", PriceAmount: 20, PriceCNY: 20, Currency: "USD", DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, TotalAmount: 1000, Enabled: true}
 					require.NoError(t, db.Create(plan).Error)
@@ -128,37 +128,34 @@ func TestHupijiaoLatePaidCallbacksSettleExactlyOnce(t *testing.T) {
 				}
 				wg.Wait()
 				close(results)
-				closedSubscription := kind == "subscription" && status == common.TopUpStatusExpired
 				for r := range results {
-					if closedSubscription {
-						assert.Equal(t, http.StatusInternalServerError, r.Code, r.Body.String())
-						assert.Equal(t, "fail", r.Body.String())
-					} else {
+					if status == common.TopUpStatusPending {
 						assert.Equal(t, http.StatusOK, r.Code, r.Body.String())
 						assert.Equal(t, "success", r.Body.String())
+					} else {
+						assert.Equal(t, http.StatusInternalServerError, r.Code, r.Body.String())
 					}
-				}
-				if closedSubscription {
-					var unchanged model.TopUp
-					require.NoError(t, db.First(&unchanged, order.Id).Error)
-					assert.Equal(t, common.TopUpStatusExpired, unchanged.Status)
-					return
 				}
 				var saved model.TopUp
 				require.NoError(t, db.First(&saved, order.Id).Error)
-				assert.Equal(t, common.TopUpStatusSuccess, saved.Status)
+				if status == common.TopUpStatusPending {
+					assert.Equal(t, common.TopUpStatusSuccess, saved.Status)
+				} else {
+					assert.Equal(t, status, saved.Status)
+					assert.Positive(t, saved.PaymentReceivedAfterClose)
+				}
 				assert.Positive(t, saved.CompleteTime)
 			})
 		}
 	}
 	var savedUser model.User
 	require.NoError(t, db.First(&savedUser, user.Id).Error)
-	assert.Equal(t, 20_000_007, savedUser.Quota)
+	assert.Equal(t, 10_000_007, savedUser.Quota)
 	var count int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", user.Id).Count(&count).Error)
 	assert.EqualValues(t, 1, count)
 	require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).Count(&count).Error)
-	assert.EqualValues(t, 2, count)
+	assert.EqualValues(t, 1, count)
 }
 
 func TestHupijiaoQueryRejectsInvalidProviderResponses(t *testing.T) {
@@ -197,17 +194,18 @@ func TestHupijiaoPollingNeverReportsFailedSettlementAsPaid(t *testing.T) {
 		wallet                                                int
 		wantCode                                              int
 	}{
+		{name: "paid live", status: common.TopUpStatusPending, paid: "OD", amount: "20", wallet: 7, wantCode: 200},
 		{name: "paid expired", status: common.TopUpStatusExpired, paid: "OD", amount: "20", wallet: 7, wantCode: 200},
 		{name: "unpaid", status: common.TopUpStatusExpired, paid: "WP", amount: "20", wallet: 7, wantCode: 200},
 		{name: "wrong merchant order", status: common.TopUpStatusPending, responseTrade: "another-order", paid: "OD", amount: "20", wallet: 7, wantCode: 502},
 		{name: "wrong provider order", status: common.TopUpStatusPending, responseID: "another-provider-id", paid: "OD", amount: "20", wallet: 7, wantCode: 502},
 		{name: "underpayment", status: common.TopUpStatusPending, paid: "OD", amount: "19", wallet: 7, wantCode: 502},
 		{name: "wallet ceiling", status: common.TopUpStatusPending, paid: "OD", amount: "20", wallet: common.MaxWalletQuota, wantCode: 502},
-		{name: "cancelled", status: "cancelled", paid: "OD", amount: "20", wallet: 7, wantCode: 502},
+		{name: "cancelled", status: "cancelled", paid: "OD", amount: "20", wallet: 7, wantCode: 200},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, db.Model(user).Update("quota", tc.wallet).Error)
-			order := hupijiaoTestOrder(t, db, user, tc.name, tc.status, time.Now().Add(-time.Hour).Unix())
+			order := hupijiaoTestOrder(t, db, user, tc.name, tc.status, time.Now().Add(-10*time.Minute).Unix())
 			trade, openid := order.TradeNo, order.OpenOrderId
 			if tc.responseTrade != "" {
 				trade = tc.responseTrade
@@ -232,7 +230,7 @@ func TestHupijiaoPollingNeverReportsFailedSettlementAsPaid(t *testing.T) {
 				} `json:"data"`
 			}
 			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
-			wantPaid := tc.name == "paid expired"
+			wantPaid := tc.name == "paid live"
 			assert.Equal(t, wantPaid, response.Data.Paid)
 			var saved model.User
 			require.NoError(t, db.First(&saved, user.Id).Error)
@@ -247,7 +245,7 @@ func TestHupijiaoPollingNeverReportsFailedSettlementAsPaid(t *testing.T) {
 
 func TestHupijiaoBackgroundRecoversMissedCallbackAndRetries(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
-	order := hupijiaoTestOrder(t, db, user, "background", common.TopUpStatusExpired, time.Now().Add(-time.Hour).Unix())
+	order := hupijiaoTestOrder(t, db, user, "background", common.TopUpStatusPending, time.Now().Add(-20*time.Minute).Unix())
 	unpaid := hupijiaoTestOrder(t, db, user, "background-unpaid", common.TopUpStatusPending, time.Now().Add(-time.Minute).Unix())
 	fail := true
 	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
@@ -279,14 +277,17 @@ func TestHupijiaoBackgroundRecoversMissedCallbackAndRetries(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusPending, unpaid.Status)
 }
 
-func TestHupijiaoSubscriptionPollingDoesNotReopenExpiredSubscription(t *testing.T) {
+func TestHupijiaoSubscriptionPollingRecoversLivePayment(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
-	order := hupijiaoTestOrder(t, db, user, "subscription-poll", common.TopUpStatusExpired, time.Now().Add(-time.Hour).Unix())
+	order := hupijiaoTestOrder(t, db, user, "subscription-poll", common.TopUpStatusPending, time.Now().Add(-10*time.Minute).Unix())
 	plan := &model.SubscriptionPlan{Title: "subscription poll", Currency: "USD", DurationUnit: model.SubscriptionDurationDay, DurationValue: 1, TotalAmount: 1000}
 	require.NoError(t, db.Create(plan).Error)
 	t.Cleanup(func() { require.NoError(t, db.Delete(plan).Error) })
 	require.NoError(t, db.Model(order).Update("amount", 0).Error)
-	require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: order.TradeNo, Money: 20, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, Status: common.TopUpStatusExpired, CreateTime: order.CreateTime}).Error)
+	require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: order.TradeNo, Money: 20, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, Status: common.TopUpStatusPending, CreateTime: order.CreateTime}).Error)
+	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
+		return hupijiaoTestResponse(t, r, order.TradeNo, order.OpenOrderId, "OD", "20.00")
+	})
 	for _, userID := range []int{user.Id + 1, user.Id, user.Id} {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
@@ -299,12 +300,11 @@ func TestHupijiaoSubscriptionPollingDoesNotReopenExpiredSubscription(t *testing.
 			continue
 		}
 		assert.Equal(t, http.StatusOK, recorder.Code)
-		assert.Contains(t, recorder.Body.String(), `"paid":false`)
-		assert.Contains(t, recorder.Body.String(), `"status":"expired"`)
+		assert.Contains(t, recorder.Body.String(), `"paid":true`)
 	}
 	var count int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", user.Id).Count(&count).Error)
-	assert.Zero(t, count)
+	assert.EqualValues(t, 1, count)
 	var saved model.User
 	require.NoError(t, db.First(&saved, user.Id).Error)
 	assert.Equal(t, 7, saved.Quota)
@@ -313,7 +313,7 @@ func TestHupijiaoSubscriptionPollingDoesNotReopenExpiredSubscription(t *testing.
 func TestHupijiaoReconciliationPagesOnlyRecoverableOrders(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
 	now := common.GetTimestamp()
-	first := hupijiaoTestOrder(t, db, user, "page-first", common.TopUpStatusExpired, now-7200)
+	first := hupijiaoTestOrder(t, db, user, "page-first", common.TopUpStatusPending, now-7200)
 	second := hupijiaoTestOrder(t, db, user, "page-second", common.TopUpStatusPending, now-3600)
 	hupijiaoTestOrder(t, db, user, "page-done", common.TopUpStatusSuccess, now-3600)
 	hupijiaoTestOrder(t, db, user, "page-cancelled", "cancelled", now-3600)
@@ -340,7 +340,7 @@ func TestHupijiaoScheduledTaskRecordsCommittedSettlement(t *testing.T) {
 		require.NoError(t, db.Where("type = ?", hupijiaoReconcileTaskType).Delete(&model.SystemTask{}).Error)
 		require.NoError(t, db.Where("type = ?", hupijiaoReconcileTaskType).Delete(&model.SystemTaskLock{}).Error)
 	})
-	order := hupijiaoTestOrder(t, db, user, "scheduled", common.TopUpStatusExpired, time.Now().Add(-time.Hour).Unix())
+	order := hupijiaoTestOrder(t, db, user, "scheduled", common.TopUpStatusPending, time.Now().Add(-10*time.Minute).Unix())
 	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
 		return hupijiaoTestResponse(t, r, order.TradeNo, order.OpenOrderId, "OD", "20.00")
 	})

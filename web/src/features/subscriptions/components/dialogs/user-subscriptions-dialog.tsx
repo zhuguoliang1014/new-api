@@ -303,7 +303,9 @@ export function UserSubscriptionsDialog(props: Props) {
                     return (
                       <div>
                         <div className='font-medium'>
-                          {planTitleMap.get(sub.plan_id) || `#${sub.plan_id}`}
+                          {record.plan_title ||
+                            planTitleMap.get(sub.plan_id) ||
+                            `#${sub.plan_id}`}
                         </div>
                         <div className='text-muted-foreground text-sm'>
                           {t('Source')}: {sub.source || '-'}
@@ -378,6 +380,7 @@ export function UserSubscriptionsDialog(props: Props) {
                             setResetAction({
                               planId: sub.plan_id,
                               planTitle:
+                                record.plan_title ||
                                 planTitleMap.get(sub.plan_id) ||
                                 `#${sub.plan_id}`,
                             })

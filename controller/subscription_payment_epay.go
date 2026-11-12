@@ -17,8 +17,9 @@ import (
 )
 
 type SubscriptionEpayPayRequest struct {
-	PlanId        int    `json:"plan_id"`
-	PaymentMethod string `json:"payment_method"`
+	ExpectedPriceCNY *float64 `json:"expected_price_cny"`
+	PlanId           int      `json:"plan_id"`
+	PaymentMethod    string   `json:"payment_method"`
 }
 
 func SubscriptionRequestEpay(c *gin.Context) {
@@ -32,8 +33,12 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		return
 	}
 
-	plan, err := model.GetSubscriptionPlanById(req.PlanId)
+	plan, err := model.GetSubscriptionPurchasePlanById(req.PlanId)
 	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if err := plan.CheckExpectedPrice(req.ExpectedPriceCNY, true); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -96,6 +101,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	}
 
 	order := &model.SubscriptionOrder{
+		QuotedPlan:      plan,
 		UserId:          userId,
 		PlanId:          plan.Id,
 		Money:           payMoney,

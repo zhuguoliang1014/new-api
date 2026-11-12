@@ -256,6 +256,7 @@ export type TopupStatus = 'success' | 'pending' | 'expired' | 'canceled'
  * Topup billing record
  */
 export interface TopupRecord {
+  payment_exception?: boolean
   /** Record ID */
   id: number
   /** User ID */

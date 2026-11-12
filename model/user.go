@@ -654,7 +654,13 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return err
 	}
 
-	return invalidateUserCache(user.Id)
+	if err := invalidateUserCache(user.Id); err != nil {
+		return err
+	}
+	if logErr := FlushGiftQuotaLogsForUser(user.Id, 100); logErr != nil {
+		common.SysError(common.LogText("failed to write gift quota log: %s", logErr))
+	}
+	return nil
 }
 
 func minTransferAffQuota() int {
@@ -777,7 +783,6 @@ func (user *User) finishInsert(inviterId int) {
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
 			_, _ = GrantGiftQuota(user.Id, common.QuotaForInvitee, "invitation", fmt.Sprintf("invitation:%d", user.Id))
-			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, common.NewMessage("Bonus for inviting a user {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInviter)}))
@@ -843,7 +848,6 @@ func (user *User) FinalizeOAuthUserCreation(inviterId int) {
 	if inviterId != 0 && operation_setting.IsPaymentComplianceConfirmed() {
 		if common.QuotaForInvitee > 0 {
 			_, _ = GrantGiftQuota(user.Id, common.QuotaForInvitee, "invitation", fmt.Sprintf("invitation:%d", user.Id))
-			RecordLog(user.Id, LogTypeSystem, common.NewMessage("Invitation code bonus {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInvitee)}))
 		}
 		if common.QuotaForInviter > 0 {
 			RecordLog(inviterId, LogTypeSystem, common.NewMessage("Bonus for inviting a user {{quota}}", map[string]any{"quota": logger.FormatQuota(common.QuotaForInviter)}))

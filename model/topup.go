@@ -15,37 +15,39 @@ import (
 )
 
 type TopUp struct {
-	ReferralUserId  int     `json:"-" gorm:"default:0"`
-	ReferralQuota   int     `json:"-" gorm:"type:bigint;default:0"`
-	ReferralPercent float64 `json:"-" gorm:"default:0"`
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id" gorm:"index"`
-	Amount          int64   `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
-	OpenOrderId     string  `json:"open_order_id" gorm:"type:varchar(100);default:''"`
-	PayUrl          string  `json:"-" gorm:"type:text"`
-	QrcodeUrl       string  `json:"-" gorm:"type:text"`
-	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
-	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	PaymentReceivedAfterClose int64   `json:"-" gorm:"type:bigint;not null;default:0"`
+	ReferralUserId            int     `json:"-" gorm:"default:0"`
+	ReferralQuota             int     `json:"-" gorm:"type:bigint;default:0"`
+	ReferralPercent           float64 `json:"-" gorm:"default:0"`
+	Id                        int     `json:"id"`
+	UserId                    int     `json:"user_id" gorm:"index"`
+	Amount                    int64   `json:"amount"`
+	Money                     float64 `json:"money"`
+	TradeNo                   string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
+	OpenOrderId               string  `json:"open_order_id" gorm:"type:varchar(100);default:''"`
+	PayUrl                    string  `json:"-" gorm:"type:text"`
+	QrcodeUrl                 string  `json:"-" gorm:"type:text"`
+	PaymentMethod             string  `json:"payment_method" gorm:"type:varchar(50)"`
+	PaymentProvider           string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
+	CreateTime                int64   `json:"create_time"`
+	CompleteTime              int64   `json:"complete_time"`
+	Status                    string  `json:"status"`
 }
 
 type TopUpRecord struct {
-	Id              int     `json:"id"`
-	UserId          int     `json:"user_id"`
-	Username        string  `json:"username"`
-	Amount          float64 `json:"amount"`
-	Money           float64 `json:"money"`
-	TradeNo         string  `json:"trade_no"`
-	OpenOrderId     string  `json:"open_order_id"`
-	PaymentMethod   string  `json:"payment_method"`
-	PaymentProvider string  `json:"payment_provider"`
-	CreateTime      int64   `json:"create_time"`
-	CompleteTime    int64   `json:"complete_time"`
-	Status          string  `json:"status"`
+	PaymentException bool    `json:"payment_exception"`
+	Id               int     `json:"id"`
+	UserId           int     `json:"user_id"`
+	Username         string  `json:"username"`
+	Amount           float64 `json:"amount"`
+	Money            float64 `json:"money"`
+	TradeNo          string  `json:"trade_no"`
+	OpenOrderId      string  `json:"open_order_id"`
+	PaymentMethod    string  `json:"payment_method"`
+	PaymentProvider  string  `json:"payment_provider"`
+	CreateTime       int64   `json:"create_time"`
+	CompleteTime     int64   `json:"complete_time"`
+	Status           string  `json:"status"`
 
 	OrderType       string `json:"order_type"`
 	OrderTitle      string `json:"order_title"`
@@ -88,18 +90,19 @@ func BuildTopUpRecords(topups []*TopUp) []TopUpRecord {
 			continue
 		}
 		records = append(records, TopUpRecord{
-			Id:              topUp.Id,
-			UserId:          topUp.UserId,
-			Amount:          normalizeTopUpRecordAmount(topUp),
-			Money:           topUp.Money,
-			TradeNo:         topUp.TradeNo,
-			OpenOrderId:     topUp.OpenOrderId,
-			PaymentMethod:   topUp.PaymentMethod,
-			PaymentProvider: topUp.PaymentProvider,
-			CreateTime:      topUp.CreateTime,
-			CompleteTime:    topUp.CompleteTime,
-			Status:          topUp.Status,
-			OrderType:       "topup",
+			PaymentException: topUp.PaymentReceivedAfterClose > 0,
+			Id:               topUp.Id,
+			UserId:           topUp.UserId,
+			Amount:           normalizeTopUpRecordAmount(topUp),
+			Money:            topUp.Money,
+			TradeNo:          topUp.TradeNo,
+			OpenOrderId:      topUp.OpenOrderId,
+			PaymentMethod:    topUp.PaymentMethod,
+			PaymentProvider:  topUp.PaymentProvider,
+			CreateTime:       topUp.CreateTime,
+			CompleteTime:     topUp.CompleteTime,
+			Status:           topUp.Status,
+			OrderType:        "topup",
 			// Leave OrderTitle empty so the frontend can localize it as
 			// "充值" / "Quota Top-up" based on order_type. Subscription rows
 			// override OrderTitle below with the plan title.
@@ -237,6 +240,9 @@ func inferPaymentCurrency(paymentMethod string, paymentProvider string) string {
 }
 
 func (topUp *TopUp) Insert() error {
+	if topUp.CreateTime == 0 {
+		topUp.CreateTime = common.GetTimestamp()
+	}
 	var err error
 	err = DB.Create(topUp).Error
 	return err
@@ -376,6 +382,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	}
 
 	var quotaToAdd int
+	closedPayment := false
 	topUp := &TopUp{}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
@@ -388,8 +395,13 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 			alreadyDone = true
 			return nil
 		}
-		if topUp.Status != common.TopUpStatusPending && topUp.Status != common.TopUpStatusExpired && topUp.Status != common.TopUpStatusCanceled {
-			return ErrTopUpStatusInvalid
+		closed, closeErr := rejectClosedTopUpPaymentTx(tx, topUp)
+		if closeErr != nil {
+			return closeErr
+		}
+		if closed {
+			closedPayment = true
+			return nil
 		}
 		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
 			topUp.PaymentMethod = actualPaymentMethod
@@ -408,6 +420,10 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		}
 		return creditPaidTopUp(tx, topUp, quotaToAdd, nil)
 	})
+	if err == nil && closedPayment {
+		common.SysError("PAYMENT_REVIEW_REQUIRED: closed Epay order received payment: " + tradeNo)
+		return false, ErrSubscriptionPaymentClosed
+	}
 	if err != nil {
 		if !errors.Is(err, ErrTopUpNotFound) && !errors.Is(err, ErrPaymentMethodMismatch) && !errors.Is(err, ErrTopUpStatusInvalid) {
 			common.SysError(common.LogText("epay topup failed: %s", err.Error()))

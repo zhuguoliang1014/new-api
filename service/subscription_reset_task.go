@@ -53,6 +53,27 @@ func runSubscriptionQuotaResetOnce() {
 	totalReset := 0
 	totalExpired := 0
 	for {
+		n, err := model.ExpirePendingSubscriptionOrders(common.GetTimestamp()-model.SubscriptionPendingOrderTTLSeconds, subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, common.LogText("subscription payment expiry failed: %v", err))
+			break
+		}
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+	for {
+		n, err := model.ExpirePendingTopUpOrders(common.GetTimestamp()-model.SubscriptionPendingOrderTTLSeconds, subscriptionResetBatchSize)
+		if err != nil {
+			logger.LogWarn(ctx, common.LogText("wallet payment expiry failed: %v", err))
+			break
+		}
+		if n < subscriptionResetBatchSize {
+			break
+		}
+	}
+
+	for {
 		n, err := model.ExpireDueSubscriptions(subscriptionResetBatchSize)
 		if err != nil {
 			logger.LogWarn(ctx, common.LogText("subscription expire task failed: %v", err))
@@ -80,25 +101,13 @@ func runSubscriptionQuotaResetOnce() {
 			break
 		}
 	}
-	totalOrdersExpired := 0
-	for {
-		n, err := model.ExpirePendingSubscriptionOrders(time.Now().Unix()-model.SubscriptionPendingOrderTTLSeconds, subscriptionResetBatchSize)
-		if err != nil {
-			logger.LogWarn(ctx, common.LogText("subscription pending order expiration failed: %v", err))
-			return
-		}
-		totalOrdersExpired += n
-		if n < subscriptionResetBatchSize {
-			break
-		}
-	}
 	lastCleanup := time.Unix(subscriptionCleanupLast.Load(), 0)
 	if time.Since(lastCleanup) >= subscriptionCleanupInterval {
 		if _, err := model.CleanupSubscriptionPreConsumeRecords(7 * 24 * 3600); err == nil {
 			subscriptionCleanupLast.Store(time.Now().Unix())
 		}
 	}
-	if common.DebugEnabled && (totalReset > 0 || totalExpired > 0 || totalOrdersExpired > 0) {
-		logger.LogDebug(ctx, "subscription maintenance: reset_count=%d, subscription_expired_count=%d, pending_orders_closed=%d", totalReset, totalExpired, totalOrdersExpired)
+	if common.DebugEnabled && (totalReset > 0 || totalExpired > 0) {
+		logger.LogDebug(ctx, "subscription maintenance: reset_count=%d, expired_count=%d", totalReset, totalExpired)
 	}
 }

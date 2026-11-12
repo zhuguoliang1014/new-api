@@ -9,32 +9,30 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
-	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
-	"gorm.io/gorm"
 )
 
 func TestLogIPLocationAuthorizesLogOwnerBeforeReadingCache(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	sqlDB, err := db.DB()
-	require.NoError(t, err)
-	sqlDB.SetMaxOpenConns(1)
-	previousDB, previousRedis := model.LOG_DB, common.RedisEnabled
-	model.LOG_DB, common.RedisEnabled = db, false
-	t.Cleanup(func() { model.LOG_DB, common.RedisEnabled = previousDB, previousRedis; _ = sqlDB.Close() })
-	require.NoError(t, db.AutoMigrate(&model.Log{}))
-	require.NoError(t, db.Create(&model.Log{Id: 72, UserId: 1, Ip: "8.8.8.8"}).Error)
+	db := setupManageUserTestDB(t)
+	require.NoError(t, model.LOG_DB.AutoMigrate(&model.Log{}))
+	user := model.User{Username: "ip-location-owner", AffCode: "ip-location-owner", Role: common.RoleCommonUser, Setting: `{"record_ip_log":true}`}
+	require.NoError(t, db.Create(&user).Error)
+	hidden := model.User{Username: "ip-location-hidden", AffCode: "ip-location-hidden", Role: common.RoleCommonUser, Setting: `{}`}
+	require.NoError(t, db.Create(&hidden).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{Id: 72, UserId: user.Id, Ip: "8.8.8.8"}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{Id: 73, UserId: hidden.Id, Ip: "1.1.1.1"}).Error)
 	for _, tc := range []struct {
 		name, ip, method     string
 		userID, role, status int
 	}{
-		{"owner", "8.8.8.8", "GET", 1, common.RoleCommonUser, 200},
-		{"another-user", "8.8.8.8", "GET", 2, common.RoleCommonUser, 404},
-		{"admin", "8.8.8.8", "GET", 2, common.RoleAdminUser, 200},
-		{"unrecorded-ip", "1.1.1.1", "GET", 1, common.RoleCommonUser, 404},
-		{"invalid-ip", "https://localhost", "GET", 1, common.RoleCommonUser, 400},
-		{"another-user-query", "8.8.8.8", "POST", 2, common.RoleCommonUser, 404},
+		{"owner", "8.8.8.8", "GET", user.Id, common.RoleCommonUser, 200},
+		{"another-user", "8.8.8.8", "GET", hidden.Id, common.RoleCommonUser, 404},
+		{"admin", "8.8.8.8", "GET", hidden.Id, common.RoleAdminUser, 200},
+		{"unrecorded-ip", "1.1.1.1", "GET", user.Id, common.RoleCommonUser, 404},
+		{"invalid-ip", "https://localhost", "GET", user.Id, common.RoleCommonUser, 400},
+		{"another-user-query", "8.8.8.8", "POST", hidden.Id, common.RoleCommonUser, 404},
+		{"privacy-disabled-read", "1.1.1.1", "GET", hidden.Id, common.RoleCommonUser, 404},
+		{"privacy-disabled-query", "1.1.1.1", "POST", hidden.Id, common.RoleCommonUser, 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := httptest.NewRecorder()

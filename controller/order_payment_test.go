@@ -23,8 +23,8 @@ func TestOrderActionsAdminRequiresProviderProof(t *testing.T) {
 		paid, mismatch, failed, subscription bool
 	}{
 		{name: "paid wallet", state: "pending", remote: "OD", amount: "20", paid: true},
-		{name: "late canceled wallet", state: "canceled", remote: "OD", amount: "20", paid: true},
-		{name: "paid subscription", state: "expired", remote: "OD", amount: "20", paid: true, subscription: true},
+		{name: "late canceled wallet", state: "canceled", remote: "OD", amount: "20", paid: false},
+		{name: "paid subscription", state: "pending", remote: "OD", amount: "20", paid: true, subscription: true},
 		{name: "unpaid wallet", state: "pending", remote: "WP", amount: "20"},
 		{name: "wrong amount", state: "pending", remote: "OD", amount: "21"},
 		{name: "wrong identity", state: "pending", remote: "OD", amount: "20", mismatch: true},
@@ -32,13 +32,13 @@ func TestOrderActionsAdminRequiresProviderProof(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db, user := hupijiaoRecoveryDB(t)
-			order := hupijiaoTestOrder(t, db, user, "admin-proof", tc.state, common.GetTimestamp()-3600)
+			order := hupijiaoTestOrder(t, db, user, "admin-proof", tc.state, common.GetTimestamp()-600)
 			if tc.subscription {
 				plan := model.SubscriptionPlan{Title: "order action", PriceAmount: 40, PriceCNY: 20, TotalAmount: 1000, DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true}
 				require.NoError(t, db.Create(&plan).Error)
 				t.Cleanup(func() { require.NoError(t, db.Delete(&plan).Error); model.InvalidateSubscriptionPlanCache(plan.Id) })
 				require.NoError(t, db.Model(order).Update("amount", 0).Error)
-				require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: order.TradeNo, Money: 20, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, Status: tc.state}).Error)
+				require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: order.TradeNo, Money: 20, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, Status: tc.state, CreateTime: order.CreateTime}).Error)
 			}
 			hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
 				if tc.failed {
@@ -83,7 +83,7 @@ func TestOrderActionsAdminRequiresProviderProof(t *testing.T) {
 	}
 }
 
-func TestOrderActionsCloseSynchronizesSubscriptionAndHonorsLatePayment(t *testing.T) {
+func TestOrderActionsCloseSynchronizesSubscriptionAndRejectsLatePayment(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
 	order := hupijiaoTestOrder(t, db, user, "close", "pending", common.GetTimestamp())
 	plan := model.SubscriptionPlan{Title: "close then paid", PriceAmount: 20, PriceCNY: 20, TotalAmount: 1000, DurationUnit: model.SubscriptionDurationMonth, DurationValue: 1, Enabled: true}
@@ -118,12 +118,12 @@ func TestOrderActionsCloseSynchronizesSubscriptionAndHonorsLatePayment(t *testin
 	assert.Equal(t, "canceled", model.GetTopUpByTradeNo(order.TradeNo).Status)
 	remote = "OD"
 	paid, err := verifyOrderPayment(t.Context(), model.GetTopUpByTradeNo(order.TradeNo), "test_late")
-	require.NoError(t, err)
-	assert.True(t, paid)
+	require.ErrorIs(t, err, model.ErrSubscriptionPaymentClosed)
+	assert.False(t, paid)
 	require.NoError(t, db.First(&sub, sub.Id).Error)
-	assert.Equal(t, "success", sub.Status)
-	assert.Equal(t, "success", model.GetTopUpByTradeNo(order.TradeNo).Status)
-	require.Error(t, model.CloseUnpaidOrder(order.TradeNo, order.PaymentProvider, nil))
+	assert.Equal(t, "canceled", sub.Status)
+	assert.Equal(t, "canceled", model.GetTopUpByTradeNo(order.TradeNo).Status)
+	require.Positive(t, model.GetTopUpByTradeNo(order.TradeNo).PaymentReceivedAfterClose)
 }
 
 func TestOrderActionsResumeReusesLiveLinkAndReplacesLegacyCheckout(t *testing.T) {
@@ -147,7 +147,7 @@ func TestOrderActionsResumeReusesLiveLinkAndReplacesLegacyCheckout(t *testing.T)
 	})
 	for _, legacy := range []bool{false, true} {
 		if legacy {
-			require.NoError(t, db.Model(order).Updates(map[string]any{"pay_url": "", "create_time": time.Now().Add(-time.Hour).Unix()}).Error)
+			require.NoError(t, db.Model(order).Updates(map[string]any{"pay_url": "", "create_time": time.Now().Add(-10 * time.Minute).Unix()}).Error)
 		}
 		r := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(r)
@@ -233,12 +233,46 @@ func TestOrderActionsEpayClosedOrdersRequireProofAndSettleOnce(t *testing.T) {
 		})
 		for range 2 {
 			paid, err := verifyOrderPayment(t.Context(), &order, "test_admin")
-			require.NoError(t, err)
-			assert.True(t, paid)
+			if state == "pending" {
+				require.NoError(t, err)
+				assert.True(t, paid)
+			} else {
+				require.ErrorIs(t, err, model.ErrSubscriptionPaymentClosed)
+			}
 		}
-		assert.Equal(t, "success", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		if state == "pending" {
+			assert.Equal(t, "success", model.GetTopUpByTradeNo(order.TradeNo).Status)
+		} else {
+			assert.Equal(t, state, model.GetTopUpByTradeNo(order.TradeNo).Status)
+			assert.Positive(t, model.GetTopUpByTradeNo(order.TradeNo).PaymentReceivedAfterClose)
+		}
 	}
 	var saved model.User
 	require.NoError(t, db.First(&saved, user.Id).Error)
-	assert.Equal(t, 15000007, saved.Quota)
+	assert.Equal(t, 5000007, saved.Quota)
+}
+
+func TestExpiredOrderCannotResumeOrCreateAnotherCheckout(t *testing.T) {
+	db, user := hupijiaoRecoveryDB(t)
+	oldEnabled, oldID, oldSecret := setting.HupijiaoEnabled, setting.HupijiaoAppId, setting.HupijiaoAppSecret
+	setting.HupijiaoEnabled, setting.HupijiaoAppId, setting.HupijiaoAppSecret = true, "id", "secret"
+	t.Cleanup(func() {
+		setting.HupijiaoEnabled, setting.HupijiaoAppId, setting.HupijiaoAppSecret = oldEnabled, oldID, oldSecret
+	})
+	for _, status := range []string{common.TopUpStatusPending, common.TopUpStatusExpired, common.TopUpStatusCanceled} {
+		order := hupijiaoTestOrder(t, db, user, "no-resume-"+status, status, common.GetTimestamp()-1800)
+		called := false
+		hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
+			called = true
+			return nil, fmt.Errorf("must not call payment gateway")
+		})
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Set("id", user.Id)
+		c.Params = gin.Params{{Key: "trade_no", Value: order.TradeNo}}
+		c.Request = httptest.NewRequest(http.MethodPost, "/repay", nil)
+		RepayTopUpOrder(c)
+		require.Contains(t, recorder.Body.String(), `"success":false`)
+		require.False(t, called)
+	}
 }

@@ -36,7 +36,7 @@ type HupijiaoPayResponse struct {
 	TradeNo   string `json:"trade_no"`
 }
 
-const hupijiaoPaymentExpireSeconds int64 = 3 * 60
+const hupijiaoPaymentExpireSeconds int64 = model.SubscriptionPendingOrderTTLSeconds
 
 func resolveHupijiaoApiURL() string {
 	if strings.TrimSpace(setting.HupijiaoApiUrl) != "" {
@@ -597,9 +597,6 @@ func reconcileHupijiaoOrder(ctx context.Context, topUp *model.TopUp, source stri
 	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
 		return false, model.ErrPaymentMethodMismatch
 	}
-	if subscriptionOrder := model.GetSubscriptionOrderByTradeNo(topUp.TradeNo); subscriptionOrder != nil && subscriptionOrder.Status == common.TopUpStatusExpired {
-		return false, model.ErrTopUpStatusInvalid
-	}
 	if topUp.Status == common.TopUpStatusSuccess {
 		return true, nil
 	}
@@ -654,6 +651,18 @@ func GetTopUpOrderStatus(c *gin.Context) {
 		common.ApiSuccess(c, gin.H{"status": topUp.Status, "paid": true})
 		return
 	}
+	if topUp.Status != common.TopUpStatusPending || topUp.CreateTime+model.SubscriptionPendingOrderTTLSeconds <= common.GetTimestamp() {
+		if topUp.Status == common.TopUpStatusPending {
+			if err := model.ExpireUnpaidOrder(topUp.TradeNo, topUp.PaymentProvider); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			topUp.Status = common.TopUpStatusExpired
+		}
+		common.ApiSuccess(c, gin.H{"status": topUp.Status, "paid": false})
+		return
+	}
+
 	paid, err := verifyOrderPayment(c.Request.Context(), topUp, "poll")
 	if err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("虎皮椒查单失败 trade_no=%s err=%v", tradeNo, err))

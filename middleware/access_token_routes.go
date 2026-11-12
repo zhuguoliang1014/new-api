@@ -261,6 +261,8 @@ var accessTokenRouteRules = map[string]accessTokenRouteRule{
 
 	// router/api-router.go: /api/audit, /api/log, /api/data
 	"GET /api/audit/self":                       accessTokenScopeRule("usage:read"),
+	"GET /api/log/ip-location":                  accessTokenSessionRule,
+	"POST /api/log/ip-location":                 accessTokenSessionRule,
 	"GET /api/log/":                             accessTokenScopeRule("log:read"),
 	"GET /api/log/stat":                         accessTokenScopeRule("log:read"),
 	"GET /api/log/self/stat":                    accessTokenScopeRule("usage:read"),

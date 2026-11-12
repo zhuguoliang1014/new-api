@@ -24,41 +24,65 @@ import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
-  return z.object({
-    title: z.string().min(1, t('Please enter plan title')),
-    subtitle: z.string().optional(),
-    price_amount: z.coerce.number().min(0, t('Please enter amount')),
-    price_cny: z.coerce.number().min(0.01, '请输入人民币价格'),
-    duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
-    duration_value: z.coerce.number().min(1),
-    custom_seconds: z.coerce.number().min(0).optional(),
-    quota_reset_period: z.enum([
-      'never',
-      'daily',
-      'weekly',
-      'monthly',
-      'custom',
-    ]),
-    quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
-    enabled: z.boolean(),
-    sort_order: z.coerce.number(),
-    allow_balance_pay: z.boolean(),
-    allow_wallet_overflow: z.boolean(),
-    max_purchase_per_user: z.coerce.number().min(0),
-    sales_limit: z.coerce.number().int().min(0).max(2147483647),
-    total_amount: z.coerce.number().min(0),
-    upgrade_group: z.string().optional(),
-    downgrade_group: z.string().optional(),
-    stripe_price_id: z.string().optional(),
-    creem_product_id: z.string().optional(),
-    waffo_pancake_product_id: z.string().optional(),
-    allowed_channel_types: z.array(z.number()).optional(),
-    billing_ratio: z.coerce
-      .number()
-      .positive(t('Billing multiplier must be greater than zero'))
-      .nullable()
-      .optional(),
-  })
+  return z
+    .object({
+      title: z.string().min(1, t('Please enter plan title')),
+      subtitle: z.string().optional(),
+      price_amount: z.coerce.number().min(0, t('Please enter amount')),
+      price_cny: z.coerce.number().min(0.01, '请输入人民币价格'),
+      duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
+      duration_value: z.coerce.number().min(1),
+      custom_seconds: z.coerce.number().min(0).optional(),
+      quota_reset_period: z.enum([
+        'never',
+        'daily',
+        'weekly',
+        'monthly',
+        'custom',
+      ]),
+      quota_reset_custom_seconds: z.coerce.number().min(0).optional(),
+      enabled: z.boolean(),
+      sort_order: z.coerce.number(),
+      allow_balance_pay: z.boolean(),
+      allow_wallet_overflow: z.boolean(),
+      max_purchase_per_user: z.coerce.number().min(0),
+      limited_sale: z.boolean().optional(),
+      minimum_effective_ratio: z.coerce
+        .number()
+        .positive()
+        .nullable()
+        .optional(),
+      discount_rate: z.coerce.number().gt(0).max(1).nullable().optional(),
+      discount_starts_at: z.coerce.number().int().min(0).optional(),
+      discount_ends_at: z.coerce.number().int().min(0).optional(),
+      sales_limit: z.coerce.number().int().min(0).max(2147483647),
+      total_amount: z.coerce.number().min(0),
+      upgrade_group: z.string().optional(),
+      downgrade_group: z.string().optional(),
+      stripe_price_id: z.string().optional(),
+      creem_product_id: z.string().optional(),
+      waffo_pancake_product_id: z.string().optional(),
+      allowed_channel_types: z.array(z.number()).optional(),
+      billing_ratio: z.coerce
+        .number()
+        .positive(t('Billing multiplier must be greater than zero'))
+        .nullable()
+        .optional(),
+    })
+    .superRefine((values, context) => {
+      if (
+        values.discount_rate != null &&
+        values.discount_rate < 1 &&
+        (!values.discount_ends_at ||
+          values.discount_ends_at <= (values.discount_starts_at || 0))
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['discount_ends_at'],
+          message: t('Discount end time must be later than start time'),
+        })
+      }
+    })
 }
 
 export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
@@ -79,6 +103,11 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   allow_wallet_overflow: true,
   max_purchase_per_user: 0,
   sales_limit: 0,
+  limited_sale: false,
+  minimum_effective_ratio: null,
+  discount_rate: 1,
+  discount_starts_at: 0,
+  discount_ends_at: 0,
   total_amount: 0,
   upgrade_group: '',
   downgrade_group: '',
@@ -106,6 +135,11 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     allow_wallet_overflow: plan.allow_wallet_overflow !== false,
     max_purchase_per_user: Number(plan.max_purchase_per_user || 0),
     sales_limit: Number(plan.sales_limit || 0),
+    limited_sale: plan.limited_sale ?? false,
+    discount_rate: plan.discount_rate ?? 1,
+    minimum_effective_ratio: plan.minimum_effective_ratio ?? null,
+    discount_starts_at: plan.discount_starts_at || 0,
+    discount_ends_at: plan.discount_ends_at || 0,
     total_amount: quotaUnitsToDollars(Number(plan.total_amount || 0)),
     upgrade_group: plan.upgrade_group || '',
     downgrade_group: plan.downgrade_group || '',
@@ -119,7 +153,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
           .map((s) => s.trim())
           .filter(Boolean)
           .map(Number)
-          .filter((n) => !isNaN(n))
+          .filter((n) => !Number.isNaN(n))
       : [],
   }
 }
@@ -141,6 +175,11 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       sort_order: Number(values.sort_order || 0),
       max_purchase_per_user: Number(values.max_purchase_per_user || 0),
       sales_limit: Number(values.sales_limit || 0),
+      limited_sale: values.limited_sale ?? false,
+      discount_rate: values.discount_rate ?? 1,
+      minimum_effective_ratio: values.minimum_effective_ratio ?? null,
+      discount_starts_at: Number(values.discount_starts_at || 0),
+      discount_ends_at: Number(values.discount_ends_at || 0),
       total_amount: parseQuotaFromDollars(Number(values.total_amount || 0)),
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',

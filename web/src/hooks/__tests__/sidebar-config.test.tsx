@@ -263,7 +263,8 @@ describe('model pricing badge', () => {
         data:
           url === '/api/option/model_pricing/issues'
             ? issues()
-            : (responses[String(url)] ?? {}),
+            : ({ '/api/subscription/plans': [], ...responses }[String(url)] ??
+              {}),
       },
     }))
     const client = new QueryClient({

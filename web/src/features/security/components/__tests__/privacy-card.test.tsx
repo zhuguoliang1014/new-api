@@ -73,7 +73,9 @@ describe('privacy settings', () => {
       .mockResolvedValue({ data: { success: true } })
     const user = userEvent.setup()
     const { onUpdate } = renderPrivacy()
-    const toggle = screen.getByRole('switch', { name: 'Record IP Address' })
+    const toggle = screen.getByRole('switch', {
+      name: 'Show IP Address in My Logs',
+    })
     expect(toggle).toBeChecked()
     toggle.focus()
     await user.keyboard(' ')
@@ -91,13 +93,15 @@ describe('privacy settings', () => {
     const put = vi.spyOn(api, 'put')
     const user = userEvent.setup()
     const { onUpdate } = renderPrivacy()
-    await user.click(screen.getByRole('switch', { name: 'Record IP Address' }))
+    await user.click(
+      screen.getByRole('switch', { name: 'Show IP Address in My Logs' })
+    )
     await user.click(screen.getByRole('button', { name: 'Save Settings' }))
     expect(await screen.findByText('offline')).toBeVisible()
     expect(put).not.toHaveBeenCalled()
     expect(onUpdate).not.toHaveBeenCalled()
     expect(
-      screen.getByRole('switch', { name: 'Record IP Address' })
+      screen.getByRole('switch', { name: 'Show IP Address in My Logs' })
     ).not.toBeChecked()
     expect(screen.getByRole('button', { name: 'Save Settings' })).toBeEnabled()
   })
@@ -109,12 +113,14 @@ describe('privacy settings', () => {
     vi.spyOn(api, 'put').mockResolvedValue({ data: { success: false } })
     const user = userEvent.setup()
     const { onUpdate } = renderPrivacy()
-    await user.click(screen.getByRole('switch', { name: 'Record IP Address' }))
+    await user.click(
+      screen.getByRole('switch', { name: 'Show IP Address in My Logs' })
+    )
     await user.click(screen.getByRole('button', { name: 'Save Settings' }))
     expect(await screen.findByText('Failed to update settings')).toBeVisible()
     expect(onUpdate).not.toHaveBeenCalled()
     expect(
-      screen.getByRole('switch', { name: 'Record IP Address' })
+      screen.getByRole('switch', { name: 'Show IP Address in My Logs' })
     ).not.toBeChecked()
   })
 })
