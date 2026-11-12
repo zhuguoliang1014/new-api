@@ -8,11 +8,9 @@ import {
   StaticDataTable,
   type StaticDataTableColumn,
 } from '@/components/data-table'
-import { Dialog } from '@/components/dialog'
 import { EmptyState } from '@/components/empty-state'
 import { ErrorState } from '@/components/error-state'
 import { LoadingState } from '@/components/loading-state'
-import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 import { formatQuota, formatTimestamp } from '@/lib/format'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -39,18 +37,16 @@ async function fetchGiftQuotaHistory(page: number): Promise<GiftQuotaPage> {
 
 interface GiftQuotaHistoryProps {
   userId?: number
-  nextExpiry?: number
 }
 
 export function GiftQuotaHistory(props: GiftQuotaHistoryProps) {
   const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
   const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 10 })
   const query = useQuery({
     queryKey: ['gift-quota-history', props.userId, pagination.pageIndex],
     queryFn: () => fetchGiftQuotaHistory(pagination.pageIndex + 1),
-    enabled: open && !!props.userId,
-    refetchInterval: open ? 60_000 : false,
+    enabled: !!props.userId,
+    refetchInterval: 60_000,
   })
   const records = query.data?.items ?? []
   const table = useReactTable({
@@ -96,54 +92,23 @@ export function GiftQuotaHistory(props: GiftQuotaHistoryProps) {
   ]
 
   return (
-    <>
-      <div className='flex flex-wrap items-center justify-between gap-2 text-sm'>
-        <div className='text-muted-foreground space-y-1'>
-          <p>
-            {t(
-              'Gift credits are used first and expire 30 days after grant. Purchased balance never expires.'
-            )}
-          </p>
-          {!!props.nextExpiry && (
-            <p>
-              {t('Next gift expiry: {{date}}', {
-                date: formatTimestamp(props.nextExpiry),
-              })}
-            </p>
-          )}
-        </div>
-        <Button
-          variant='outline'
-          size='sm'
-          onClick={() => setOpen(true)}
-          disabled={!props.userId}
-        >
-          {t('Gift credit history')}
-        </Button>
-      </div>
-      <Dialog
-        open={open}
-        onOpenChange={setOpen}
-        title={t('Gift credit history')}
-        description={t('View gift grants, usage and expired credits.')}
-        contentHeight='auto'
-        bodyClassName='space-y-4'
-        contentClassName='sm:max-w-5xl'
-      >
-        {query.isPending && <LoadingState />}
-        {query.isError && <ErrorState onRetry={() => void query.refetch()} />}
-        {query.isSuccess && (
-          <>
-            <StaticDataTable
-              columns={columns}
-              data={records}
-              getRowKey={(row) => row.id}
-              emptyContent={<EmptyState title={t('No gift credits yet')} />}
-            />
-            <DataTablePagination table={table} compact />
-          </>
-        )}
-      </Dialog>
-    </>
+    <section aria-label={t('Gift credit history')} className='space-y-4'>
+      <p className='text-muted-foreground text-sm'>
+        {t('View gift grants, usage and expired credits.')}
+      </p>
+      {query.isPending && <LoadingState />}
+      {query.isError && <ErrorState onRetry={() => void query.refetch()} />}
+      {query.isSuccess && (
+        <>
+          <StaticDataTable
+            columns={columns}
+            data={records}
+            getRowKey={(row) => row.id}
+            emptyContent={<EmptyState title={t('No gift credits yet')} />}
+          />
+          <DataTablePagination table={table} compact />
+        </>
+      )}
+    </section>
   )
 }

@@ -1,4 +1,4 @@
-import { Crown, RefreshCw } from 'lucide-react'
+import { RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -13,11 +13,13 @@ import type {
   PlanRecord,
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
+import { handleServerError } from '@/lib/handle-server-error'
 import { cn } from '@/lib/utils'
 
 import type { PlanSavings } from '../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../types'
 import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
+import { MySubscriptionsSheet } from './my-subscriptions-sheet'
 import { SubscriptionPlanCard } from './subscription-plan-card'
 
 interface AvailablePlansCardProps {
@@ -78,15 +80,18 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
       ),
     [plans]
   )
+  const hasActiveSubscription = allSubscriptions.some(
+    ({ subscription }) => subscription.status === 'active'
+  )
 
   useEffect(() => {
-    if (!hasTimedPlan) return
+    if (!hasTimedPlan && !hasActiveSubscription) return
     const id = window.setInterval(
       () => setNowSec(Math.floor(Date.now() / 1000)),
-      1000
+      hasTimedPlan ? 1000 : 60_000
     )
     return () => window.clearInterval(id)
-  }, [hasTimedPlan])
+  }, [hasTimedPlan, hasActiveSubscription])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -107,33 +112,10 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
     return map
   }, [allSubscriptions])
 
-  if (loading) {
-    return (
-      <TitledCard
-        title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
-      >
-        <div className='grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'>
-          {['first', 'second', 'third'].map((key) => (
-            <Skeleton key={key} className='h-72 w-full rounded-xl' />
-          ))}
-        </div>
-      </TitledCard>
-    )
-  }
-
-  if (plans.length === 0) {
-    return (
-      <TitledCard
-        title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
-      >
-        <p className='text-muted-foreground py-6 text-center text-sm'>
-          {t('No plans available')}
-        </p>
-      </TitledCard>
-    )
-  }
+  const activeCount = allSubscriptions.filter(
+    ({ subscription }) =>
+      subscription.status === 'active' && subscription.end_time > nowSec
+  ).length
 
   return (
     <>
@@ -141,46 +123,66 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         title={t('Subscription Plans')}
         className='overflow-visible rounded-none border-0 bg-transparent shadow-none ring-0'
         titleClassName='text-base sm:text-lg'
-        headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div>div:last-child]:w-auto'
+        headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div]:flex-wrap [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
         action={
-          <Button
-            variant='ghost'
-            size='icon'
-            className='h-8 w-8'
-            aria-label={t('Refresh')}
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw
-              className={cn('h-4 w-4', refreshing && 'animate-spin')}
-              aria-hidden='true'
+          <div className='flex items-center gap-1'>
+            <MySubscriptionsSheet
+              activeCount={activeCount}
+              onClose={() => void fetchPlans().catch(handleServerError)}
             />
-          </Button>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8'
+              aria-label={t('Refresh')}
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                className={cn('h-4 w-4', refreshing && 'animate-spin')}
+                aria-hidden='true'
+              />
+            </Button>
+          </div>
         }
         disableHoverEffect
         contentClassName='p-0 sm:p-0'
       >
-        <div
-          data-slot='subscription-plan-grid'
-          className='grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'
-        >
-          {plans.map((record, index) => (
-            <SubscriptionPlanCard
-              key={record.plan.id}
-              record={record}
-              now={nowSec}
-              recommended={index === 0 && plans.length > 1}
-              purchaseCount={planPurchaseCountMap.get(record.plan.id) || 0}
-              paymentEnabled={onlinePaymentEnabled}
-              savings={props.planSavings?.get(record.plan.id)}
-              comparisonGroup={props.comparisonGroup}
-              onPurchase={(plan) => {
-                setSelectedPlan(plan)
-                setPurchaseOpen(true)
-              }}
-            />
-          ))}
-        </div>
+        {loading && (
+          <div className='grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'>
+            {['first', 'second', 'third'].map((key) => (
+              <Skeleton key={key} className='h-72 w-full rounded-xl' />
+            ))}
+          </div>
+        )}
+        {!loading && plans.length === 0 && (
+          <p className='text-muted-foreground py-6 text-center text-sm'>
+            {t('No plans available')}
+          </p>
+        )}
+        {!loading && plans.length > 0 && (
+          <div
+            data-slot='subscription-plan-grid'
+            className='grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'
+          >
+            {plans.map((record, index) => (
+              <SubscriptionPlanCard
+                key={record.plan.id}
+                record={record}
+                now={nowSec}
+                recommended={index === 0 && plans.length > 1}
+                purchaseCount={planPurchaseCountMap.get(record.plan.id) || 0}
+                paymentEnabled={onlinePaymentEnabled}
+                savings={props.planSavings?.get(record.plan.id)}
+                comparisonGroup={props.comparisonGroup}
+                onPurchase={(plan) => {
+                  setSelectedPlan(plan)
+                  setPurchaseOpen(true)
+                }}
+              />
+            ))}
+          </div>
+        )}
       </TitledCard>
 
       <LocalSubscriptionPurchaseDialog

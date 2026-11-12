@@ -16,16 +16,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Activity, BarChart3, Gift, WalletCards } from 'lucide-react'
+import { Activity, BarChart3, Gift, Info, WalletCards } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { QuotaDetailsPopover } from '@/components/quota-details-popover'
 import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toIntlLocale } from '@/i18n/languages'
-import { formatQuota, formatNumber } from '@/lib/format'
+import { formatQuota, formatNumber, formatTimestamp } from '@/lib/format'
 
 import type { UserWalletData } from '../types'
-import { GiftQuotaHistory } from './gift-quota-history'
 
 interface WalletStatsCardProps {
   user: UserWalletData | null
@@ -55,6 +55,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
     description: string
     icon: typeof WalletCards
     tone: IconBadgeTone
+    showRules?: boolean
   }[] = [
     {
       label: t('Account balance'),
@@ -69,6 +70,7 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
       description: t('Expires 30 days after grant'),
       icon: Gift,
       tone: 'warning',
+      showRules: true,
     },
     {
       label: t('Total Usage'),
@@ -87,35 +89,49 @@ export function WalletStatsCard(props: WalletStatsCardProps) {
   ]
 
   return (
-    <>
-      <div className='grid grid-cols-2 gap-y-3 rounded-lg border sm:grid-cols-4'>
-        {stats.map((item) => (
-          <div
-            key={item.label}
-            className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'
-          >
-            <div className='flex items-center gap-1.5 sm:gap-2.5'>
-              <IconBadge tone={item.tone} size='stat'>
-                <item.icon />
-              </IconBadge>
-              <div className='text-muted-foreground truncate text-[11px] font-medium tracking-wider uppercase sm:text-xs'>
-                {item.label}
-              </div>
+    <div className='grid grid-cols-2 gap-y-3 rounded-lg border sm:grid-cols-4'>
+      {stats.map((item) => (
+        <div key={item.label} className='min-w-0 px-2.5 py-2.5 sm:px-5 sm:py-4'>
+          <div className='flex items-center gap-1.5 sm:gap-2.5'>
+            <IconBadge tone={item.tone} size='stat'>
+              <item.icon />
+            </IconBadge>
+            <div className='text-muted-foreground truncate text-[11px] font-medium tracking-wider uppercase sm:text-xs'>
+              {item.label}
             </div>
-
-            <div className='text-foreground mt-1.5 font-mono text-sm font-bold tracking-tight break-all tabular-nums sm:mt-2.5 sm:text-2xl'>
-              {item.value}
-            </div>
-            <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
-              {item.description}
-            </div>
+            {item.showRules && (
+              <QuotaDetailsPopover
+                title={t('Gift balance')}
+                triggerLabel={t('Gift balance')}
+                className='w-auto shrink-0'
+                triggerClassName='size-7 justify-center p-0'
+                description={t(
+                  'Gift credits are used first and expire 30 days after grant. Purchased balance never expires.'
+                )}
+                details={
+                  props.user?.next_gift_expiry
+                    ? [
+                        {
+                          label: t('Next gift expiry'),
+                          value: formatTimestamp(props.user.next_gift_expiry),
+                        },
+                      ]
+                    : []
+                }
+              >
+                <Info className='size-3.5' aria-hidden='true' />
+              </QuotaDetailsPopover>
+            )}
           </div>
-        ))}
-      </div>
-      <GiftQuotaHistory
-        userId={props.user?.id}
-        nextExpiry={props.user?.next_gift_expiry}
-      />
-    </>
+
+          <div className='text-foreground mt-1.5 font-mono text-sm font-bold tracking-tight break-all tabular-nums sm:mt-2.5 sm:text-2xl'>
+            {item.value}
+          </div>
+          <div className='text-muted-foreground/60 mt-1 hidden text-xs md:block'>
+            {item.description}
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }

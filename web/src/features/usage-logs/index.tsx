@@ -17,14 +17,16 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { getRouteApi, useNavigate } from '@tanstack/react-router'
-import { useCallback, useMemo } from 'react'
+import { lazy, Suspense, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { SectionPageLayout } from '@/components/layout'
 import type { NavGroup } from '@/components/layout/types'
+import { LoadingState } from '@/components/loading-state'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CacheStatsDialog } from '@/features/system-settings/general/channel-affinity/cache-stats-dialog'
 import { useSidebarConfig } from '@/hooks/use-sidebar-config'
+import { useAuthStore } from '@/stores/auth-store'
 
 import { UserInfoDialog } from './components/dialogs/user-info-dialog'
 import {
@@ -39,6 +41,12 @@ import {
   USAGE_LOGS_DEFAULT_SECTION,
   type UsageLogsSectionId,
 } from './section-registry'
+
+const GiftQuotaHistory = lazy(() =>
+  import('@/features/wallet/components/gift-quota-history').then((module) => ({
+    default: module.GiftQuotaHistory,
+  }))
+)
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 const TASK_LOG_SECTIONS = ['drawing', 'task'] as const
@@ -59,6 +67,10 @@ function UsageLogsContent() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const params = route.useParams()
+  const search = route.useSearch()
+  const userId = useAuthStore((state) => state.auth.user?.id)
+  const showGiftHistory = params.section === 'common' && search.view === 'gifts'
+
   const activeCategory: UsageLogsSectionId =
     params.section && isUsageLogsSectionId(params.section)
       ? params.section
@@ -129,7 +141,7 @@ function UsageLogsContent() {
           {t(pageMeta.titleKey)}
         </SectionPageLayout.Title>
         <SectionPageLayout.Actions>
-          {canManageScope && (
+          {canManageScope && !showGiftHistory && (
             <Tabs value={viewScope} onValueChange={handleViewScopeChange}>
               <TabsList>
                 <TabsTrigger value='all'>{t('All')}</TabsTrigger>
@@ -140,6 +152,28 @@ function UsageLogsContent() {
         </SectionPageLayout.Actions>
         <SectionPageLayout.Content>
           <div className='flex h-full min-h-0 flex-col gap-4'>
+            {activeCategory === 'common' && (
+              <Tabs
+                value={showGiftHistory ? 'gifts' : 'common'}
+                onValueChange={(value) => {
+                  void navigate({
+                    to: '/usage-logs/$section',
+                    params: { section: 'common' },
+                    search: {
+                      ...search,
+                      view: value === 'gifts' ? 'gifts' : undefined,
+                    },
+                  })
+                }}
+              >
+                <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
+                  <TabsTrigger value='common'>{t('Common Logs')}</TabsTrigger>
+                  <TabsTrigger value='gifts'>
+                    {t('Gift credit history')}
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            )}
             {showTaskSwitcher && (
               <Tabs value={activeCategory} onValueChange={handleSectionChange}>
                 <TabsList className='max-w-full flex-wrap justify-start group-data-horizontal/tabs:h-auto'>
@@ -151,8 +185,20 @@ function UsageLogsContent() {
                 </TabsList>
               </Tabs>
             )}
-            <div className='min-h-0 flex-1'>
-              <UsageLogsTable logCategory={activeCategory} />
+            <div
+              className={
+                showGiftHistory
+                  ? 'min-h-0 flex-1 overflow-y-auto'
+                  : 'min-h-0 flex-1'
+              }
+            >
+              {showGiftHistory ? (
+                <Suspense fallback={<LoadingState />}>
+                  <GiftQuotaHistory key={userId} userId={userId} />
+                </Suspense>
+              ) : (
+                <UsageLogsTable logCategory={activeCategory} />
+              )}
             </div>
           </div>
         </SectionPageLayout.Content>

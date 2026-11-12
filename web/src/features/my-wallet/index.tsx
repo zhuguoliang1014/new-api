@@ -54,34 +54,34 @@ export function MyWallet(props: MyWalletProps) {
               }
               className='gap-4'
             >
-              <div className='overflow-x-auto pt-2 pr-2 pb-1'>
-                <TabsList className='min-w-max p-1 group-data-horizontal/tabs:h-auto'>
+              <div className='min-w-0 pt-2 pb-1 sm:overflow-x-auto sm:pr-2'>
+                <TabsList className='grid w-full grid-cols-3 items-stretch p-1 group-data-horizontal/tabs:h-auto sm:inline-flex sm:w-fit sm:min-w-max sm:items-center'>
                   <TabsTrigger
                     value='recharge'
-                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                    className='h-auto! w-full min-w-0 flex-col items-center gap-1.5 px-1 py-2.5 sm:w-auto sm:min-w-max sm:px-5'
                   >
-                    <span className='text-base leading-none font-semibold'>
+                    <span className='text-center text-sm leading-tight font-semibold whitespace-normal sm:text-base sm:leading-none sm:whitespace-nowrap'>
                       {t('Recharge')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
+                    <span className='text-muted-foreground text-center text-[11px] leading-tight font-normal whitespace-normal sm:leading-none sm:whitespace-nowrap'>
                       {t('Flexible pay-as-you-go')}
                     </span>
                   </TabsTrigger>
                   <TabsTrigger
                     value='subscription'
-                    className='relative h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                    className='relative h-auto! w-full min-w-0 flex-col items-center gap-1.5 px-1 py-2.5 sm:w-auto sm:min-w-max sm:px-5'
                   >
-                    <span className='text-base leading-none font-semibold'>
+                    <span className='text-center text-sm leading-tight font-semibold whitespace-normal sm:text-base sm:leading-none sm:whitespace-nowrap'>
                       {t('GPT Subscription')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
+                    <span className='text-muted-foreground text-center text-[11px] leading-tight font-normal whitespace-normal sm:leading-none sm:whitespace-nowrap'>
                       {t('GPT only · plan quota')}
                     </span>
                     {savingsPercent > 0 && (
                       <Badge
                         data-slot='subscription-savings-badge'
                         variant='destructive'
-                        className='subscription-savings-attention bg-destructive text-destructive-foreground absolute -top-2 -right-2 h-4 px-1.5 text-[10px] leading-none'
+                        className='subscription-savings-attention bg-destructive text-destructive-foreground absolute -top-2 left-1/2 h-4 -translate-x-1/2 px-1.5 text-[10px] leading-none sm:right-[-0.5rem] sm:left-auto sm:translate-x-0'
                       >
                         {t('Save up to {{percent}}%', {
                           percent: savingsPercent,
@@ -91,12 +91,12 @@ export function MyWallet(props: MyWalletProps) {
                   </TabsTrigger>
                   <TabsTrigger
                     value='affiliate'
-                    className='h-auto! flex-col items-center gap-1.5 px-5 py-2.5'
+                    className='h-auto! w-full min-w-0 flex-col items-center gap-1.5 px-1 py-2.5 sm:w-auto sm:min-w-max sm:px-5'
                   >
-                    <span className='text-base leading-none font-semibold'>
+                    <span className='text-center text-sm leading-tight font-semibold whitespace-normal sm:text-base sm:leading-none sm:whitespace-nowrap'>
                       {t('Referral Program')}
                     </span>
-                    <span className='text-muted-foreground text-[11px] leading-none font-normal'>
+                    <span className='text-muted-foreground text-center text-[11px] leading-tight font-normal whitespace-normal sm:leading-none sm:whitespace-nowrap'>
                       {t('Invite to earn rewards')}
                     </span>
                   </TabsTrigger>

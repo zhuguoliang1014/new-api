@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 
@@ -124,30 +124,32 @@ it('keeps redemption available when online topup is disabled', () => {
   expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument()
 })
 
-it('places a compact active subscription before the full-width plan catalog', async () => {
-  const { container } = await renderSubscriptions([subscription(1)])
-  const overview = screen.getByRole('region', { name: 'My Subscriptions' })
-  const catalog = screen.getByText('Subscription Plans')
+it('opens active subscriptions from the catalog and restores keyboard focus on close', async () => {
+  await renderSubscriptions([subscription(1)])
   expect(
-    overview.compareDocumentPosition(catalog) & Node.DOCUMENT_POSITION_FOLLOWING
-  ).toBeTruthy()
-  expect(within(overview).getByText('Plan 1')).toBeVisible()
-  expect(
-    within(overview).queryByText(
-      'Matching subscriptions first, then wallet balance'
-    )
+    screen.queryByRole('region', { name: 'My Subscriptions' })
   ).not.toBeInTheDocument()
-  expect(
-    container.querySelector('[data-slot="subscription-layout"]')
-  ).toHaveClass('flex-col')
-  expect(
-    screen.queryByRole('button', { name: /Manage subscriptions/ })
-  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Plan 1')).not.toBeInTheDocument()
+  const trigger = screen.getByRole('button', { name: /My Subscriptions/ })
+  expect(trigger).toHaveTextContent('1 active')
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  const panel = await screen.findByRole('dialog', { name: 'My Subscriptions' })
+  expect(await within(panel).findByText('Plan 1')).toBeVisible()
+  expect(panel).toHaveClass('w-full', 'sm:max-w-2xl')
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+  expect(trigger).toHaveFocus()
 })
 
 it('keeps multiple subscriptions compact until keyboard expansion enables ordering', async () => {
   await renderSubscriptions([subscription(1), subscription(2), subscription(3)])
-  expect(screen.getByText('Plan 1')).toBeVisible()
+  await userEvent.click(
+    screen.getByRole('button', { name: /My Subscriptions/ })
+  )
+  expect(await screen.findByText('Plan 1')).toBeVisible()
   expect(screen.queryByText('Plan 2')).not.toBeInTheDocument()
   const manage = screen.getByRole('button', { name: /Manage subscriptions/ })
   expect(manage).toHaveAttribute('aria-expanded', 'false')
@@ -168,31 +170,24 @@ it('keeps the empty subscription overview short and the catalog visible', async 
   expect(
     screen.queryByText('GPT subscriptions only support GPT models.')
   ).not.toBeInTheDocument()
-  const overview = screen.getByRole('region', { name: 'My Subscriptions' })
-  const title = within(overview).getByRole('heading', {
-    name: 'My Subscriptions',
-    level: 3,
-  })
-  expect(title).not.toHaveTextContent('No Active')
-  expect(within(overview).getByText('No Active')).toBeVisible()
   expect(
-    within(overview).queryByText(
-      'Matching subscriptions first, then wallet balance'
-    )
+    screen.queryByRole('region', { name: 'My Subscriptions' })
   ).not.toBeInTheDocument()
-  expect(screen.getByText('No subscription records')).toBeVisible()
-  expect(screen.getByText('No subscription records')).not.toHaveClass(
-    'bg-muted/30'
-  )
+  expect(screen.queryByText('No subscription records')).not.toBeInTheDocument()
   expect(screen.getByText('No plans available')).toBeVisible()
-  expect(
-    screen.queryByRole('button', { name: /Manage subscriptions/ })
-  ).not.toBeInTheDocument()
+  await userEvent.click(
+    screen.getByRole('button', { name: 'My Subscriptions' })
+  )
+  expect(await screen.findByText('No subscription records')).toBeVisible()
 })
 
 it('returns to the compact overview when a refresh leaves only one subscription', async () => {
   const records = [subscription(1), subscription(2)]
   await renderSubscriptions(records)
+  await userEvent.click(
+    screen.getByRole('button', { name: /My Subscriptions/ })
+  )
+  await screen.findByText('Plan 1')
   await userEvent.click(
     screen.getByRole('button', { name: /Manage subscriptions/ })
   )
