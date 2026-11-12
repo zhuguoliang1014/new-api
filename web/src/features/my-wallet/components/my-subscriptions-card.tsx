@@ -53,7 +53,8 @@ import type {
   UserSubscriptionRecord,
   SubscriptionFreezePolicy,
 } from '@/features/subscriptions/types'
-import { formatQuota } from '@/lib/format'
+import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber, formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
@@ -249,12 +250,15 @@ function SubscriptionRow({
 
 interface MySubscriptionsCardProps {
   refreshSignal?: number
+  embedded?: boolean
 }
 
 export function MySubscriptionsCard({
   refreshSignal,
+  embedded = false,
 }: MySubscriptionsCardProps = {}) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [allSubscriptions, setAllSubscriptions] = useState<
     UserSubscriptionRecord[]
   >([])
@@ -477,17 +481,23 @@ export function MySubscriptionsCard({
     <section aria-label={t('My Subscriptions')}>
       <Collapsible open={showAllSubscriptions} onOpenChange={setExpanded}>
         <TitledCard
-          title={<h3>{t('My Subscriptions')}</h3>}
-          className='rounded-xl'
+          title={embedded ? null : <h3>{t('My Subscriptions')}</h3>}
+          className={
+            embedded ? 'rounded-none border-0 shadow-none ring-0' : 'rounded-xl'
+          }
           titleClassName='text-sm font-semibold sm:text-sm'
           disableHoverEffect
           headerClassName={cn(
             'border-b-0 px-4 pt-4 !pb-3 sm:px-5 sm:pt-4 sm:!pb-3',
+            embedded &&
+              'px-0 pt-0 sm:px-0 sm:pt-0 [&>div]:flex-row [&>div]:flex-wrap [&>div>div:first-child]:hidden [&>div>div:last-child]:w-full',
             !draggable &&
               inactiveCount === 0 &&
               '[&>div]:flex-row [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
           )}
-          contentClassName='px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
+          contentClassName={
+            embedded ? 'p-0 sm:p-0' : 'px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
+          }
           action={
             <div className='flex flex-wrap items-center gap-2'>
               {(activeCount > 0 || frozenSubscriptions.length === 0) && (
@@ -498,7 +508,9 @@ export function MySubscriptionsCard({
                   variant={activeCount > 0 ? 'success' : 'neutral'}
                   label={
                     activeCount > 0
-                      ? `${activeCount} ${t('active')}`
+                      ? t('{{activeCount}} active', {
+                          activeCount: formatNumber(activeCount, locale),
+                        })
                       : t('No Active')
                   }
                 />

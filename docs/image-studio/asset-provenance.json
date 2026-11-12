@@ -1,0 +1,167 @@
+[
+  {
+    "name": "portrait",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text",
+    "generated_size": [
+      1024,
+      1536
+    ],
+    "web_size": [
+      768,
+      1152
+    ],
+    "prompt": "docs/image-studio/prompts/portrait.txt"
+  },
+  {
+    "name": "product",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text",
+    "generated_size": [
+      1024,
+      1536
+    ],
+    "web_size": [
+      768,
+      1152
+    ],
+    "prompt": "docs/image-studio/prompts/product.txt"
+  },
+  {
+    "name": "poster",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text",
+    "generated_size": [
+      1024,
+      1536
+    ],
+    "web_size": [
+      768,
+      1152
+    ],
+    "prompt": "docs/image-studio/prompts/poster.txt"
+  },
+  {
+    "name": "outfits",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text, regular 3 by 2 sheet cropped into six individual references",
+    "generated_size": [
+      3072,
+      2048
+    ],
+    "crop_size": [
+      1024,
+      1024
+    ],
+    "web_size": [
+      768,
+      768
+    ],
+    "prompt": "docs/image-studio/prompts/elements/outfits.txt",
+    "assets": [
+      "web/public/images/studio/elements/outfit-linen.webp",
+      "web/public/images/studio/elements/outfit-trench.webp",
+      "web/public/images/studio/elements/outfit-knit.webp",
+      "web/public/images/studio/elements/outfit-denim.webp",
+      "web/public/images/studio/elements/outfit-utility.webp",
+      "web/public/images/studio/elements/outfit-sport.webp"
+    ],
+    "billing_status": "not reconciled per request"
+  },
+  {
+    "name": "poses",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text, regular 3 by 2 sheet cropped into six individual references",
+    "generated_size": [
+      3072,
+      2048
+    ],
+    "crop_size": [
+      1024,
+      1024
+    ],
+    "web_size": [
+      768,
+      768
+    ],
+    "prompt": "docs/image-studio/prompts/elements/poses.txt",
+    "assets": [
+      "web/public/images/studio/elements/pose-standing.webp",
+      "web/public/images/studio/elements/pose-walking.webp",
+      "web/public/images/studio/elements/pose-seated.webp",
+      "web/public/images/studio/elements/pose-reaching.webp",
+      "web/public/images/studio/elements/pose-turning.webp",
+      "web/public/images/studio/elements/pose-dynamic.webp"
+    ],
+    "billing_status": "not reconciled per request"
+  },
+  {
+    "name": "scenes",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independently generated from text, regular 3 by 2 sheet cropped into six individual references",
+    "generated_size": [
+      3072,
+      2048
+    ],
+    "crop_size": [
+      1024,
+      1024
+    ],
+    "web_size": [
+      768,
+      768
+    ],
+    "prompt": "docs/image-studio/prompts/elements/scenes.txt",
+    "assets": [
+      "web/public/images/studio/elements/scene-courtyard.webp",
+      "web/public/images/studio/elements/scene-charcoal.webp",
+      "web/public/images/studio/elements/scene-coast.webp",
+      "web/public/images/studio/elements/scene-gallery.webp",
+      "web/public/images/studio/elements/scene-garden.webp",
+      "web/public/images/studio/elements/scene-ivory.webp"
+    ],
+    "billing_status": "not reconciled per request"
+  },
+  {
+    "name": "fashion-example",
+    "source": "actual three-reference image edit using the studio prompt compiler",
+    "model": "gpt-image-2.5-flare-basic",
+    "references": [
+      "portrait.webp",
+      "elements/outfit-trench.webp",
+      "elements/pose-walking.webp"
+    ],
+    "generated_size": [
+      1024,
+      1536
+    ],
+    "web_size": [
+      768,
+      1152
+    ],
+    "prompt": "docs/image-studio/prompts/fashion-workflow-validation.txt",
+    "validation": "Second generation after first result retained unwanted portrait lighting. White background and free hands improved; garment and face fidelity still need human comparison.",
+    "billing_status": "two calls, not reconciled per request"
+  },
+  {
+    "name": "pose-camera-views",
+    "model": "gpt-image-2.5-flare-basic",
+    "source": "independent clothed mannequin camera-view sheets, cropped into 18 images",
+    "poses": [
+      "standing",
+      "seated",
+      "walking",
+      "reaching",
+      "turning",
+      "dynamic"
+    ],
+    "views": [
+      "front",
+      "side",
+      "back"
+    ],
+    "prompt_directory": "docs/image-studio/prompts/angles",
+    "limitations": "Generated angle references are not a calibrated 3D rig; limb and garment consistency may vary slightly. Original view kept alongside new views.",
+    "billing_status": "Initial three neutral-mannequin prompts returned content_policy_violation. Three fully-clothed mannequin sheets succeeded. No automatic retries; actual billing not reconciled."
+  }
+]

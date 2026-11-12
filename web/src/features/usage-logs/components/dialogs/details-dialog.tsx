@@ -44,7 +44,6 @@ import {
   Headphones,
   Monitor,
   Cloud,
-  Globe,
   ShieldCheck,
   UserCog,
   Info,
@@ -69,7 +68,7 @@ import { cn } from '@/lib/utils'
 
 import { AuditDetailFields } from '../../audit/components/audit-detail-fields'
 import type { UsageLog } from '../../data/schema'
-import { getBillingRatio } from '../../lib/billing-source'
+import { getBillingRatio, getPlanDisplayRatio } from '../../lib/billing-source'
 import {
   parseLogOther,
   getLogClientTransport,
@@ -93,6 +92,7 @@ import {
   isTimingLogType,
 } from '../../lib/utils'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
+import { LogIPLocation } from '../log-ip-location'
 import { ResponseModelDetails } from '../model-badge'
 import { PluginAuthorLink } from '../plugin-author-link'
 import { DetailRow, DetailSection } from './log-detail-layout'
@@ -235,6 +235,13 @@ function BillingBreakdown(props: {
   }
 
   const billingRatio = getBillingRatio(other)
+  const planRatio = getPlanDisplayRatio(other)
+  if (planRatio != null) {
+    rows.push({
+      label: t('Plan multiplier'),
+      value: `${formatRatio(planRatio)}x`,
+    })
+  }
   if (billingRatio.value != null) {
     rows.push({
       label: t(billingRatio.labelKey),
@@ -243,7 +250,10 @@ function BillingBreakdown(props: {
     if (billingRatio.restricted) {
       rows.push({
         label: t('Multiplier basis'),
-        value: t('Restricted subscription'),
+        value: t(
+          'The plan discount is already included in the credited quota. Usage is deducted at {{ratio}}x without applying the purchase multiplier again.',
+          { ratio: billingRatio.value }
+        ),
       })
     }
   }
@@ -777,10 +787,7 @@ export function DetailsDialog(props: DetailsDialogProps) {
             <DetailRow
               label={t('IP Address')}
               value={
-                <span className='flex items-center gap-1'>
-                  <Globe className='size-3 text-amber-500' aria-hidden='true' />
-                  {props.log.ip}
-                </span>
+                <LogIPLocation ip={props.log.ip ?? ''} enabled={props.open} />
               }
               mono
             />
@@ -1130,7 +1137,13 @@ export function DetailsDialog(props: DetailsDialogProps) {
               <DetailRow
                 key={field.label}
                 label={field.label}
-                value={field.value}
+                value={
+                  field.label === t('IP Address') ? (
+                    <LogIPLocation ip={field.value} enabled={props.open} />
+                  ) : (
+                    field.value
+                  )
+                }
                 mono
               />
             ))}

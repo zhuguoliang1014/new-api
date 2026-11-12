@@ -24,7 +24,11 @@ import type {
   UserSubscriptionRecord,
 } from '@/features/subscriptions/types'
 
-import { shouldShowBillingSource, getBillingRatio } from '../billing-source'
+import {
+  shouldShowBillingSource,
+  getBillingRatio,
+  getPlanDisplayRatio,
+} from '../billing-source'
 
 function plan(enabled: boolean): PlanRecord {
   return { plan: { id: 1, enabled } as SubscriptionPlan }
@@ -172,5 +176,55 @@ describe('recorded billing multiplier', () => {
     expect(
       getBillingRatio(other as Parameters<typeof getBillingRatio>[0])
     ).toMatchObject({ value, restricted })
+  })
+})
+
+describe('purchased plan multiplier', () => {
+  test('shows the purchase rate while leaving the quota deduction rate at one', () => {
+    const other = {
+      billing_source: 'subscription',
+      billing_ratio_source: 'subscription_unit' as const,
+      billing_group_ratio: 1,
+      subscription_purchase_ratio: 0.18,
+      user_group_ratio: 0.36,
+    }
+    expect(getPlanDisplayRatio(other)).toBe(0.18)
+    expect(getBillingRatio(other).value).toBe(1)
+  })
+
+  test('includes a configured quota deduction multiplier in the effective plan rate', () => {
+    expect(
+      getPlanDisplayRatio({
+        billing_source: 'subscription',
+        billing_ratio_source: 'subscription_plan',
+        billing_group_ratio: 0.75,
+        subscription_purchase_ratio: 0.2,
+      })
+    ).toBe(0.15)
+  })
+
+  test.each([undefined, 0, -1, Number.NaN, Infinity])(
+    'keeps unknown or invalid purchase rate %s hidden',
+    (ratio) => {
+      expect(
+        getPlanDisplayRatio({
+          billing_source: 'subscription',
+          billing_ratio_source: 'subscription_unit',
+          billing_group_ratio: 1,
+          subscription_purchase_ratio: ratio,
+          user_group_ratio: 0.36,
+        })
+      ).toBeUndefined()
+    }
+  )
+
+  test('does not apply subscription purchase metadata to a wallet log', () => {
+    expect(
+      getPlanDisplayRatio({
+        billing_source: 'wallet',
+        billing_group_ratio: 0.36,
+        subscription_purchase_ratio: 0.18,
+      })
+    ).toBeUndefined()
   })
 })

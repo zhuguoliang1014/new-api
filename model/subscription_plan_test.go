@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/glebarez/sqlite"
@@ -250,28 +251,42 @@ func TestSubscriptionSalesDatabaseMatrix(t *testing.T) {
 				require.NoError(t, db.First(&after, user.Id).Error)
 				assert.Equal(t, user.Quota, after.Quota, "sold-out attempts must not debit the wallet")
 			})
-			t.Run("timeouts_preserve_late_payments_but_provider_closure_releases", func(t *testing.T) {
+			t.Run("expired_orders_release_stock_and_reject_late_payment", func(t *testing.T) {
 				for _, provider := range []string{PaymentProviderStripe, PaymentProviderEpay, SubscriptionPaymentProviderHupijiao} {
 					p := newPlan(1)
 					order := newOrder(p, provider, "timeout")
 					require.NoError(t, order.Insert())
 					require.NoError(t, ExpireSubscriptionOrder(order.TradeNo, provider))
-					if provider == PaymentProviderStripe {
-						assert.Equal(t, SubscriptionSalesCounts{}, salesFor(p))
-						require.NoError(t, newOrder(p, provider, "replacement").Insert())
-						assert.ErrorIs(t, CompleteSubscriptionOrder(order.TradeNo, "", provider, ""), ErrSubscriptionOrderStatusInvalid)
+					assert.Equal(t, SubscriptionSalesCounts{}, salesFor(p))
+					require.NoError(t, newOrder(p, provider, "replacement").Insert())
+					if provider == SubscriptionPaymentProviderHupijiao {
+						assert.ErrorIs(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 7, ""), ErrSubscriptionOrderStatusInvalid)
 					} else {
-						assert.Equal(t, SubscriptionSalesCounts{Reserved: 1}, salesFor(p))
-						assert.ErrorIs(t, newOrder(p, provider, "blocked").Insert(), ErrSubscriptionSalesReserved)
-						if provider == PaymentProviderEpay {
-							require.NoError(t, CompleteSubscriptionOrder(order.TradeNo, "", provider, "alipay"))
-						} else {
-							require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 7, ""))
-							require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 7, ""))
-						}
-						assert.Equal(t, SubscriptionSalesCounts{Sold: 1}, salesFor(p))
+						assert.ErrorIs(t, CompleteSubscriptionOrder(order.TradeNo, "", provider, "alipay"), ErrSubscriptionOrderStatusInvalid)
 					}
 				}
+			})
+			t.Run("automatic_expiration_closes_subscription_and_mirrored_topup", func(t *testing.T) {
+				p := newPlan(2)
+				old := newOrder(p, SubscriptionPaymentProviderHupijiao, "old")
+				old.CreateTime = time.Now().Unix() - 10*60
+				require.NoError(t, old.Insert())
+				fresh := newOrder(p, PaymentProviderEpay, "fresh")
+				fresh.CreateTime = time.Now().Unix()
+				require.NoError(t, fresh.Insert())
+				mirror := &TopUp{UserId: user.Id, Amount: 0, Money: 7, TradeNo: old.TradeNo, PaymentProvider: old.PaymentProvider, PaymentMethod: old.PaymentMethod, CreateTime: old.CreateTime, Status: common.TopUpStatusPending}
+				require.NoError(t, db.Create(mirror).Error)
+
+				expired, err := ExpirePendingSubscriptionOrders(time.Now().Unix()-SubscriptionPendingOrderTTLSeconds, 10)
+				require.NoError(t, err)
+				assert.Equal(t, 1, expired)
+				assert.Equal(t, SubscriptionSalesCounts{Reserved: 1}, salesFor(p))
+				var closed SubscriptionOrder
+				require.NoError(t, db.Where("trade_no = ?", old.TradeNo).First(&closed).Error)
+				assert.Equal(t, common.TopUpStatusExpired, closed.Status)
+				var closedTopUp TopUp
+				require.NoError(t, db.Where("trade_no = ?", old.TradeNo).First(&closedTopUp).Error)
+				assert.Equal(t, common.TopUpStatusExpired, closedTopUp.Status)
 			})
 			t.Run("display_sales_consume_stock_without_creating_orders_and_gifts_do_not", func(t *testing.T) {
 				p := newPlan(5)

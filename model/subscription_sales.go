@@ -1,6 +1,8 @@
 package model
 
 import (
+	"errors"
+
 	"github.com/QuantumNous/new-api/common"
 	"gorm.io/gorm"
 )
@@ -20,14 +22,11 @@ type SubscriptionSalesCounts struct {
 }
 
 func subscriptionSaleOrders(tx *gorm.DB) *gorm.DB {
-	// Epay and Hupijiao accept authenticated late payments after a local timeout.
-	// Those checkouts must keep their place until payment is settled. A browser
-	// countdown or an unpaid status query is not proof that payment is impossible.
 	return tx.Model(&SubscriptionOrder{}).Where(
-		"status IN ? OR (payment_provider IN ? AND status IN ?)",
+		"status IN ? OR (payment_provider IN ? AND status = ?)",
 		[]string{common.TopUpStatusSuccess, common.TopUpStatusPending},
 		[]string{PaymentProviderEpay, SubscriptionPaymentProviderHupijiao},
-		[]string{common.TopUpStatusExpired, common.TopUpStatusCanceled},
+		common.TopUpStatusCanceled,
 	)
 }
 
@@ -114,4 +113,77 @@ func ValidateSubscriptionSalesLimitTx(tx *gorm.DB, planID, limit int, displaySol
 		return ErrSubscriptionSalesLimitTooLow
 	}
 	return nil
+}
+
+const SubscriptionPendingOrderTTLSeconds int64 = 5 * 60
+
+// ExpirePendingSubscriptionOrders closes old unpaid orders and their mirrored
+// top-up rows. Each transition takes the plan lock before the order lock, the
+// same order used by payment completion and stock reservation.
+func ExpirePendingSubscriptionOrders(expireTimestamp int64, limit int) (int, error) {
+	if limit <= 0 {
+		return 0, nil
+	}
+	var candidates []SubscriptionOrder
+	if err := DB.Select("trade_no", "payment_provider").
+		Where("status = ? AND create_time < ?", common.TopUpStatusPending, expireTimestamp).
+		Order("create_time ASC").Limit(limit).Find(&candidates).Error; err != nil {
+		return 0, err
+	}
+
+	expired := 0
+	for _, candidate := range candidates {
+		changed, err := expirePendingSubscriptionOrder(candidate.TradeNo, candidate.PaymentProvider, expireTimestamp)
+		if err != nil {
+			return expired, err
+		}
+		if changed {
+			expired++
+		}
+	}
+	return expired, nil
+}
+
+func expirePendingSubscriptionOrder(tradeNo, expectedPaymentProvider string, expireTimestamp int64) (bool, error) {
+	var orderInfo SubscriptionOrder
+	if err := DB.Select("plan_id").Where("trade_no = ?", tradeNo).First(&orderInfo).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	changed := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var order SubscriptionOrder
+		if err := lockForUpdate(tx).Where("trade_no = ?", tradeNo).First(&order).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+		if order.PaymentProvider != expectedPaymentProvider {
+			return ErrPaymentMethodMismatch
+		}
+		if order.Status != common.TopUpStatusPending || order.CreateTime >= expireTimestamp {
+			return nil
+		}
+		now := common.GetTimestamp()
+		if err := tx.Model(&order).Updates(map[string]any{
+			"status":        common.TopUpStatusExpired,
+			"complete_time": now,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&TopUp{}).
+			Where("trade_no = ? AND payment_provider = ? AND status = ?", tradeNo, expectedPaymentProvider, common.TopUpStatusPending).
+			Updates(map[string]any{"status": common.TopUpStatusExpired, "complete_time": now}).Error; err != nil {
+			return err
+		}
+		changed = true
+		return nil
+	})
+	return changed, err
 }

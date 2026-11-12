@@ -1,0 +1,8 @@
+Make an original 3D pose reference contact sheet. Precisely 3 columns and 2 rows, six equal square cells, edge-to-edge regular grid, no gaps, no borders, no text or numbers. In every square one full-body androgynous adult artist's articulated anatomy mannequin made from uniform matte clay-grey material, smooth featureless oval face with no eyes, no hair, fully opaque neutral bodysuit surface with no intimate details. Same simple neutral model in all cells. Warm off-white seamless background, soft shadows, soft modelling light. Full limbs, hands and feet entirely inside each cell with 8% margin, anatomically plausible gestures. Each cell must have exactly one mannequin. Croppable separate pose reference images, not a comic or multiple views in one cell.
+TOP LEFT: relaxed full-length standing contrapposto, weight on left leg, right knee slightly bent, one hand near hip, facing camera.
+TOP MIDDLE: captured mid-stride walking from left to right toward viewer at a three-quarter angle, opposite arm and leg forward.
+TOP RIGHT: seated upright on a simple small cubic stool, three-quarter view, knees bent naturally, hands resting on thighs, both feet on the ground.
+BOTTOM LEFT: standing with one arm reaching gently above head, other arm relaxed, side view, body subtly elongated.
+BOTTOM MIDDLE: three-quarter rear view, standing and looking back over one shoulder, both arms relaxed down, feet visible.
+BOTTOM RIGHT: dynamic wide lateral step, one leg bent, other leg extended, upper body upright, one arm extended to the side for balance.
+No costumes or accessories beyond the single stool, no skin texture, no explicit anatomy. Exact uniform 3x2 grid.

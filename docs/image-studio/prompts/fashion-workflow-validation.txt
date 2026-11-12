@@ -1,0 +1,19 @@
+Create a full-body apparel product photo.
+Create one finished commercial apparel photograph of one adult wearing the selected garments. No collage, contact sheet, inset, mannequin joints, added text or watermark.
+The outfit reference is the product source of truth: preserve its visible silhouette, collar, seams, fastenings, print placement, color and fabric texture. Do not invent logos, labels, hidden back details or extra accessories. Adapt the drape naturally to the selected body and pose. This is a generative reference goal, not a measured fit simulation.
+Use the person reference only for the person, the pose reference only for gesture and viewpoint, and the scene reference only for background and lighting. Never substitute the face from a clothing reference. If no person reference exists, create a fictional adult model.
+Strict reference isolation: discard all backgrounds, lighting, clothing and stance from the identity photograph. Copy only facial identity, hair and the requested body proportions. The pose image controls the arm, hand and leg arrangement; do not retain the original portrait stance or put hands into pockets unless the pose shows this.
+Keep the identity reference body proportions when visible; otherwise use natural adult proportions.
+Keep the person reference stature when visible.
+Full-body composition with the entire head, hands and feet visible and comfortable margins.
+Commercial apparel catalog photography, soft even studio light, accurate garment color, clean white seamless background unless a scene reference is supplied.
+BACKGROUND PRIORITY: no scene reference is supplied. Use a clean pure white seamless studio, neutral even diffuse light and only a soft contact shadow below the feet. No coloured wall, window pattern, sunlight bands, courtyard or scenery from any reference.
+Reference image 1: identity reference only.
+Reference image 2: outfit reference only.
+Reference image 3: pose reference only.
+Image 1: Preserve the face and hairstyle; use other references for outfit and pose.
+Image 2: Use the visible garments, shoes and accessories, not the model identity.
+Image 3: Use the action, balance and viewpoint, not the mannequin or identity.
+Reference image 1 (identity): Use only this fictional adult person’s identity and hairstyle, not her outfit, pose or background.
+Reference image 2 (outfit): Midnight navy belted trench, cream shirt, dark trousers and black ankle boots. Dress the subject naturally.
+Reference image 3 (pose): Mid-stride walk at a three-quarter angle toward camera, opposite arm and leg forward. Use the mannequin body gesture only.

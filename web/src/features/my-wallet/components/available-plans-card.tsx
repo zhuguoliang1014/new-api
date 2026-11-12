@@ -1,4 +1,4 @@
-import { ArrowRight, Crown, RefreshCw, Timer } from 'lucide-react'
+import { ArrowRight, RefreshCw, Timer } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -40,6 +40,7 @@ import {
   formatQuotaWithCurrency,
 } from '@/lib/currency'
 import { formatNumber } from '@/lib/format'
+import { handleServerError } from '@/lib/handle-server-error'
 import { getLobeIcon } from '@/lib/lobe-icon'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
@@ -50,6 +51,7 @@ import {
 } from '../lib/subscription-savings'
 import type { MyWalletTopupInfo } from '../types'
 import { LocalSubscriptionPurchaseDialog } from './local-subscription-purchase-dialog'
+import { MySubscriptionsSheet } from './my-subscriptions-sheet'
 
 interface AvailablePlansCardProps {
   topupInfo: MyWalletTopupInfo | null
@@ -150,14 +152,18 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
     [plans]
   )
 
+  const hasActiveSubscription = allSubscriptions.some(
+    ({ subscription }) => subscription.status === 'active'
+  )
+
   useEffect(() => {
-    if (!hasTimedPlan) return
+    if (!hasTimedPlan && !hasActiveSubscription) return
     const id = window.setInterval(
       () => setNowSec(Math.floor(Date.now() / 1000)),
-      1000
+      hasTimedPlan ? 1000 : 60_000
     )
     return () => window.clearInterval(id)
-  }, [hasTimedPlan])
+  }, [hasTimedPlan, hasActiveSubscription])
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -178,33 +184,10 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
     return map
   }, [allSubscriptions])
 
-  if (loading) {
-    return (
-      <TitledCard
-        title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
-      >
-        <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-          {['first', 'second', 'third'].map((key) => (
-            <Skeleton key={key} className='h-72 w-full rounded-xl' />
-          ))}
-        </div>
-      </TitledCard>
-    )
-  }
-
-  if (plans.length === 0) {
-    return (
-      <TitledCard
-        title={t('Subscription Plans')}
-        icon={<Crown className='h-4 w-4' aria-hidden='true' />}
-      >
-        <p className='text-muted-foreground py-6 text-center text-sm'>
-          {t('No plans available')}
-        </p>
-      </TitledCard>
-    )
-  }
+  const activeCount = allSubscriptions.filter(
+    ({ subscription }) =>
+      subscription.status === 'active' && subscription.end_time > nowSec
+  ).length
 
   return (
     <>
@@ -212,338 +195,365 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         title={t('Subscription Plans')}
         className='overflow-visible rounded-none border-0 bg-transparent shadow-none ring-0'
         titleClassName='text-base sm:text-lg'
-        headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div>div:last-child]:w-auto'
+        headerClassName='border-0 px-0 pt-0 pb-3! sm:px-0 sm:pt-0 sm:pb-3! [&>div]:flex-row [&>div]:flex-wrap [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
         action={
-          <Button
-            variant='ghost'
-            size='icon'
-            className='h-8 w-8'
-            aria-label={t('Refresh')}
-            onClick={handleRefresh}
-            disabled={refreshing}
-          >
-            <RefreshCw
-              className={cn('h-4 w-4', refreshing && 'animate-spin')}
-              aria-hidden='true'
+          <div className='flex items-center gap-1'>
+            <MySubscriptionsSheet
+              activeCount={activeCount}
+              onClose={() => void fetchPlans().catch(handleServerError)}
             />
-          </Button>
+            <Button
+              variant='ghost'
+              size='icon'
+              className='h-8 w-8'
+              aria-label={t('Refresh')}
+              onClick={handleRefresh}
+              disabled={refreshing}
+            >
+              <RefreshCw
+                className={cn('h-4 w-4', refreshing && 'animate-spin')}
+                aria-hidden='true'
+              />
+            </Button>
+          </div>
         }
         disableHoverEffect
         contentClassName='p-0 sm:p-0'
       >
-        <div
-          data-slot='subscription-plan-grid'
-          className='grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
-        >
-          {plans.map((p, index) => {
-            const plan = p?.plan
-            if (!plan) return null
+        {loading && (
+          <div className='grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
+            {['first', 'second', 'third'].map((key) => (
+              <Skeleton key={key} className='h-72 w-full rounded-xl' />
+            ))}
+          </div>
+        )}
+        {!loading && plans.length === 0 && (
+          <p className='text-muted-foreground py-6 text-center text-sm'>
+            {t('No plans available')}
+          </p>
+        )}
+        {!loading && plans.length > 0 && (
+          <div
+            data-slot='subscription-plan-grid'
+            className='grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
+          >
+            {plans.map((p, index) => {
+              const plan = p?.plan
+              if (!plan) return null
 
-            const totalAmount = Number(plan.total_amount || 0)
-            const priceUsd = Number(plan.price_amount || 0)
-            const priceCny = Number(plan.price_cny || 0)
-            const hasCny = priceCny > 0
-            const priceLabel = hasCny
-              ? formatCnyCurrencyAmount(priceCny, {
-                  digitsLarge: 2,
-                  digitsSmall: 2,
-                  abbreviate: false,
-                  locale,
-                })
-              : `$${formatNumber(priceUsd, locale)}`
-            const duration = formatDuration(plan, t)
-
-            const isPopular = index === 0 && plans.length > 1
-            const limit = Number(plan.max_purchase_per_user || 0)
-            const count = planPurchaseCountMap.get(plan.id) || 0
-            const reached = limit > 0 && count >= limit
-            const sales = getPlanSalesState(p)
-            const soldCount = Number(p.sold_count || 0)
-            const resetPeriod = formatResetPeriod(plan, t)
-            const savings = props.planSavings?.get(plan.id)
-
-            const sale = computeSaleWindow(plan, nowSec)
-            const isSaleable =
-              sale.status !== 'upcoming' && sale.status !== 'ended'
-            const purchasable =
-              isSaleable &&
-              !reached &&
-              !sales.unavailable &&
-              onlinePaymentEnabled
-            const isRecommended = isPopular && purchasable
-
-            const quotaLabel =
-              totalAmount > 0
-                ? formatQuotaWithCurrency(totalAmount, {
+              const totalAmount = Number(plan.total_amount || 0)
+              const priceUsd = Number(plan.price_amount || 0)
+              const priceCny = Number(plan.price_cny || 0)
+              const hasCny = priceCny > 0
+              const priceLabel = hasCny
+                ? formatCnyCurrencyAmount(priceCny, {
                     digitsLarge: 2,
-                    digitsSmall: 4,
-                    abbreviate: true,
+                    digitsSmall: 2,
+                    abbreviate: false,
                     locale,
                   })
-                : t('Unlimited')
+                : `$${formatNumber(priceUsd, locale)}`
+              const duration = formatDuration(plan, t)
 
-            const details = [
-              { label: t('Quota Reset'), value: resetPeriod },
-              {
-                label: t('Purchase Count'),
-                value:
-                  limit > 0
-                    ? t('Purchased {{count}} of {{limit}}', {
-                        count: formatNumber(count, locale),
-                        limit: formatNumber(limit, locale),
-                      })
-                    : t('Unlimited purchases'),
-              },
-            ]
+              const isPopular = index === 0 && plans.length > 1
+              const limit = Number(plan.max_purchase_per_user || 0)
+              const count = planPurchaseCountMap.get(plan.id) || 0
+              const reached = limit > 0 && count >= limit
+              const sales = getPlanSalesState(p)
+              const soldCount = Number(p.sold_count || 0)
+              const resetPeriod = formatResetPeriod(plan, t)
+              const savings = props.planSavings?.get(plan.id)
 
-            let saleHint: string | null = null
-            let saleHintLabel = t('Ends in')
-            if (sale.status === 'ended') {
-              saleHintLabel = t('Sale ended at')
-              saleHint = `${saleHintLabel} ${formatTimestamp(sale.expiresAt)}`
-            } else if (sale.status === 'live' && sale.expiresAt > 0) {
-              saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.endsIn, t('days'))}`
-            } else if (sale.status === 'upcoming') {
-              saleHintLabel = t('Starts in')
-              saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.startsIn, t('days'))}`
-            }
+              const sale = computeSaleWindow(plan, nowSec)
+              const isSaleable =
+                sale.status !== 'upcoming' && sale.status !== 'ended'
+              const purchasable =
+                isSaleable &&
+                !reached &&
+                !sales.unavailable &&
+                onlinePaymentEnabled
+              const isRecommended = isPopular && purchasable
 
-            let buttonLabel = t('Subscribe Now')
-            if (sales.soldOut) {
-              buttonLabel = t('Sold Out')
-            } else if (sales.unavailable) {
-              buttonLabel = t('Places reserved')
-            } else if (reached) {
-              buttonLabel = t('Limit Reached')
-            } else if (sale.status === 'upcoming') {
-              buttonLabel = t('Not Started')
-            } else if (sale.status === 'ended') {
-              buttonLabel = t('Sale Ended')
-            }
+              const quotaLabel =
+                totalAmount > 0
+                  ? formatQuotaWithCurrency(totalAmount, {
+                      digitsLarge: 2,
+                      digitsSmall: 4,
+                      abbreviate: true,
+                      locale,
+                    })
+                  : t('Unlimited')
 
-            return (
-              <Card
-                key={plan.id}
-                role='article'
-                aria-labelledby={`subscription-plan-${plan.id}`}
-                data-card-hover='false'
-                className={cn(
-                  'relative min-w-0 gap-0 rounded-[12px] border py-0 shadow-none ring-0 transition-colors duration-200',
-                  isRecommended
-                    ? 'border-primary/50'
-                    : 'border-border hover:border-foreground/25'
-                )}
-              >
-                <CardContent className='flex h-full min-w-0 flex-col p-4'>
-                  {saleHint && (
-                    <div
-                      data-slot='plan-sale-notice'
-                      role={sale.status === 'ended' ? 'note' : 'timer'}
-                      aria-label={saleHintLabel}
-                      aria-live='off'
-                      className={cn(
-                        '-mx-4 -mt-4 mb-3 flex items-center gap-1.5 border-b px-4 py-2 text-[11px] leading-snug font-semibold tabular-nums',
-                        sale.status === 'live'
-                          ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
-                          : 'border-border bg-muted/50 text-muted-foreground'
-                      )}
-                    >
-                      <Timer className='size-3.5 shrink-0' aria-hidden='true' />
-                      <span>{saleHint}</span>
-                    </div>
+              const details = [
+                { label: t('Quota Reset'), value: resetPeriod },
+                {
+                  label: t('Purchase Count'),
+                  value:
+                    limit > 0
+                      ? t('Purchased {{count}} of {{limit}}', {
+                          count: formatNumber(count, locale),
+                          limit: formatNumber(limit, locale),
+                        })
+                      : t('Unlimited purchases'),
+                },
+              ]
+
+              let saleHint: string | null = null
+              let saleHintLabel = t('Ends in')
+              if (sale.status === 'ended') {
+                saleHintLabel = t('Sale ended at')
+                saleHint = `${saleHintLabel} ${formatTimestamp(sale.expiresAt)}`
+              } else if (sale.status === 'live' && sale.expiresAt > 0) {
+                saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.endsIn, t('days'))}`
+              } else if (sale.status === 'upcoming') {
+                saleHintLabel = t('Starts in')
+                saleHint = `${saleHintLabel} ${formatRelativeDuration(sale.startsIn, t('days'))}`
+              }
+
+              let buttonLabel = t('Subscribe Now')
+              if (sales.soldOut) {
+                buttonLabel = t('Sold Out')
+              } else if (sales.unavailable) {
+                buttonLabel = t('Places reserved')
+              } else if (reached) {
+                buttonLabel = t('Limit Reached')
+              } else if (sale.status === 'upcoming') {
+                buttonLabel = t('Not Started')
+              } else if (sale.status === 'ended') {
+                buttonLabel = t('Sale Ended')
+              }
+
+              return (
+                <Card
+                  key={plan.id}
+                  role='article'
+                  aria-labelledby={`subscription-plan-${plan.id}`}
+                  data-card-hover='false'
+                  className={cn(
+                    'relative min-w-0 gap-0 rounded-[12px] border py-0 shadow-none ring-0 transition-colors duration-200',
+                    isRecommended
+                      ? 'border-primary/50'
+                      : 'border-border hover:border-foreground/25'
                   )}
-                  <div className='flex items-start justify-between gap-2'>
-                    <div className='flex min-w-0 flex-1 items-start gap-2'>
-                      <span
-                        data-slot='plan-provider-icon'
-                        aria-hidden='true'
+                >
+                  <CardContent className='flex h-full min-w-0 flex-col p-4'>
+                    {saleHint && (
+                      <div
+                        data-slot='plan-sale-notice'
+                        role={sale.status === 'ended' ? 'note' : 'timer'}
+                        aria-label={saleHintLabel}
+                        aria-live='off'
                         className={cn(
-                          'mt-0.5 flex size-5 shrink-0 items-center justify-center',
-                          isRecommended ? 'text-primary' : 'text-foreground/80'
+                          '-mx-4 -mt-4 mb-3 flex items-center gap-1.5 border-b px-4 py-2 text-[11px] leading-snug font-semibold tabular-nums',
+                          sale.status === 'live'
+                            ? 'border-rose-100 bg-rose-50 text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300'
+                            : 'border-border bg-muted/50 text-muted-foreground'
                         )}
                       >
-                        {getLobeIcon('OpenAI', 20)}
-                      </span>
-                      <div className='min-w-0 flex-1'>
-                        <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
-                          <h3
-                            id={`subscription-plan-${plan.id}`}
-                            title={plan.title || t('Subscription Plans')}
-                            className='text-base leading-snug font-semibold tracking-tight break-words'
-                          >
-                            {plan.title || t('Subscription Plans')}
-                          </h3>
-                          {isRecommended && (
-                            <StatusBadge
-                              label={t('Recommended')}
-                              variant='info'
-                              type='text'
-                              copyable={false}
-                              className='text-primary text-[10px]'
-                            />
+                        <Timer
+                          className='size-3.5 shrink-0'
+                          aria-hidden='true'
+                        />
+                        <span>{saleHint}</span>
+                      </div>
+                    )}
+                    <div className='flex items-start justify-between gap-2'>
+                      <div className='flex min-w-0 flex-1 items-start gap-2'>
+                        <span
+                          data-slot='plan-provider-icon'
+                          aria-hidden='true'
+                          className={cn(
+                            'mt-0.5 flex size-5 shrink-0 items-center justify-center',
+                            isRecommended
+                              ? 'text-primary'
+                              : 'text-foreground/80'
+                          )}
+                        >
+                          {getLobeIcon('OpenAI', 20)}
+                        </span>
+                        <div className='min-w-0 flex-1'>
+                          <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+                            <h3
+                              id={`subscription-plan-${plan.id}`}
+                              title={plan.title || t('Subscription Plans')}
+                              className='text-base leading-snug font-semibold tracking-tight break-words'
+                            >
+                              {plan.title || t('Subscription Plans')}
+                            </h3>
+                            {isRecommended && (
+                              <StatusBadge
+                                label={t('Recommended')}
+                                variant='info'
+                                type='text'
+                                copyable={false}
+                                className='text-primary text-[10px]'
+                              />
+                            )}
+                          </div>
+                          {plan.subtitle && (
+                            <p
+                              title={plan.subtitle}
+                              className='text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed break-words'
+                            >
+                              {plan.subtitle}
+                            </p>
                           )}
                         </div>
-                        {plan.subtitle && (
-                          <p
-                            title={plan.subtitle}
-                            className='text-muted-foreground mt-1 line-clamp-2 text-xs leading-relaxed break-words'
-                          >
-                            {plan.subtitle}
+                      </div>
+                    </div>
+
+                    <PlanSalesStatus record={p} />
+                    <div
+                      data-slot='plan-price-quota'
+                      className='mt-3 grid grid-cols-2 gap-3 border-y py-2.5'
+                    >
+                      <div className='min-w-0'>
+                        <p className='text-muted-foreground text-[11px]'>
+                          {t('Price')}
+                        </p>
+                        <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                          {priceLabel}
+                        </p>
+                        <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
+                          / {duration}
+                        </p>
+                      </div>
+                      <div className='min-w-0 border-l pl-3'>
+                        <p className='text-muted-foreground text-[11px]'>
+                          {t('Available Quota')}
+                        </p>
+                        <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
+                          {quotaLabel}
+                        </p>
+                        {soldCount > 0 && (
+                          <p className='text-muted-foreground mt-1 text-[11px]'>
+                            {t('Sold {{count}}', {
+                              count: formatNumber(soldCount, locale),
+                            })}
                           </p>
                         )}
                       </div>
                     </div>
-                  </div>
-
-                  <PlanSalesStatus record={p} />
-                  <div
-                    data-slot='plan-price-quota'
-                    className='mt-3 grid grid-cols-2 gap-3 border-y py-2.5'
-                  >
                     <div className='min-w-0'>
-                      <p className='text-muted-foreground text-[11px]'>
-                        {t('Price')}
-                      </p>
-                      <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
-                        {priceLabel}
-                      </p>
-                      <p className='text-muted-foreground mt-1 text-[11px] whitespace-nowrap'>
-                        / {duration}
-                      </p>
-                    </div>
-                    <div className='min-w-0 border-l pl-3'>
-                      <p className='text-muted-foreground text-[11px]'>
-                        {t('Available Quota')}
-                      </p>
-                      <p className='mt-1 text-2xl leading-tight font-semibold tracking-tight break-words tabular-nums'>
-                        {quotaLabel}
-                      </p>
-                      {soldCount > 0 && (
-                        <p className='text-muted-foreground mt-1 text-[11px]'>
-                          {t('Sold {{count}}', {
-                            count: formatNumber(soldCount, locale),
-                          })}
-                        </p>
+                      {savings && (
+                        <div data-slot='plan-savings' className='mt-2'>
+                          <Accordion>
+                            <AccordionItem value='savings-details'>
+                              <AccordionTrigger
+                                aria-label={t('How savings are calculated')}
+                                className='gap-2 py-1 text-xs font-semibold text-green-700 dark:text-green-400'
+                              >
+                                <span>
+                                  {t(
+                                    'Save about {{percent}}% vs wallet payment',
+                                    {
+                                      percent: getSavingsPercent(
+                                        savings.savings
+                                      ),
+                                    }
+                                  )}
+                                </span>
+                              </AccordionTrigger>
+                              <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
+                                <dl className='space-y-1'>
+                                  <div className='flex items-start justify-between gap-3'>
+                                    <dt className='min-w-0 break-words'>
+                                      {props.comparisonGroup
+                                        ? t('Wallet GPT · {{group}}', {
+                                            group: props.comparisonGroup,
+                                          })
+                                        : t('Wallet GPT')}
+                                    </dt>
+                                    <dd className='shrink-0 tabular-nums'>
+                                      {formatNumber(
+                                        savings.rechargeRatio,
+                                        locale
+                                      )}
+                                      x
+                                    </dd>
+                                  </div>
+                                  <div className='flex items-start justify-between gap-3'>
+                                    <dt>{t('Subscription equivalent')}</dt>
+                                    <dd className='shrink-0 tabular-nums'>
+                                      {formatNumber(savings.planRatio, locale)}x
+                                    </dd>
+                                  </div>
+                                </dl>
+                                <div>
+                                  {t(
+                                    'Assumes quota is used before expiry or reset'
+                                  )}
+                                </div>
+                              </AccordionContent>
+                            </AccordionItem>
+                          </Accordion>
+                        </div>
                       )}
                     </div>
-                  </div>
-                  <div className='min-w-0'>
-                    {savings && (
-                      <div data-slot='plan-savings' className='mt-2'>
-                        <Accordion>
-                          <AccordionItem value='savings-details'>
-                            <AccordionTrigger
-                              aria-label={t('How savings are calculated')}
-                              className='gap-2 py-1 text-xs font-semibold text-green-700 dark:text-green-400'
+
+                    <dl className='mt-2 grid grid-cols-2 gap-2 border-t pt-2'>
+                      {details.map((detail) => (
+                        <div
+                          key={detail.label}
+                          className='min-w-0 space-y-1 text-[11px]'
+                        >
+                          <dt className='text-muted-foreground min-w-0 break-words'>
+                            {detail.label}
+                          </dt>
+                          <dd className='font-medium break-words'>
+                            {detail.value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+
+                    <div className='mt-auto pt-4'>
+                      {!onlinePaymentEnabled &&
+                      isSaleable &&
+                      !reached &&
+                      !sales.unavailable ? (
+                        <Tooltip>
+                          <TooltipTrigger render={<div />}>
+                            <Button
+                              variant='outline'
+                              className='h-auto min-h-11 w-full px-3 py-2 text-sm whitespace-normal'
+                              disabled
                             >
-                              <span>
-                                {t(
-                                  'Save about {{percent}}% vs wallet payment',
-                                  {
-                                    percent: getSavingsPercent(savings.savings),
-                                  }
-                                )}
-                              </span>
-                            </AccordionTrigger>
-                            <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
-                              <dl className='space-y-1'>
-                                <div className='flex items-start justify-between gap-3'>
-                                  <dt className='min-w-0 break-words'>
-                                    {props.comparisonGroup
-                                      ? t('Wallet GPT · {{group}}', {
-                                          group: props.comparisonGroup,
-                                        })
-                                      : t('Wallet GPT')}
-                                  </dt>
-                                  <dd className='shrink-0 tabular-nums'>
-                                    {formatNumber(
-                                      savings.rechargeRatio,
-                                      locale
-                                    )}
-                                    x
-                                  </dd>
-                                </div>
-                                <div className='flex items-start justify-between gap-3'>
-                                  <dt>{t('Subscription equivalent')}</dt>
-                                  <dd className='shrink-0 tabular-nums'>
-                                    {formatNumber(savings.planRatio, locale)}x
-                                  </dd>
-                                </div>
-                              </dl>
-                              <div>
-                                {t(
-                                  'Assumes quota is used before expiry or reset'
-                                )}
-                              </div>
-                            </AccordionContent>
-                          </AccordionItem>
-                        </Accordion>
-                      </div>
-                    )}
-                  </div>
-
-                  <dl className='mt-2 grid grid-cols-2 gap-2 border-t pt-2'>
-                    {details.map((detail) => (
-                      <div
-                        key={detail.label}
-                        className='min-w-0 space-y-1 text-[11px]'
-                      >
-                        <dt className='text-muted-foreground min-w-0 break-words'>
-                          {detail.label}
-                        </dt>
-                        <dd className='font-medium break-words'>
-                          {detail.value}
-                        </dd>
-                      </div>
-                    ))}
-                  </dl>
-
-                  <div className='mt-auto pt-4'>
-                    {!onlinePaymentEnabled &&
-                    isSaleable &&
-                    !reached &&
-                    !sales.unavailable ? (
-                      <Tooltip>
-                        <TooltipTrigger render={<div />}>
-                          <Button
-                            variant='outline'
-                            className='h-auto min-h-11 w-full px-3 py-2 text-sm whitespace-normal'
-                            disabled
-                          >
-                            {t('Online payment disabled by admin')}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          {t(
-                            'Contact the administrator to re-enable online payment.'
+                              {t('Online payment disabled by admin')}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {t(
+                              'Contact the administrator to re-enable online payment.'
+                            )}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <Button
+                          variant={isRecommended ? 'default' : 'outline'}
+                          className={cn(
+                            'h-auto min-h-11 w-full justify-between gap-3 rounded-[8px] px-3 py-2 text-sm font-medium whitespace-normal',
+                            sale.status === 'upcoming' && 'tabular-nums'
                           )}
-                        </TooltipContent>
-                      </Tooltip>
-                    ) : (
-                      <Button
-                        variant={isRecommended ? 'default' : 'outline'}
-                        className={cn(
-                          'h-auto min-h-11 w-full justify-between gap-3 rounded-[8px] px-3 py-2 text-sm font-medium whitespace-normal',
-                          sale.status === 'upcoming' && 'tabular-nums'
-                        )}
-                        disabled={!purchasable}
-                        onClick={() => {
-                          setSelectedPlan(p)
-                          setPurchaseOpen(true)
-                        }}
-                      >
-                        <span className='min-w-0 flex-1'>{buttonLabel}</span>
-                        {purchasable && (
-                          <ArrowRight className='size-4' aria-hidden='true' />
-                        )}
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                          disabled={!purchasable}
+                          onClick={() => {
+                            setSelectedPlan(p)
+                            setPurchaseOpen(true)
+                          }}
+                        >
+                          <span className='min-w-0 flex-1'>{buttonLabel}</span>
+                          {purchasable && (
+                            <ArrowRight className='size-4' aria-hidden='true' />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </TitledCard>
 
       <LocalSubscriptionPurchaseDialog

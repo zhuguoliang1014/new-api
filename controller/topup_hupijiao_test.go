@@ -128,9 +128,21 @@ func TestHupijiaoLatePaidCallbacksSettleExactlyOnce(t *testing.T) {
 				}
 				wg.Wait()
 				close(results)
+				closedSubscription := kind == "subscription" && status == common.TopUpStatusExpired
 				for r := range results {
-					assert.Equal(t, http.StatusOK, r.Code, r.Body.String())
-					assert.Equal(t, "success", r.Body.String())
+					if closedSubscription {
+						assert.Equal(t, http.StatusInternalServerError, r.Code, r.Body.String())
+						assert.Equal(t, "fail", r.Body.String())
+					} else {
+						assert.Equal(t, http.StatusOK, r.Code, r.Body.String())
+						assert.Equal(t, "success", r.Body.String())
+					}
+				}
+				if closedSubscription {
+					var unchanged model.TopUp
+					require.NoError(t, db.First(&unchanged, order.Id).Error)
+					assert.Equal(t, common.TopUpStatusExpired, unchanged.Status)
+					return
 				}
 				var saved model.TopUp
 				require.NoError(t, db.First(&saved, order.Id).Error)
@@ -144,7 +156,7 @@ func TestHupijiaoLatePaidCallbacksSettleExactlyOnce(t *testing.T) {
 	assert.Equal(t, 20_000_007, savedUser.Quota)
 	var count int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", user.Id).Count(&count).Error)
-	assert.EqualValues(t, 2, count)
+	assert.EqualValues(t, 1, count)
 	require.NoError(t, db.Model(&model.Log{}).Where("user_id = ? AND type = ?", user.Id, model.LogTypeTopup).Count(&count).Error)
 	assert.EqualValues(t, 2, count)
 }
@@ -267,7 +279,7 @@ func TestHupijiaoBackgroundRecoversMissedCallbackAndRetries(t *testing.T) {
 	assert.Equal(t, common.TopUpStatusPending, unpaid.Status)
 }
 
-func TestHupijiaoSubscriptionPollingRecoversExpiredPayment(t *testing.T) {
+func TestHupijiaoSubscriptionPollingDoesNotReopenExpiredSubscription(t *testing.T) {
 	db, user := hupijiaoRecoveryDB(t)
 	order := hupijiaoTestOrder(t, db, user, "subscription-poll", common.TopUpStatusExpired, time.Now().Add(-time.Hour).Unix())
 	plan := &model.SubscriptionPlan{Title: "subscription poll", Currency: "USD", DurationUnit: model.SubscriptionDurationDay, DurationValue: 1, TotalAmount: 1000}
@@ -275,9 +287,6 @@ func TestHupijiaoSubscriptionPollingRecoversExpiredPayment(t *testing.T) {
 	t.Cleanup(func() { require.NoError(t, db.Delete(plan).Error) })
 	require.NoError(t, db.Model(order).Update("amount", 0).Error)
 	require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: order.TradeNo, Money: 20, PaymentMethod: order.PaymentMethod, PaymentProvider: order.PaymentProvider, Status: common.TopUpStatusExpired, CreateTime: order.CreateTime}).Error)
-	hupijiaoTestClient(t, func(r *http.Request) (*http.Response, error) {
-		return hupijiaoTestResponse(t, r, order.TradeNo, order.OpenOrderId, "OD", "20.00")
-	})
 	for _, userID := range []int{user.Id + 1, user.Id, user.Id} {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
@@ -290,11 +299,12 @@ func TestHupijiaoSubscriptionPollingRecoversExpiredPayment(t *testing.T) {
 			continue
 		}
 		assert.Equal(t, http.StatusOK, recorder.Code)
-		assert.Contains(t, recorder.Body.String(), `"paid":true`)
+		assert.Contains(t, recorder.Body.String(), `"paid":false`)
+		assert.Contains(t, recorder.Body.String(), `"status":"expired"`)
 	}
 	var count int64
 	require.NoError(t, db.Model(&model.UserSubscription{}).Where("user_id = ?", user.Id).Count(&count).Error)
-	assert.EqualValues(t, 1, count)
+	assert.Zero(t, count)
 	var saved model.User
 	require.NoError(t, db.First(&saved, user.Id).Error)
 	assert.Equal(t, 7, saved.Quota)

@@ -32,7 +32,7 @@ import dayjs from '@/lib/dayjs'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 
 import type { UsageLog } from '../data/schema'
-import { getBillingRatio } from '../lib/billing-source'
+import { getBillingRatio, getPlanDisplayRatio } from '../lib/billing-source'
 import {
   formatModelName,
   getLogClientTransport,
@@ -79,7 +79,8 @@ export function CommonLogMobileCard<TData>(props: {
   const config = getLogTypeConfig(log.type)
   const group = log.group || other?.group || ''
   const billingRatio = getBillingRatio(other)
-  const groupRatio = billingRatio.value
+  const planRatio = getPlanDisplayRatio(other)
+  const groupRatio = billingRatio.restricted ? planRatio : billingRatio.value
   const fields: Record<FieldName, LogField> = {
     model: {
       label: t('Model'),
@@ -283,15 +284,20 @@ export function CommonLogMobileCard<TData>(props: {
               </div>
             )
           })}
-          {groupRatio != null &&
-            (groupRatio !== 1 || billingRatio.restricted) &&
-            Number.isFinite(groupRatio) &&
-            props.cells.has('token_name') && (
+          {props.cells.has('token_name') &&
+            (billingRatio.restricted ||
+              (groupRatio != null && groupRatio !== 1)) && (
               <div className='text-muted-foreground col-span-2 [overflow-wrap:anywhere]'>
-                {billingRatio.restricted
-                  ? t('Restricted subscription')
-                  : t(billingRatio.labelKey)}
-                : {groupRatio}×
+                {billingRatio.restricted && planRatio == null ? (
+                  t('Restricted subscription')
+                ) : (
+                  <>
+                    {billingRatio.restricted
+                      ? t('Plan multiplier')
+                      : t(billingRatio.labelKey)}
+                    : {groupRatio}×
+                  </>
+                )}
               </div>
             )}
         </div>

@@ -691,7 +691,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
 		}
-		if order.Status != common.TopUpStatusPending && !(expectedPaymentProvider == PaymentProviderEpay && (order.Status == common.TopUpStatusExpired || order.Status == common.TopUpStatusCanceled)) {
+		if order.Status != common.TopUpStatusPending && !(expectedPaymentProvider == PaymentProviderEpay && order.Status == common.TopUpStatusCanceled) {
 			return ErrSubscriptionOrderStatusInvalid
 		}
 		if !plan.Enabled {
@@ -802,7 +802,14 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
 		refCol = `"trade_no"`
 	}
+	var orderInfo SubscriptionOrder
+	if err := DB.Select("plan_id").Where(refCol+" = ?", tradeNo).First(&orderInfo).Error; err != nil {
+		return ErrSubscriptionOrderNotFound
+	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		if _, err := lockSubscriptionSalePlanTx(tx, orderInfo.PlanId); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		var order SubscriptionOrder
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
@@ -814,8 +821,14 @@ func ExpireSubscriptionOrder(tradeNo string, expectedPaymentProvider string) err
 			return nil
 		}
 		order.Status = common.TopUpStatusExpired
-		order.CompleteTime = common.GetTimestamp()
-		return tx.Save(&order).Error
+		now := common.GetTimestamp()
+		order.CompleteTime = now
+		if err := tx.Save(&order).Error; err != nil {
+			return err
+		}
+		return tx.Model(&TopUp{}).
+			Where("trade_no = ? AND payment_provider = ? AND status = ?", tradeNo, order.PaymentProvider, common.TopUpStatusPending).
+			Updates(map[string]any{"status": common.TopUpStatusExpired, "complete_time": now}).Error
 	})
 }
 
@@ -1833,23 +1846,6 @@ func CountUserPendingSubscriptionOrders(userId int, paymentProvider string) (int
 		Where("user_id = ? AND payment_provider = ? AND status = ?", userId, paymentProvider, common.TopUpStatusPending).
 		Count(&count).Error
 	return count, err
-}
-
-// ExpirePendingSubscriptionOrders 批量取消过期的待支付订阅订单
-// expireTimestamp: 创建时间早于此时间戳的订单将被取消
-// limit: 每次批量处理的数量
-// 返回实际取消的订单数量
-func ExpirePendingSubscriptionOrders(expireTimestamp int64, limit int) (int, error) {
-	result := DB.Model(&SubscriptionOrder{}).
-		Where("status = ? AND create_time < ?", common.TopUpStatusPending, expireTimestamp).
-		Limit(limit).
-		Update("status", common.TopUpStatusExpired)
-
-	if result.Error != nil {
-		return 0, result.Error
-	}
-
-	return int(result.RowsAffected), nil
 }
 
 // SubscriptionPriorityItem is one entry in a bulk-priority update request.

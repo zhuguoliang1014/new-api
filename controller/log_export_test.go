@@ -387,3 +387,121 @@ func TestLogActualCostDatabaseMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestLogSubscriptionPurchaseRatioDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
+		t.Run(dialect, func(t *testing.T) {
+			if dialect != "sqlite" {
+				env := "TEST_SUBSCRIPTION_MYSQL_DSN"
+				if dialect == "postgres" {
+					env = "TEST_SUBSCRIPTION_POSTGRES_DSN"
+				}
+				if os.Getenv(env) == "" {
+					t.Skip(env + " is not configured")
+				}
+			}
+			t.Setenv("TEST_SUBSCRIPTION_CONTROLLER_DIALECT", dialect)
+			t.Run("purchase rates", testPopulateSubscriptionPurchaseRatios)
+			t.Run("log lists", testLogListsShowPurchasedPlanMultiplierWithoutChangingBilling)
+		})
+	}
+}
+
+func testPopulateSubscriptionPurchaseRatios(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	versionQuery := "SELECT version()"
+	if common.UsingMainDatabase(common.DatabaseTypeSQLite) {
+		versionQuery = "SELECT sqlite_version()"
+	}
+	var version string
+	require.NoError(t, db.Raw(versionQuery).Scan(&version).Error)
+	t.Logf("purchase ratio database: %s", version)
+	sub := model.UserSubscription{Id: 7, UserId: 3, PlanId: 2, AmountTotal: 1000 * int64(common.QuotaPerUnit), CreatedAt: 100}
+	require.NoError(t, db.Session(&gorm.Session{SkipHooks: true}).Create(&sub).Error)
+	order := model.SubscriptionOrder{UserId: 3, PlanId: 2, Money: 180, Status: common.TopUpStatusSuccess, PaymentProvider: model.PaymentProviderHupijiao, TradeNo: "original", CompleteTime: 100}
+	require.NoError(t, db.Create(&order).Error)
+	metadata := fmt.Sprintf(`{"billing_source":"subscription","billing_ratio_source":"subscription_unit","billing_group_ratio":1,"subscription_id":7,"subscription_total":%d}`, sub.AmountTotal)
+	log := &model.Log{UserId: 3, Type: model.LogTypeConsume, Quota: 5000, Other: metadata}
+	require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{log}, 1))
+	var other map[string]any
+	require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+	assert.InDelta(t, 0.18, other["subscription_purchase_ratio"], 1e-12)
+	assert.EqualValues(t, 1, other["billing_group_ratio"])
+	assert.Equal(t, 5000, log.Quota)
+
+	t.Run("normalizes against the wallet recharge price", func(t *testing.T) {
+		normalized := &model.Log{UserId: 3, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{normalized}, 0.5))
+		require.NoError(t, common.UnmarshalJsonStr(normalized.Other, &other))
+		assert.InDelta(t, 0.36, other["subscription_purchase_ratio"], 1e-12)
+	})
+	t.Run("uses the logged allowance after the subscription amount changes", func(t *testing.T) {
+		require.NoError(t, db.Model(&model.UserSubscription{}).Where("id = ?", sub.Id).Update("amount_total", 2000*int64(common.QuotaPerUnit)).Error)
+		historical := &model.Log{UserId: 3, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{historical}, 1))
+		require.NoError(t, common.UnmarshalJsonStr(historical.Other, &other))
+		assert.InDelta(t, 0.18, other["subscription_purchase_ratio"], 1e-12)
+	})
+	t.Run("unsupported payment currency stays unknown", func(t *testing.T) {
+		require.NoError(t, db.Model(&model.SubscriptionOrder{}).Where("id = ?", order.Id).Update("payment_provider", model.PaymentProviderStripe).Error)
+		defer db.Model(&model.SubscriptionOrder{}).Where("id = ?", order.Id).Update("payment_provider", model.PaymentProviderHupijiao)
+		unsupported := &model.Log{UserId: 3, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{unsupported}, 1))
+		assert.Equal(t, metadata, unsupported.Other)
+	})
+	t.Run("invalid recharge price leaves logs available", func(t *testing.T) {
+		unknown := &model.Log{UserId: 3, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{unknown}, 0))
+		assert.Equal(t, metadata, unknown.Other)
+	})
+	t.Run("does not attach another user's purchase", func(t *testing.T) {
+		foreign := &model.Log{UserId: 4, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{foreign}, 1))
+		assert.Equal(t, metadata, foreign.Other)
+	})
+	t.Run("ambiguous orders stay unknown", func(t *testing.T) {
+		order.Id = 0
+		order.TradeNo = "ambiguous"
+		require.NoError(t, db.Create(&order).Error)
+		ambiguous := &model.Log{UserId: 3, Type: model.LogTypeConsume, Other: metadata}
+		require.NoError(t, model.PopulateSubscriptionPurchaseRatios([]*model.Log{ambiguous}, 1))
+		assert.Equal(t, metadata, ambiguous.Other)
+	})
+}
+
+func testLogListsShowPurchasedPlanMultiplierWithoutChangingBilling(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	confirmPaymentComplianceForTest(t)
+	previousAddress, previousID, previousKey := operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey
+	previousMethods, previousPrice := operation_setting.PayMethods, operation_setting.Price
+	t.Cleanup(func() {
+		operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = previousAddress, previousID, previousKey
+		operation_setting.PayMethods, operation_setting.Price = previousMethods, previousPrice
+	})
+	operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = "https://payments.example", "test", "test"
+	operation_setting.PayMethods = []map[string]string{{"type": model.PaymentMethodAlipay}}
+	operation_setting.Price = 0.5
+	now := time.Now().Unix()
+	sub := model.UserSubscription{Id: 7, UserId: 3, PlanId: 2, AmountTotal: int64(1000 * common.QuotaPerUnit), CreatedAt: now - 100}
+	require.NoError(t, db.Session(&gorm.Session{SkipHooks: true}).Create(&sub).Error)
+	require.NoError(t, db.Create(&model.SubscriptionOrder{UserId: 3, PlanId: 2, Money: 90, TradeNo: "paid", PaymentProvider: model.PaymentProviderHupijiao, Status: common.TopUpStatusSuccess, CompleteTime: sub.CreatedAt}).Error)
+	other := fmt.Sprintf(`{"billing_source":"subscription","billing_ratio_source":"subscription_unit","billing_group_ratio":1,"subscription_id":7,"subscription_total":%d}`, sub.AmountTotal)
+	log := model.Log{UserId: 3, CreatedAt: now, Type: model.LogTypeConsume, Quota: 5000, Other: other}
+	require.NoError(t, db.Create(&log).Error)
+	for _, handler := range []gin.HandlerFunc{GetAllLogs, GetUserLogs} {
+		response := callLogHandler(t, handler, 3, common.RoleRootUser, "")[0]
+		require.Equal(t, true, response["success"])
+		items := response["data"].(map[string]any)["items"].([]any)
+		require.Len(t, items, 1)
+		item := items[0].(map[string]any)
+		var metadata map[string]any
+		require.NoError(t, common.UnmarshalJsonStr(item["other"].(string), &metadata))
+		assert.InDelta(t, 0.18, metadata["subscription_purchase_ratio"], 1e-12)
+		assert.EqualValues(t, 1, metadata["billing_group_ratio"])
+		assert.EqualValues(t, 5000, item["quota"])
+	}
+	var stored model.Log
+	require.NoError(t, db.First(&stored, log.Id).Error)
+	assert.Equal(t, other, stored.Other)
+	assert.Equal(t, 5000, stored.Quota)
+}

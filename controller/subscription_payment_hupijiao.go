@@ -239,6 +239,10 @@ func GetSubscriptionOrderStatus(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"success": true, "message": "订单已支付", "data": gin.H{"paid": true}})
 		return
 	}
+	if order.Status != common.TopUpStatusPending {
+		c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"paid": false, "status": order.Status}})
+		return
+	}
 
 	if order.PaymentProvider != model.SubscriptionPaymentProviderHupijiao {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "该订单不支持查询"})
@@ -264,7 +268,21 @@ func GetSubscriptionOrderStatus(c *gin.Context) {
 		return
 	}
 	if !paid {
-		expireTopUpOrderIfTimedOut(topUp)
+		expireSubscriptionOrderIfTimedOut(order)
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"paid": paid}})
+}
+
+func expireSubscriptionOrderIfTimedOut(order *model.SubscriptionOrder) bool {
+	if order == nil || order.Status != common.TopUpStatusPending ||
+		order.CreateTime+model.SubscriptionPendingOrderTTLSeconds > common.GetTimestamp() {
+		return false
+	}
+	if err := model.ExpireSubscriptionOrder(order.TradeNo, order.PaymentProvider); err != nil {
+		common.SysError(fmt.Sprintf("expire pending subscription order failed trade_no=%s err=%v", order.TradeNo, err))
+		return false
+	}
+	order.Status = common.TopUpStatusExpired
+	order.CompleteTime = common.GetTimestamp()
+	return true
 }

@@ -597,6 +597,9 @@ func reconcileHupijiaoOrder(ctx context.Context, topUp *model.TopUp, source stri
 	if topUp.PaymentProvider != model.PaymentProviderHupijiao {
 		return false, model.ErrPaymentMethodMismatch
 	}
+	if subscriptionOrder := model.GetSubscriptionOrderByTradeNo(topUp.TradeNo); subscriptionOrder != nil && subscriptionOrder.Status == common.TopUpStatusExpired {
+		return false, model.ErrTopUpStatusInvalid
+	}
 	if topUp.Status == common.TopUpStatusSuccess {
 		return true, nil
 	}

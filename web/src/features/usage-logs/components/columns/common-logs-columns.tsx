@@ -55,7 +55,7 @@ import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { LOG_TYPE_ALL_VALUE } from '../../constants'
 import type { UsageLog } from '../../data/schema'
-import { getBillingRatio } from '../../lib/billing-source'
+import { getBillingRatio, getPlanDisplayRatio } from '../../lib/billing-source'
 import {
   formatModelName,
   decodeBillingExprB64,
@@ -643,6 +643,7 @@ export function useCommonLogsColumns(
         let group = log.group
         if (!group) group = other?.group || ''
         const billingRatio = getBillingRatio(other)
+        const planRatio = getPlanDisplayRatio(other)
         const groupRatio =
           billingRatio.restricted || billingRatio.value !== 1
             ? billingRatio.value
@@ -690,10 +691,21 @@ export function useCommonLogsColumns(
                 ) : null}
               </span>
             )}
-            {billingRatio.restricted && groupRatio != null && (
-              <span className='text-muted-foreground text-xs [overflow-wrap:anywhere] tabular-nums'>
-                {t('Restricted subscription')} ·{' '}
-                {formatRatioCompact(groupRatio)}x
+            {billingRatio.restricted && (
+              <span
+                className='text-muted-foreground text-xs [overflow-wrap:anywhere] tabular-nums'
+                title={t(
+                  'The plan discount is already included in the credited quota. Usage is deducted at {{ratio}}x without applying the purchase multiplier again.',
+                  { ratio: billingRatio.value }
+                )}
+              >
+                {planRatio != null ? (
+                  <>
+                    {t('Plan multiplier')} · {formatRatioCompact(planRatio)}x
+                  </>
+                ) : (
+                  t('Restricted subscription')
+                )}
               </span>
             )}
           </div>

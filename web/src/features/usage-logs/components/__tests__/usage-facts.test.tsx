@@ -285,7 +285,24 @@ test('restricted subscription details show the charged rate instead of a stale g
     user_group_ratio: 0.36,
   })
   expect(rowValue('Billing multiplier')).toBe('1.0000x')
-  expect(rowValue('Multiplier basis')).toBe('Restricted subscription')
+  expect(rowValue('Multiplier basis')).toBe(
+    'The plan discount is already included in the credited quota. Usage is deducted at 1x without applying the purchase multiplier again.'
+  )
   expect(screen.queryByText('0.3600x')).not.toBeInTheDocument()
+  client.clear()
+})
+
+test('details separate the purchased plan multiplier from the quota deduction multiplier', () => {
+  const client = renderDetails({
+    billing_source: 'subscription',
+    billing_group_ratio: 1,
+    billing_ratio_source: 'subscription_unit',
+    subscription_purchase_ratio: 0.18,
+  })
+  expect(rowValue('Plan multiplier')).toBe('0.1800x')
+  expect(rowValue('Billing multiplier')).toBe('1.0000x')
+  expect(rowValue('Multiplier basis')).toContain(
+    'without applying the purchase multiplier again'
+  )
   client.clear()
 })

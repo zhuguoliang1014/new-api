@@ -353,6 +353,26 @@ it('mobile log shows the restricted subscription multiplier rather than the API 
       },
     ],
   })
-  expect(screen.getByText('Restricted subscription: 1×')).toBeVisible()
+  expect(screen.getByText('Restricted subscription')).toBeVisible()
   expect(screen.queryByText(/0\.36×/)).not.toBeInTheDocument()
+})
+
+it('mobile log shows the purchased plan multiplier instead of the unit deduction rate', () => {
+  renderLogs({
+    logs: [
+      {
+        ...log,
+        other: JSON.stringify({
+          billing_source: 'subscription',
+          billing_group_ratio: 1,
+          billing_ratio_source: 'subscription_unit',
+          subscription_purchase_ratio: 0.18,
+        }),
+      },
+    ],
+  })
+  expect(screen.getByText('Plan multiplier: 0.18×')).toBeVisible()
+  expect(
+    screen.queryByText('Restricted subscription: 1×')
+  ).not.toBeInTheDocument()
 })

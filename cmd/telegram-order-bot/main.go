@@ -238,13 +238,19 @@ type telegramUser struct {
 	IsBot bool  `json:"is_bot"`
 }
 
+type telegramChat struct {
+	ID   int64  `json:"id"`
+	Type string `json:"type"`
+}
+
 type message struct {
-	From *telegramUser `json:"from"`
-	Chat struct {
-		ID   int64  `json:"id"`
-		Type string `json:"type"`
-	} `json:"chat"`
-	Text string `json:"text"`
+	ID         int64         `json:"message_id"`
+	ThreadID   int64         `json:"message_thread_id"`
+	From       *telegramUser `json:"from"`
+	SenderChat *telegramChat `json:"sender_chat"`
+	Chat       telegramChat  `json:"chat"`
+	Text       string        `json:"text"`
+	ReplyTo    *message      `json:"reply_to_message"`
 }
 
 type update struct {
@@ -317,11 +323,13 @@ func (t *telegram) call(ctx context.Context, method string, payload any, result 
 }
 
 type bot struct {
-	cfg   config
-	db    *gorm.DB
-	state *state
-	api   *telegram
-	now   func() time.Time
+	cfg               config
+	db                *gorm.DB
+	state             *state
+	api               *telegram
+	now               func() time.Time
+	groupLookupUsers  map[int64]window
+	groupLookupGlobal window
 }
 
 func (b *bot) reply(ctx context.Context, chatID int64, text string, keyboard any, parseMode string) error {
@@ -338,6 +346,9 @@ func (b *bot) reply(ctx context.Context, chatID int64, text string, keyboard any
 func (b *bot) handle(ctx context.Context, u update) error {
 	if u.JoinRequest != nil {
 		return b.handleJoinRequest(ctx, u)
+	}
+	if u.Message != nil && (u.Message.Chat.Type == "group" || u.Message.Chat.Type == "supergroup") {
+		return b.handleGroupLookup(ctx, u.Message)
 	}
 	m := u.Message
 	action := ""

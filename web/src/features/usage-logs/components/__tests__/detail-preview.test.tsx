@@ -524,6 +524,44 @@ test('token column identifies restricted subscription rate even when legacy grou
       </QueryClientProvider>
     </I18nextProvider>
   )
-  expect(screen.getByText('Restricted subscription · 1x')).toBeVisible()
+  expect(screen.getByText('Restricted subscription')).toBeVisible()
   expect(screen.queryByText(/0\.36x/)).not.toBeInTheDocument()
+})
+
+test('token column shows the purchased plan multiplier and updates its explanation when switching language', async () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <QueryClientProvider client={client}>
+        <UsageLogsProvider>
+          <DetailPreview
+            isAdmin={false}
+            columnId='token_name'
+            other={{
+              billing_source: 'subscription',
+              billing_group_ratio: 1,
+              billing_ratio_source: 'subscription_unit',
+              subscription_purchase_ratio: 0.18,
+              group_ratio: 0.36,
+            }}
+          />
+        </UsageLogsProvider>
+      </QueryClientProvider>
+    </I18nextProvider>
+  )
+  expect(screen.getByText('Plan multiplier · 0.18x')).toBeVisible()
+  expect(screen.getByText('Plan multiplier · 0.18x')).toHaveAttribute(
+    'title',
+    'The plan discount is already included in the credited quota. Usage is deducted at 1x without applying the purchase multiplier again.'
+  )
+  i18n.addResourceBundle('zh', 'translation', zh.translation)
+  await act(async () => {
+    await i18n.changeLanguage('zh')
+  })
+  expect(screen.getByText('套餐倍率 · 0.18x')).toHaveAttribute(
+    'title',
+    '套餐优惠已折算为到账额度，使用时按 1 倍扣减，不会重复计算套餐倍率。'
+  )
+  expect(
+    screen.queryByText('Restricted subscription · 1x')
+  ).not.toBeInTheDocument()
 })

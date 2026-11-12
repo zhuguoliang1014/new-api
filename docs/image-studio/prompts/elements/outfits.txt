@@ -1,0 +1,8 @@
+Create an original fashion wardrobe contact sheet for a visual image-editing app. Precisely 3 columns and 2 rows, six equal square cells, edge-to-edge grid with no gaps, no frames, no text or numbers, no logos. Each square has a warm light grey background and shows one complete coordinated adult outfit arranged as a neat realistic clothing flat lay. Garments entirely inside their own square, generous 8% margin. Absolutely no people, faces or mannequins. Realistic textile detail, soft studio lighting, restrained elegant editorial styling.
+TOP LEFT: ivory linen tailored blazer, straight wide-leg trousers, white tee and tan loafers.
+TOP MIDDLE: midnight navy belted trench coat, cream shirt, dark trousers and black ankle boots.
+TOP RIGHT: terracotta rib-knit cardigan, long cream skirt and brown leather flats.
+BOTTOM LEFT: indigo denim chore jacket, straight indigo jeans, white tee and clean white sneakers.
+BOTTOM MIDDLE: sage-green utility shirt and loose cargo trousers with off-white canvas shoes.
+BOTTOM RIGHT: ink-black technical zip jacket, tapered athletic trousers and grey running shoes.
+These are six original concept outfits, no branded references. Keep the six designs distinctly different. Exact regular 3x2 layout for deterministic cropping into separate reference cards.

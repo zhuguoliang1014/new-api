@@ -17,9 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api, getFreshAuthHeaders, type ApiRequestConfig } from '@/lib/api'
-import { createServerError } from '@/lib/server-error-message'
+import {
+  createServerError,
+  requireServerSuccess,
+} from '@/lib/server-error-message'
 
 import type { UsageLog } from './data/schema'
+import type { IPLocation } from './lib/ip-location'
 import { buildQueryParams } from './lib/query-params'
 import { parseTaskArtifactsResponse } from './lib/task-artifacts'
 import type {
@@ -73,6 +77,41 @@ async function fetchLogStats<T>(
 // ============================================================================
 // Common Log APIs
 // ============================================================================
+
+interface LogIPLocationData {
+  location: IPLocation | null
+  query_available: boolean
+}
+
+interface LogIPLocationResponse {
+  success: boolean
+  data: LogIPLocationData
+}
+
+export async function getLogIPLocation(
+  ip: string,
+  signal?: AbortSignal
+): Promise<LogIPLocationData> {
+  const response = await api.get<LogIPLocationResponse>(
+    '/api/log/ip-location',
+    {
+      params: { ip },
+      signal,
+    }
+  )
+  return requireServerSuccess(response.data).data
+}
+
+export async function queryLogIPLocation(
+  ip: string
+): Promise<LogIPLocationData> {
+  const response = await api.post<LogIPLocationResponse>(
+    '/api/log/ip-location',
+    null,
+    { params: { ip } }
+  )
+  return requireServerSuccess(response.data).data
+}
 
 export const getAllLogs = (params: GetLogsParams = {}) =>
   fetchLogs('/api/log', params, true)

@@ -74,3 +74,26 @@ export function getBillingRatio(other: LogOtherData | null): {
       : undefined
   return { value, labelKey: 'Group Ratio', restricted: false }
 }
+
+/** The plan's purchase discount is already in its credited quota; never use it for billing. */
+export function getPlanDisplayRatio(
+  other: LogOtherData | null
+): number | undefined {
+  const billing = getBillingRatio(other)
+  if (!billing.restricted) return undefined
+  const ratio = other?.subscription_purchase_ratio
+  const charged = billing.value
+  if (
+    ratio == null ||
+    !Number.isFinite(ratio) ||
+    ratio <= 0 ||
+    charged == null
+  ) {
+    return undefined
+  }
+  const effective = ratio * charged
+  // Keep display multiplication from exposing binary floating-point tails.
+  return Number.isFinite(effective)
+    ? Number(effective.toPrecision(12))
+    : undefined
+}

@@ -59,6 +59,7 @@ it('shows purchased and gift balances separately and switches language', async (
         quota: 2000000,
         balance_quota: 1500000,
         gift_quota: 500000,
+        next_gift_expiry: record().expires_at,
         used_quota: 0,
         request_count: 3,
         aff_quota: 0,
@@ -75,19 +76,39 @@ it('shows purchased and gift balances separately and switches language', async (
   await i18next.changeLanguage('zhCN')
   expect(await screen.findByText('账户余额')).toBeVisible()
   expect(screen.getByText('赠送余额')).toBeVisible()
-  expect(screen.getByRole('button', { name: '赠送额度记录' })).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: '赠送额度记录' })
+  ).not.toBeInTheDocument()
+  expect(
+    screen.queryByText(
+      zh.translation[
+        'Gift credits are used first and expire 30 days after grant. Purchased balance never expires.'
+      ]
+    )
+  ).not.toBeInTheDocument()
+  const trigger = screen.getByRole('button', { name: '赠送余额' })
+  trigger.focus()
+  await userEvent.keyboard('{Enter}')
+  expect(
+    await screen.findByText(
+      zh.translation[
+        'Gift credits are used first and expire 30 days after grant. Purchased balance never expires.'
+      ]
+    )
+  ).toBeVisible()
+  expect(screen.getByText('最近一笔到期时间')).toBeVisible()
+  expect(screen.getByText(formatTimestamp(record().expires_at))).toBeVisible()
+  expect(trigger).toHaveAttribute('aria-expanded', 'true')
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() => expect(trigger).toHaveAttribute('aria-expanded', 'false'))
 })
 
-it('loads only the current account history on open and preserves expired amounts and dates', async () => {
+it('loads only the current account history in logs and preserves expired amounts and dates', async () => {
   const request = vi.spyOn(api, 'get').mockResolvedValue({
     data: { success: true, data: { items: [record()], total: 1 } },
   })
-  provider(<GiftQuotaHistory userId={7} nextExpiry={record().expires_at} />)
-  expect(request).not.toHaveBeenCalled()
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Gift credit history' })
-  )
-  const dialog = await screen.findByRole('dialog')
+  provider(<GiftQuotaHistory userId={7} />)
+  const dialog = screen.getByRole('region', { name: 'Gift credit history' })
   expect(await within(dialog).findByText(formatQuota(1500000))).toBeVisible()
   expect(within(dialog).getByText(formatQuota(1500000))).toBeVisible()
   expect(
@@ -110,9 +131,6 @@ it('paginates expired records through the shared pagination controls', async () 
     data: { success: true, data: { items: [record()], total: 11 } },
   })
   provider(<GiftQuotaHistory userId={7} />)
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Gift credit history' })
-  )
   await screen.findByText(formatQuota(1500000))
   await userEvent.click(screen.getByRole('button', { name: 'Go to next page' }))
   await waitFor(() =>
@@ -132,9 +150,6 @@ it('keeps server failures visible with a retry instead of showing an empty histo
       data: { success: true, data: { items: [], total: 0 } },
     })
   provider(<GiftQuotaHistory userId={7} />)
-  await userEvent.click(
-    screen.getByRole('button', { name: 'Gift credit history' })
-  )
   expect(await screen.findByRole('button', { name: 'Retry' })).toBeVisible()
   expect(screen.queryByText('No gift credits yet')).not.toBeInTheDocument()
   await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
