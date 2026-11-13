@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/tooltip'
 import { formatLogQuota } from '@/lib/format'
 
+import { getPlanDisplayRatio } from '../lib/billing-source'
 import { hasToolSurcharge } from '../lib/format'
 import type { LogOtherData } from '../types'
 
@@ -41,6 +42,7 @@ interface LogCostDisplayProps {
   quota: number
   other: LogOtherData | null
   showBillingSource?: boolean
+  showSubscriptionEquivalent?: boolean
 }
 
 function ToolSurchargeMarker() {
@@ -85,6 +87,14 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
   const quota = isSubscription
     ? (props.other?.subscription_consumed ?? props.quota)
     : props.quota
+  const purchaseRatio =
+    props.showSubscriptionEquivalent && getPlanDisplayRatio(props.other) != null
+      ? props.other?.subscription_purchase_ratio
+      : undefined
+  // The deducted quota already includes the request's billing multiplier.
+  // Only apply the purchase rate to show its equivalent monetary cost.
+  const equivalentQuota =
+    purchaseRatio != null ? quota * purchaseRatio : undefined
   let source: string | undefined
 
   // A log billed to a subscription always names its funding source: that
@@ -100,42 +110,55 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
     source = t('Wallet')
   }
 
+  const costDisplay = (
+    <div className='inline-flex w-fit items-center gap-1.5'>
+      <StatusBadge
+        type='badge'
+        variant='neutral'
+        size='lg'
+        copyable={false}
+        className='border-border/80 bg-muted/60 text-foreground rounded-md border font-semibold tabular-nums'
+      >
+        {source ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span
+                  className='inline-flex shrink-0 cursor-help items-center'
+                  role='img'
+                  aria-label={source}
+                  tabIndex={0}
+                >
+                  <HugeiconsIcon
+                    icon={isSubscription ? CrownIcon : Wallet01Icon}
+                    className='size-3.5'
+                    strokeWidth={2}
+                    aria-hidden='true'
+                  />
+                </span>
+              }
+            />
+            <TooltipContent>{source}</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <span className='whitespace-nowrap'>{formatLogQuota(quota)}</span>
+      </StatusBadge>
+      {showToolSurcharge ? <ToolSurchargeMarker /> : null}
+    </div>
+  )
+
   return (
     <TooltipProvider>
-      <div className='inline-flex w-fit items-center gap-1.5'>
-        <StatusBadge
-          type='badge'
-          variant='neutral'
-          size='lg'
-          copyable={false}
-          className='border-border/80 bg-muted/60 text-foreground rounded-md border font-semibold tabular-nums'
-        >
-          {source ? (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span
-                    className='inline-flex shrink-0 cursor-help items-center'
-                    role='img'
-                    aria-label={source}
-                    tabIndex={0}
-                  >
-                    <HugeiconsIcon
-                      icon={isSubscription ? CrownIcon : Wallet01Icon}
-                      className='size-3.5'
-                      strokeWidth={2}
-                      aria-hidden='true'
-                    />
-                  </span>
-                }
-              />
-              <TooltipContent>{source}</TooltipContent>
-            </Tooltip>
-          ) : null}
-          <span className='whitespace-nowrap'>{formatLogQuota(quota)}</span>
-        </StatusBadge>
-        {showToolSurcharge ? <ToolSurchargeMarker /> : null}
-      </div>
+      {equivalentQuota != null && Number.isFinite(equivalentQuota) ? (
+        <div className='inline-flex w-fit flex-col items-start gap-0.5'>
+          {costDisplay}
+          <span className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
+            {t('Subscription equivalent')} · {formatLogQuota(equivalentQuota)}
+          </span>
+        </div>
+      ) : (
+        costDisplay
+      )}
     </TooltipProvider>
   )
 }

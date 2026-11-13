@@ -823,6 +823,7 @@ export function useCommonLogsColumns(
               quota={quota}
               other={other}
               showBillingSource={showBillingSource}
+              showSubscriptionEquivalent={isAdmin && log.type === 2}
             />
           )
         },

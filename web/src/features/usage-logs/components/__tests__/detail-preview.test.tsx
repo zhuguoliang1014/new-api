@@ -565,3 +565,129 @@ test('token column shows the purchased plan multiplier and updates its explanati
     screen.queryByText('Restricted subscription · 1x')
   ).not.toBeInTheDocument()
 })
+
+test.each([
+  { isAdmin: true, type: 2, visible: true },
+  { isAdmin: false, type: 2, visible: false },
+  { isAdmin: true, type: 6, visible: false },
+])(
+  'subscription cost equivalent visibility for admin=$isAdmin, log type=$type',
+  ({ isAdmin, type, visible }) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <DetailPreview
+          isAdmin={isAdmin}
+          type={type}
+          columnId='quota'
+          other={{
+            billing_source: 'subscription',
+            billing_ratio_source: 'subscription_unit',
+            billing_group_ratio: 1,
+            subscription_purchase_ratio: 0.25,
+            subscription_consumed: 10901,
+            group_ratio: 0.36,
+          }}
+        />
+      </I18nextProvider>
+    )
+    expect(screen.getByText('$0.021802')).toBeVisible()
+    if (visible) {
+      const equivalent = screen.getByText('Subscription equivalent · $0.005451')
+      expect(equivalent).toBeVisible()
+      expect(
+        screen.getByText('$0.021802').compareDocumentPosition(equivalent) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
+    } else {
+      expect(
+        screen.queryByText(/Subscription equivalent/)
+      ).not.toBeInTheDocument()
+    }
+  }
+)
+
+test('subscription equivalent applies the purchase rate once and follows currency and language changes', async () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <DetailPreview
+        isAdmin
+        columnId='quota'
+        other={{
+          billing_source: 'subscription',
+          billing_ratio_source: 'subscription_plan',
+          billing_group_ratio: 0.75,
+          subscription_purchase_ratio: 0.2,
+          subscription_consumed: 12500,
+        }}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('$0.025')).toBeVisible()
+  expect(screen.getByText('Subscription equivalent · $0.005')).toBeVisible()
+
+  i18n.addResourceBundle('zh', 'translation', zh.translation)
+  await act(() => i18n.changeLanguage('zh'))
+  expect(screen.getByText('订阅折算 · $0.005')).toBeVisible()
+  act(() => {
+    useSystemConfigStore.getState().setConfig({
+      currency: {
+        ...DEFAULT_CURRENCY_CONFIG,
+        quotaDisplayType: 'CNY',
+        usdExchangeRate: 7,
+      },
+    })
+  })
+  expect(screen.getByText('¥0.175')).toBeVisible()
+  expect(screen.getByText('订阅折算 · ¥0.035')).toBeVisible()
+})
+
+test.each([
+  {
+    name: 'missing purchase rate',
+    source: 'subscription',
+    purchaseRatio: undefined,
+  },
+  { name: 'invalid purchase rate', source: 'subscription', purchaseRatio: -1 },
+  {
+    name: 'wallet log with subscription metadata',
+    source: 'wallet',
+    purchaseRatio: 0.25,
+  },
+])('does not invent an equivalent for $name', ({ source, purchaseRatio }) => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <DetailPreview
+        isAdmin
+        columnId='quota'
+        other={{
+          billing_source: source,
+          billing_ratio_source: 'subscription_unit',
+          billing_group_ratio: 1,
+          subscription_purchase_ratio: purchaseRatio,
+        }}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('$0.01')).toBeVisible()
+  expect(screen.queryByText(/Subscription equivalent/)).not.toBeInTheDocument()
+})
+
+test('shows zero equivalent for a subscription request with no deduction', () => {
+  render(
+    <I18nextProvider i18n={i18n}>
+      <DetailPreview
+        isAdmin
+        columnId='quota'
+        other={{
+          billing_source: 'subscription',
+          billing_ratio_source: 'subscription_unit',
+          billing_group_ratio: 1,
+          subscription_purchase_ratio: 0.25,
+          subscription_consumed: 0,
+        }}
+      />
+    </I18nextProvider>
+  )
+  expect(screen.getByText('$0')).toBeVisible()
+  expect(screen.getByText('Subscription equivalent · $0')).toBeVisible()
+})
