@@ -152,8 +152,13 @@ export function LogCostDisplay(props: LogCostDisplayProps) {
       {equivalentQuota != null && Number.isFinite(equivalentQuota) ? (
         <div className='inline-flex w-fit flex-col items-start gap-0.5'>
           {costDisplay}
-          <span className='text-muted-foreground text-xs whitespace-nowrap tabular-nums'>
-            {t('Subscription equivalent')} · {formatLogQuota(equivalentQuota)}
+          <span
+            data-table-text='secondary'
+            className='text-muted-foreground w-full pr-2 text-right text-[11px]! leading-4 font-normal! whitespace-nowrap tabular-nums'
+            title={t('Subscription equivalent')}
+            aria-label={`${t('Subscription equivalent')}: ${formatLogQuota(equivalentQuota)}`}
+          >
+            ≈ {formatLogQuota(equivalentQuota)}
           </span>
         </div>
       ) : (

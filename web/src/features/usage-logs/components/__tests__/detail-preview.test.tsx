@@ -592,7 +592,9 @@ test.each([
     )
     expect(screen.getByText('$0.021802')).toBeVisible()
     if (visible) {
-      const equivalent = screen.getByText('Subscription equivalent · $0.005451')
+      const equivalent = screen.getByLabelText(
+        'Subscription equivalent: $0.005451'
+      )
       expect(equivalent).toBeVisible()
       expect(
         screen.getByText('$0.021802').compareDocumentPosition(equivalent) &
@@ -600,7 +602,7 @@ test.each([
       ).toBeTruthy()
     } else {
       expect(
-        screen.queryByText(/Subscription equivalent/)
+        screen.queryByLabelText(/Subscription equivalent/)
       ).not.toBeInTheDocument()
     }
   }
@@ -623,11 +625,11 @@ test('subscription equivalent applies the purchase rate once and follows currenc
     </I18nextProvider>
   )
   expect(screen.getByText('$0.025')).toBeVisible()
-  expect(screen.getByText('Subscription equivalent · $0.005')).toBeVisible()
+  expect(screen.getByLabelText('Subscription equivalent: $0.005')).toBeVisible()
 
   i18n.addResourceBundle('zh', 'translation', zh.translation)
   await act(() => i18n.changeLanguage('zh'))
-  expect(screen.getByText('订阅折算 · $0.005')).toBeVisible()
+  expect(screen.getByLabelText('订阅折算: $0.005')).toBeVisible()
   act(() => {
     useSystemConfigStore.getState().setConfig({
       currency: {
@@ -638,7 +640,7 @@ test('subscription equivalent applies the purchase rate once and follows currenc
     })
   })
   expect(screen.getByText('¥0.175')).toBeVisible()
-  expect(screen.getByText('订阅折算 · ¥0.035')).toBeVisible()
+  expect(screen.getByLabelText('订阅折算: ¥0.035')).toBeVisible()
 })
 
 test.each([
@@ -669,7 +671,9 @@ test.each([
     </I18nextProvider>
   )
   expect(screen.getByText('$0.01')).toBeVisible()
-  expect(screen.queryByText(/Subscription equivalent/)).not.toBeInTheDocument()
+  expect(
+    screen.queryByLabelText(/Subscription equivalent/)
+  ).not.toBeInTheDocument()
 })
 
 test('shows zero equivalent for a subscription request with no deduction', () => {
@@ -689,5 +693,5 @@ test('shows zero equivalent for a subscription request with no deduction', () =>
     </I18nextProvider>
   )
   expect(screen.getByText('$0')).toBeVisible()
-  expect(screen.getByText('Subscription equivalent · $0')).toBeVisible()
+  expect(screen.getByLabelText('Subscription equivalent: $0')).toBeVisible()
 })
