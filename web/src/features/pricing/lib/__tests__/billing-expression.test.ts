@@ -229,6 +229,17 @@ describe('local billing expression evaluation', () => {
       'Body param service_tier = ultrafast and Full input length > 272,000',
     ],
     ['header("x-plan") != "premium"', 'Header x-plan ≠ premium'],
+    ['param("service_tier") == "priority"', 'Body param service_tier = fast'],
+    [
+      'param("service_tier") == "fast" || param("service_tier") == "priority"',
+      'Body param service_tier = fast',
+    ],
+    [
+      'param("service_tier") == "priority" || param("service_tier") == "fast"',
+      'Body param service_tier = fast',
+    ],
+    ['header("service_tier") == "priority"', 'Header service_tier = priority'],
+    ['param("plan") == "priority"', 'Body param plan = priority'],
   ])(
     'formats request and token condition %s without expression source',
     async (source, expected) => {
