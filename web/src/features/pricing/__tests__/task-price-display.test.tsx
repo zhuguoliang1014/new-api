@@ -92,6 +92,24 @@ it('recognizes included multipliers from normalized settlement traces for compac
   ).toBeVisible()
 })
 
+it('retains one compound Fast rule while displaying the actual Ultrafast context prices', () => {
+  render(
+    <DynamicPricingBreakdown
+      billingExpr={requestConditionalExpression.replace(
+        '(param("service_tier") == "fast" ? 2.5 : 1) * (param("service_tier") == "priority" ? 2.5 : 1)',
+        '((param("service_tier") == "fast" || param("service_tier") == "priority") ? 2.5 : 1)'
+      )}
+    />
+  )
+  expect(screen.queryByText('Raw expression')).not.toBeInTheDocument()
+  expect(screen.getAllByText('$16.0000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$32.0000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$120.0000').length).toBeGreaterThan(0)
+  const rules = screen.getByRole('list')
+  expect(within(rules).getAllByText('2.5x')).toHaveLength(1)
+  expect(within(rules).queryByText('8x')).not.toBeInTheDocument()
+})
+
 it('applies group ratios once to actual request-tier prices while the overview retains ordinary prices', () => {
   vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
   const client = new QueryClient({

@@ -409,7 +409,16 @@ export function readRequestTokenPricing(source: string): {
     const rule = compiled.requestRules.find((entry) => entry.node === factor)
     if (!rule) return null
     const comparison = requestStringComparison(rule.condition)
-    if (!comparison) return null
+    if (!comparison) {
+      if (
+        rule.condition.kind === 'binary' &&
+        rule.condition.operator === '||' &&
+        flattenBinary(rule.condition, '||').every(requestStringComparison)
+      ) {
+        continue
+      }
+      return null
+    }
     const matches = branches.map((branch) =>
       requestComparisonMatches(comparison, branch.requestConditions)
     )
