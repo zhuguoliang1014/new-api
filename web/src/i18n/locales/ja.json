@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "トークン統計を表示",
     "Displayed": "表示中",
     "Displayed in": "表示単位",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "{{condition}} の場合、表の単価にはすでに {{multiplier}} 倍が適用されています。",
     "Displays the mobile sidebar.": "モバイルサイドバーを表示します。",
     "Divide by exchange rate (÷ {{rate}})": "為替レートで割る（÷ {{rate}}）",
     "Do not keep sessions": "セッションを維持しない",

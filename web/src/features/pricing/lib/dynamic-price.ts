@@ -29,6 +29,7 @@ import {
   BILLING_PRICING_VARS,
   getCurrentTimePricingTiers,
   parseTiersFromExpr,
+  parseRequestPricingDisplay,
   splitBillingExprAndRequestRules,
   tryParseRequestRuleExpr,
   type BillingVar,
@@ -262,6 +263,9 @@ export function getDynamicPricingTiers(
   if (isTaskUsagePricingModel(model)) {
     return getTaskPricingDisplayTiers(billingExpr, model.billing_usage_schema)
   }
+  const requestPricing = parseRequestPricingDisplay(model.billing_expr || '')
+  if (requestPricing) return requestPricing.tiers
+  if (parseRequestPricingDisplay(billingExpr)) return []
   return parseTiersFromExpr(billingExpr)
 }
 
@@ -517,7 +521,10 @@ export function getDynamicPricingSummary(
           (options.groupRatioMultiplier ?? 1) * weekly.currentMultiplier,
       }
     : options
-  const summaryTiers = timeTiers ?? tiers
+  const defaultRequestTiers = isTaskUsage
+    ? null
+    : parseRequestPricingDisplay(model.billing_expr || '')?.defaultTiers
+  const summaryTiers = defaultRequestTiers ?? timeTiers ?? tiers
   const tier = isTaskUsage
     ? (summaryTiers.at(-1) ?? null)
     : (summaryTiers[0] ?? null)

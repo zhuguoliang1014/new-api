@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "顯示 Token 統計資訊",
     "Displayed": "正常顯示",
     "Displayed in": "顯示單位",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "當 {{condition}} 時，表中單價已包含 {{multiplier}} 倍倍率。",
     "Displays the mobile sidebar.": "顯示流動側邊欄。",
     "Divide by exchange rate (÷ {{rate}})": "除以匯率（÷ {{rate}}）",
     "Do not keep sessions": "不保持",

@@ -20,7 +20,10 @@ import assert from 'node:assert/strict'
 
 import { describe, expect, test } from 'vitest'
 
-import { parseTiersFromExpr } from '../lib/billing-expr'
+import {
+  parseRequestPricingDisplay,
+  parseTiersFromExpr,
+} from '../lib/billing-expr'
 import { getBillingModeLabelKey } from '../lib/billing-mode'
 import {
   getCardExamplePrice,
@@ -56,6 +59,87 @@ const summaryOptions = {
 }
 
 describe('expression price summaries', () => {
+  const requestTierExpression =
+    '(param("service_tier") == "ultrafast" ? (len <= 272000 ? tier("ultrafast", p * 2 + c * 10 + cr * 0.2) : tier("ultrafast_long_context", p * 4 + c * 15 + cr * 0.4)) : tier("standard", p * 2 + c * 10 + cr * 0.2)) * (param("service_tier") == "fast" ? 2.5 : 1) * (param("service_tier") == "priority" ? 2.5 : 1) * (param("service_tier") == "ultrafast" ? 8 : 1)'
+
+  test('shows request-conditional token tiers at their actual included multiplier prices', () => {
+    const display = parseRequestPricingDisplay(requestTierExpression)
+    expect(
+      display?.tiers.map((tier) => [
+        tier.label,
+        tier.inputPrice,
+        tier.outputPrice,
+      ])
+    ).toEqual([
+      ['ultrafast', 16, 80],
+      ['ultrafast_long_context', 32, 120],
+      ['standard', 2, 10],
+    ])
+    expect(display?.tiers.map((tier) => tier.conditionText)).toEqual([
+      '(param("service_tier") == "ultrafast") && (len <= 272000)',
+      '(param("service_tier") == "ultrafast") && !(len <= 272000)',
+      '!(param("service_tier") == "ultrafast")',
+    ])
+    expect(display?.includedRules).toEqual([
+      { cond: 'param("service_tier") == "ultrafast"', multiplier: 8 },
+    ])
+    expect(parseTiersFromExpr(requestTierExpression)).toEqual(display?.tiers)
+  })
+
+  test('uses the absent request branch for card summaries while retaining all detail rows', () => {
+    const model = pricingModel({
+      billing_mode: 'tiered_expr',
+      billing_expr: requestTierExpression,
+    })
+    const summary = getDynamicPricingSummary(model, { tokenUnit: 'M' })
+    expect(summary?.tier?.label).toBe('standard')
+    expect(summary?.primaryEntries.map((entry) => entry.value)).toEqual([2, 10])
+    expect(summary?.secondaryEntries[0].value).toBe(0.2)
+    expect(summary?.tierCount).toBe(3)
+    expect(summary?.isSpecialExpression).toBe(false)
+    expect(summary?.hasRequestRules).toBe(true)
+    expect(getDynamicPricingTiers(model).map((tier) => tier.label)).toEqual([
+      'ultrafast',
+      'ultrafast_long_context',
+      'standard',
+    ])
+  })
+
+  test('supports generic header string branches and retains a numeric context fallback', () => {
+    const source =
+      '(header("x-plan") != "premium" ? tier("ordinary", p * 3 + c * 12) : (len < 1000 ? tier("premium_short", p * 1 + c * 4) : tier("premium_long", p * 2 + c * 6))) * (header("x-plan") == "premium" ? 3 : 1)'
+    const display = parseRequestPricingDisplay(source)
+    expect(display?.defaultTiers.map((tier) => tier.label)).toEqual([
+      'ordinary',
+    ])
+    expect(display?.tiers.map((tier) => tier.inputPrice)).toEqual([3, 3, 6])
+    expect(display?.includedRules).toEqual([
+      { cond: 'header("x-plan") == "premium"', multiplier: 3 },
+    ])
+  })
+
+  test.each([
+    'param("service_tier") ? tier("premium", p * 2) : tier("ordinary", p * 1)',
+    'param("service_tier") == "ultrafast" ? tier("premium", max(p * 2, 100)) : tier("ordinary", p * 1)',
+    'param("service_tier") == "ultrafast" ? (len < 1000 ? tier("short", p * 1) : tier("long", p * 2)) : fixed(0.01)',
+    'param("service_tier") == "ultrafast" ? (param("service_tier") == "fast" ? tier("unreachable", p * 1) : tier("ultra", p * 2)) : tier("ordinary", p * 1)',
+    'param("service_tier") == "ultrafast" ? tier("base", p * 2) : tier("base", p * 1)',
+  ])('preserves raw fallback for unsupported request pricing %s', (source) => {
+    expect(parseRequestPricingDisplay(source)).toBeNull()
+    expect(parseTiersFromExpr(source)).toEqual([])
+  })
+
+  test('retains raw fallback when a request price branch has an unsupported outer multiplier', () => {
+    const source =
+      '(param("service_tier") == "ultrafast" ? tier("ultra", p * 2) : tier("ordinary", p * 1)) * (hour("UTC") > 10 ? 2 : 1)'
+    expect(
+      getDynamicPricingSummary(
+        pricingModel({ billing_mode: 'tiered_expr', billing_expr: source }),
+        { tokenUnit: 'M' }
+      )?.isSpecialExpression
+    ).toBe(true)
+  })
+
   const weeklyExpression =
     '(tier("standard", p * 1.5 + c * 4.5 + cr * 0.05)) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? 2 : 1) * (weekday("Asia/Shanghai") >= 1 && weekday("Asia/Shanghai") < 6 && hour("Asia/Shanghai") >= 14 && hour("Asia/Shanghai") < 18 ? 2 : 1)'
 

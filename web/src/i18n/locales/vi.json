@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "Hiển thị Thống kê Token",
     "Displayed": "Đang hiển thị",
     "Displayed in": "Hiển thị theo",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "Khi {{condition}}, đơn giá hiển thị đã bao gồm hệ số {{multiplier}}×.",
     "Displays the mobile sidebar.": "Hiển thị thanh bên di động.",
     "Divide by exchange rate (÷ {{rate}})": "Chia cho tỷ giá (÷ {{rate}})",
     "Do not keep sessions": "Không giữ phiên",

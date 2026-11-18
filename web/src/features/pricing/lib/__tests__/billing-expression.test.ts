@@ -213,6 +213,54 @@ describe('local billing expression evaluation', () => {
       formatBillingCondition(`!(${peakCondition})`, translations.t, 'zh')
     ).toBe('周一至周五 09:00至12:00或14:00至18:00以外的时段（Asia/Shanghai）')
   })
+
+  test.each([
+    [
+      'param("service_tier") == "ultrafast"',
+      'Body param service_tier = ultrafast',
+    ],
+    [
+      '!(param("service_tier") == "ultrafast")',
+      'Body param service_tier ≠ ultrafast',
+    ],
+    ['!(len <= 272000)', 'Full input length > 272,000'],
+    [
+      'param("service_tier") == "ultrafast" && !(len <= 272000)',
+      'Body param service_tier = ultrafast and Full input length > 272,000',
+    ],
+    ['header("x-plan") != "premium"', 'Header x-plan ≠ premium'],
+  ])(
+    'formats request and token condition %s without expression source',
+    async (source, expected) => {
+      const translations = createInstance()
+      await translations.init({ lng: 'en', resources: {} })
+      expect(formatBillingCondition(source, translations.t, 'en')).toBe(
+        expected
+      )
+    }
+  )
+
+  test('retains fallback for an unknown request predicate', async () => {
+    const translations = createInstance()
+    await translations.init({ lng: 'en', resources: {} })
+    expect(
+      formatBillingCondition(
+        'has(param("service_tier"), "fast")',
+        translations.t,
+        'en'
+      )
+    ).toBeNull()
+    expect(
+      formatBillingCondition(
+        '!(param("service_tier") == "ultrafast" && len < 1000)',
+        translations.t,
+        'en'
+      )
+    ).toBeNull()
+    expect(
+      formatBillingCondition('!(len <= 1000 && c <= 10)', translations.t, 'en')
+    ).toBeNull()
+  })
   test.each([
     ['zhCN', 'weekday("UTC") == 1', '周一 (UTC)'],
     ['zhTW', 'weekday("UTC") == 1', '週一 (UTC)'],
@@ -231,6 +279,18 @@ describe('local billing expression evaluation', () => {
       )
     }
   )
+  test('keeps request-tier log prices consistent with the displayed actual tier prices', () => {
+    const source =
+      '(param("service_tier") == "ultrafast" ? (len <= 272000 ? tier("ultrafast", p * 2 + c * 10) : tier("ultrafast_long_context", p * 4 + c * 15)) : tier("standard", p * 2 + c * 10)) * (param("service_tier") == "ultrafast" ? 8 : 1)'
+    const summary = getTieredBillingSummary({
+      billing_mode: 'tiered_expr',
+      expr_b64: btoa(source),
+      matched_tier: 'ultrafast_long_context',
+    })
+    expect(summary?.tier.inputPrice).toBe(32)
+    expect(summary?.tier.outputPrice).toBe(120)
+  })
+
   test('keeps log prices tied to the recorded tier regardless of the current time', () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-07T10:00:00+08:00'))

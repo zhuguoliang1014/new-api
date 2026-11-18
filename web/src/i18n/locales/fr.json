@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "Afficher les statistiques des jetons",
     "Displayed": "Affiché",
     "Displayed in": "Affiché en",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "Quand {{condition}}, les tarifs affichés incluent déjà le coefficient {{multiplier}}×.",
     "Displays the mobile sidebar.": "Affiche la barre latérale mobile.",
     "Divide by exchange rate (÷ {{rate}})": "Diviser par le taux (÷ {{rate}})",
     "Do not keep sessions": "Sans maintien de session",

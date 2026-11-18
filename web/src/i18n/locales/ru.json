@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "Показать статистику токенов",
     "Displayed": "Отображается",
     "Displayed in": "Отображается в",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "При условии {{condition}} указанные цены уже включают множитель {{multiplier}}×.",
     "Displays the mobile sidebar.": "Отображает мобильную боковую панель.",
     "Divide by exchange rate (÷ {{rate}})": "Разделить на курс (÷ {{rate}})",
     "Do not keep sessions": "Не сохранять привязку",

@@ -34,8 +34,10 @@ import {
   MATCH_LT,
   MATCH_RANGE,
   SOURCE_TIME,
+  parseRequestPricingDisplay,
   parseTiersFromExpr,
   requestRuleGroupsFromTrace,
+  requestRuleComparisonKey,
   splitBillingExprAndRequestRules,
   tryParseRequestRuleExpr,
   type ParsedTaskTier,
@@ -308,11 +310,15 @@ export function DynamicPricingBreakdown({
     return { symbol: '$', rate: 1 }
   }, [currency])
 
-  const { tiers, ruleGroups } = useMemo(() => {
+  const { tiers, ruleGroups, includedRuleGroups } = useMemo(() => {
     const split = splitBillingExprAndRequestRules(expr)
+    const requestPricing = usageSchema ? null : parseRequestPricingDisplay(expr)
     const parsedTiers = usageSchema
       ? getTaskPricingDisplayTiers(split.billingExpr, usageSchema)
-      : parseTiersFromExpr(split.billingExpr)
+      : (requestPricing?.tiers ??
+        (parseRequestPricingDisplay(split.billingExpr)
+          ? []
+          : parseTiersFromExpr(split.billingExpr)))
     let parsedRules =
       requestRules != null
         ? requestRuleGroupsFromTrace(requestRules)
@@ -329,9 +335,27 @@ export function DynamicPricingBreakdown({
         )
       }
     }
+    const included = requestPricing?.includedRules ?? []
+    const includedGroups = requestRuleGroupsFromTrace(
+      included.map((rule) => ({ ...rule, matched: false }))
+    )
+    const remainingIncluded = [...included]
+    const additionalRules = (parsedRules || []).filter((group) => {
+      const comparison = requestRuleComparisonKey(group.conditionText || '')
+      const index = remainingIncluded.findIndex(
+        (rule) =>
+          comparison !== null &&
+          requestRuleComparisonKey(rule.cond) === comparison &&
+          rule.multiplier === Number(group.multiplier)
+      )
+      if (index < 0) return true
+      remainingIncluded.splice(index, 1)
+      return false
+    })
     return {
       tiers: parsedTiers,
-      ruleGroups: parsedRules || [],
+      ruleGroups: additionalRules,
+      includedRuleGroups: includedGroups,
     }
   }, [expr, usageSchema, requestRules])
 
@@ -454,6 +478,7 @@ export function DynamicPricingBreakdown({
   })()
   const mobileTierKeyOccurrences = new Map<string, number>()
   const requestRuleKeyOccurrences = new Map<string, number>()
+  const includedRuleKeyOccurrences = new Map<string, number>()
 
   return (
     <section className={cn('min-w-0', !compact && 'py-3 sm:py-4')}>
@@ -486,6 +511,23 @@ export function DynamicPricingBreakdown({
               {t('Tiered price table')}
             </div>
           )}
+          {includedRuleGroups.map((group) => (
+            <p
+              key={nextOccurrenceKey(
+                JSON.stringify(group),
+                includedRuleKeyOccurrences
+              )}
+              className='text-muted-foreground mb-2 text-xs'
+            >
+              {t(
+                'Displayed tier prices already include {{multiplier}}× when {{condition}}.',
+                {
+                  multiplier: group.multiplier,
+                  condition: describeGroup(group, t, i18n.language),
+                }
+              )}
+            </p>
+          ))}
           <div className='space-y-1.5 sm:hidden'>
             {tiers.map((tier) => {
               const condSummary = formatBreakdownConditionSummary(

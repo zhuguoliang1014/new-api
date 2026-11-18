@@ -19,8 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import type { TOptions } from 'i18next'
 
 import { toIntlLocale } from '@/i18n/languages'
+import { formatNumber } from '@/lib/format'
 
-import { flattenBinary } from './display'
+import { flattenBinary, isTimeCondition } from './display'
 import { compileBillingExpression } from './parser'
 import { TIME_FUNCTIONS, type ExpressionNode, type TimeFunction } from './types'
 
@@ -43,6 +44,68 @@ const DOMAINS: Record<TimeFunction, [number, number]> = {
   weekday: [0, 7],
   month: [1, 13],
   day: [1, 32],
+}
+
+function describeValueComparison(
+  node: ExpressionNode,
+  t: Translate,
+  locale: string,
+  negate = false
+): Description | null {
+  if (node.kind !== 'binary') return null
+  const inverse: Record<string, string> = {
+    '<': '>=',
+    '<=': '>',
+    '>': '<=',
+    '>=': '<',
+    '==': '!=',
+    '!=': '==',
+  }
+  const operator = negate ? inverse[node.operator] : node.operator
+  const symbols: Record<string, string> = {
+    '<': '<',
+    '<=': '≤',
+    '>': '>',
+    '>=': '≥',
+    '==': '=',
+    '!=': '≠',
+  }
+  if (!symbols[operator]) return null
+  if (
+    node.left.kind === 'variable' &&
+    node.right.kind === 'literal' &&
+    typeof node.right.value === 'number'
+  ) {
+    const labels: Record<string, string> = {
+      p: 'Input',
+      c: 'Output',
+      len: 'Full input length',
+    }
+    const label = labels[node.left.name]
+    if (!label) return null
+    return {
+      text: `${t(label)} ${symbols[operator]} ${formatNumber(node.right.value, toIntlLocale(locale))}`,
+      kind: 'combined',
+      timezone: '',
+    }
+  }
+  if (
+    !['==', '!='].includes(operator) ||
+    node.left.kind !== 'call' ||
+    !['param', 'header'].includes(node.left.name) ||
+    node.left.args[0]?.kind !== 'literal' ||
+    typeof node.left.args[0].value !== 'string' ||
+    node.right.kind !== 'literal' ||
+    typeof node.right.value !== 'string'
+  ) {
+    return null
+  }
+  const label = t(node.left.name === 'header' ? 'Header' : 'Body param')
+  return {
+    text: `${label} ${node.left.args[0].value} ${symbols[operator]} ${node.right.value}`,
+    kind: 'combined',
+    timezone: '',
+  }
 }
 
 function timeComparison(node: ExpressionNode): TimeComparison | null {
@@ -136,6 +199,9 @@ function describeBillingCondition(
   locale: string
 ): Description | null {
   if (node.kind === 'unary' && node.operator === '!') {
+    const comparison = describeValueComparison(node.operand, t, locale, true)
+    if (comparison) return comparison
+    if (!isTimeCondition(node.operand)) return null
     const description = describeBillingCondition(node.operand, t, locale)
     if (!description) return null
     return {
@@ -146,26 +212,8 @@ function describeBillingCondition(
       kind: 'combined',
     }
   }
-  if (
-    node.kind === 'binary' &&
-    ['<', '<=', '>', '>=', '==', '!='].includes(node.operator) &&
-    node.left.kind === 'variable' &&
-    node.right.kind === 'literal' &&
-    typeof node.right.value === 'number'
-  ) {
-    const labels: Record<string, string> = {
-      p: 'Input',
-      c: 'Output',
-      len: 'Full input length',
-    }
-    const label = labels[node.left.name]
-    if (!label) return null
-    return {
-      text: `${t(label)} ${node.operator} ${node.right.value.toLocaleString(toIntlLocale(locale))}`,
-      kind: 'combined',
-      timezone: '',
-    }
-  }
+  const comparison = describeValueComparison(node, t, locale)
+  if (comparison) return comparison
   const single = timeComparison(node)
   if (single) return describeTimeRange([single], t, locale)
   if (node.kind !== 'binary' || !['&&', '||'].includes(node.operator)) {

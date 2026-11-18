@@ -44,6 +44,94 @@ import type { PricingModel, BillingUsageSchema } from '../types'
 
 vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
+const requestConditionalExpression =
+  '(param("service_tier") == "ultrafast" ? (len <= 272000 ? tier("ultrafast", p * 2 + c * 10 + cr * 0.2) : tier("ultrafast_long_context", p * 4 + c * 15 + cr * 0.4)) : tier("standard", p * 2 + c * 10 + cr * 0.2)) * (param("service_tier") == "fast" ? 2.5 : 1) * (param("service_tier") == "priority" ? 2.5 : 1) * (param("service_tier") == "ultrafast" ? 8 : 1)'
+
+it('displays actual request-conditional prices and explains the included multiplier without applying it twice', () => {
+  render(
+    <DynamicPricingBreakdown
+      billingExpr={requestConditionalExpression}
+      matchedTierLabel='ultrafast_long_context'
+    />
+  )
+  expect(screen.queryByText('Raw expression')).not.toBeInTheDocument()
+  expect(screen.getAllByText('$16.0000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$32.0000').length).toBeGreaterThan(0)
+  expect(screen.getAllByText('$120.0000').length).toBeGreaterThan(0)
+  expect(
+    screen.getByText(
+      'Displayed tier prices already include 8× when Body param service_tier = ultrafast.'
+    )
+  ).toBeVisible()
+  const rules = screen.getByRole('list')
+  expect(within(rules).getAllByText('2.5x')).toHaveLength(2)
+  expect(within(rules).queryByText('8x')).not.toBeInTheDocument()
+  expect(screen.getAllByText('Matched').length).toBeGreaterThan(0)
+})
+
+it('recognizes included multipliers from normalized settlement traces for compact expressions', () => {
+  render(
+    <DynamicPricingBreakdown
+      billingExpr='(param("plan")=="a b"?tier("premium",p*1):tier("ordinary",p*2))*(param("plan")=="a b"?8:1)'
+      requestRules={[
+        { cond: 'param("plan") == "a b"', multiplier: 8, matched: true },
+        { cond: 'param("plan") == "ab"', multiplier: 8, matched: false },
+      ]}
+    />
+  )
+  const rules = screen.getByRole('list')
+  expect(within(rules).getAllByText('8x')).toHaveLength(1)
+  expect(within(rules).getByText('Body param plan = ab')).toBeVisible()
+  expect(
+    within(rules).queryByText('Body param plan = a b')
+  ).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'Displayed tier prices already include 8× when Body param plan = a b.'
+    )
+  ).toBeVisible()
+})
+
+it('applies group ratios once to actual request-tier prices while the overview retains ordinary prices', () => {
+  vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  clients.push(client)
+  const conditionalModel: PricingModel = {
+    id: 104,
+    model_name: 'request-tier-model',
+    quota_type: 0,
+    model_ratio: 1,
+    completion_ratio: 1,
+    enable_groups: ['default'],
+    billing_mode: 'tiered_expr',
+    billing_expr: requestConditionalExpression,
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <ModelDetailsContent
+        model={conditionalModel}
+        groupRatio={{ default: 0.5 }}
+        usableGroup={{ default: { desc: '', ratio: 0.5 } }}
+        endpointMap={{}}
+        autoGroups={[]}
+        priceRate={1}
+        usdExchangeRate={1}
+        tokenUnit='M'
+      />
+    </QueryClientProvider>
+  )
+  const longContextRow = screen
+    .getAllByRole('row')
+    .find((row) => row.textContent?.includes('ultrafast_long_context:'))
+  expect(longContextRow).toBeDefined()
+  if (!longContextRow) throw new Error('Missing long-context price row')
+  expect(within(longContextRow).getByText('$16')).toBeInTheDocument()
+  expect(within(longContextRow).getByText('$60')).toBeInTheDocument()
+  expect(screen.queryByText('Raw expression')).not.toBeInTheDocument()
+})
+
 it('shows an explicit free request price alongside token prices with distinct units', () => {
   render(
     <DynamicPricingBreakdown

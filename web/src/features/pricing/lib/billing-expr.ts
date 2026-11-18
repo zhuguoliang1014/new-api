@@ -32,6 +32,8 @@ import {
   readTokenTierChain,
   readTaskTierChain,
   readTimeTokenPricing,
+  readRequestTokenPricing,
+  type IncludedRequestRule,
   type TokenTier,
 } from './billing-expression/display'
 import { compileBillingExpression } from './billing-expression/parser'
@@ -39,6 +41,8 @@ import {
   splitExpressionAtTopLevel,
   unwrapExpressionParens,
 } from './billing-expression/structure'
+
+export { requestRuleComparisonKey } from './billing-expression/display'
 
 // ---------------------------------------------------------------------------
 // Variable registry
@@ -323,7 +327,25 @@ export function parseTiersFromExpr(exprStr: string): ParsedTier[] {
   if (compiled.status !== 'ready') return []
   const canonical = readTokenTierChain(compiled.ast)
   if (canonical) return canonical.map(mapTokenTier)
+  const requestPricing = parseRequestPricingDisplay(exprStr)
+  if (requestPricing) return requestPricing.tiers
   return readTimeTokenPricing(exprStr)?.tiers.map(mapTokenTier) ?? []
+}
+
+export function parseRequestPricingDisplay(exprStr: string): {
+  tiers: ParsedTier[]
+  defaultTiers: ParsedTier[]
+  includedRules: IncludedRequestRule[]
+} | null {
+  const pricing = readRequestTokenPricing(exprStr)
+  if (!pricing) return null
+  const labels = pricing.tiers.map((tier) => normalizeTierLabel(tier.label))
+  if (new Set(labels).size !== labels.length) return null
+  return {
+    tiers: pricing.tiers.map(mapTokenTier),
+    defaultTiers: pricing.defaultTiers.map(mapTokenTier),
+    includedRules: pricing.includedRules,
+  }
 }
 
 /** Current-time selection is exclusively for summaries; detail and log callers retain all rows. */

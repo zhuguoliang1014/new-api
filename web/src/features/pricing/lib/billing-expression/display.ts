@@ -243,6 +243,217 @@ export function readTokenTierChain(node: ExpressionNode): TokenTier[] | null {
   return [...tiers, fallback]
 }
 
+type RequestStringComparison = {
+  source: 'param' | 'header'
+  path: string
+  value: string
+  equal: boolean
+}
+type RequestBranchCondition = RequestStringComparison & { matches: boolean }
+type RequestTokenBranch = {
+  tier: TokenTier
+  requestConditions: RequestBranchCondition[]
+}
+
+function requestStringComparison(
+  node: ExpressionNode
+): RequestStringComparison | null {
+  if (
+    node.kind !== 'binary' ||
+    !['==', '!='].includes(node.operator) ||
+    node.left.kind !== 'call' ||
+    !['param', 'header'].includes(node.left.name) ||
+    node.left.args[0]?.kind !== 'literal' ||
+    typeof node.left.args[0].value !== 'string' ||
+    node.right.kind !== 'literal' ||
+    typeof node.right.value !== 'string'
+  ) {
+    return null
+  }
+  const source = node.left.name as RequestStringComparison['source']
+  const path = node.left.args[0].value
+  return {
+    source,
+    path: source === 'header' ? path.trim().toLowerCase() : path,
+    value: node.right.value,
+    equal: node.operator === '==',
+  }
+}
+
+export function requestRuleComparisonKey(source: string): string | null {
+  const compiled = compileBillingExpression(source)
+  if (compiled.status !== 'ready') return null
+  const comparison = requestStringComparison(compiled.ast)
+  return comparison ? JSON.stringify(comparison) : null
+}
+
+function requestTokenBranches(
+  source: string,
+  node: ExpressionNode,
+  requestConditions: RequestBranchCondition[],
+  descriptions: string[]
+): RequestTokenBranch[] | null {
+  if (requestConditions.length > 8) return null
+  if (node.kind === 'conditional') {
+    const comparison = requestStringComparison(node.condition)
+    if (comparison) {
+      if (
+        requestConditions.some(
+          (condition) =>
+            condition.source === comparison.source &&
+            condition.path === comparison.path
+        )
+      ) {
+        return null
+      }
+      const condition = source.slice(node.condition.start, node.condition.end)
+      const yes = requestTokenBranches(
+        source,
+        node.yes,
+        [...requestConditions, { ...comparison, matches: true }],
+        [...descriptions, `(${condition})`]
+      )
+      const no = requestTokenBranches(
+        source,
+        node.no,
+        [...requestConditions, { ...comparison, matches: false }],
+        [...descriptions, `!(${condition})`]
+      )
+      if (!yes || !no || yes.length + no.length > 64) return null
+      return [...yes, ...no]
+    }
+  }
+  if (requestConditions.length === 0) return null
+
+  // Inside a request branch, retain the established ordered token-tier shape.
+  // A complete path includes the preceding false bounds as well as this row's
+  // positive bounds, so a long-context fallback never looks unconditional.
+  const tiers: RequestTokenBranch[] = []
+  let remaining = node
+  let prior = descriptions
+  while (remaining.kind === 'conditional') {
+    const conditions = tokenConditions(remaining.condition)
+    const tier = conditions && tokenTier(remaining.yes, conditions)
+    if (!tier || tier.billingUnit === 'request') return null
+    const condition = source.slice(
+      remaining.condition.start,
+      remaining.condition.end
+    )
+    tiers.push({
+      tier: {
+        ...tier,
+        conditionText: [...prior, `(${condition})`].join(' && '),
+      },
+      requestConditions,
+    })
+    prior = [...prior, `!(${condition})`]
+    remaining = remaining.no
+  }
+  const fallback = tokenTier(remaining, [])
+  if (!fallback || fallback.billingUnit === 'request') return null
+  return [
+    ...tiers,
+    {
+      tier: { ...fallback, conditionText: prior.join(' && ') },
+      requestConditions,
+    },
+  ]
+}
+
+function requestComparisonMatches(
+  comparison: RequestStringComparison,
+  conditions: RequestBranchCondition[]
+): boolean | null {
+  for (const condition of conditions) {
+    if (
+      condition.source !== comparison.source ||
+      condition.path !== comparison.path
+    ) {
+      continue
+    }
+    const valueKnown = condition.equal === condition.matches
+    if (valueKnown) {
+      return (condition.value === comparison.value) === comparison.equal
+    }
+    if (condition.value === comparison.value) return !comparison.equal
+  }
+  return null
+}
+
+export type IncludedRequestRule = { cond: string; multiplier: number }
+
+/** Display only: recognize string request branches around canonical token tiers.
+ * A multiplier is folded into the displayed prices only if every branch proves
+ * whether it matches. Unresolved factors remain separate request rules. */
+export function readRequestTokenPricing(source: string): {
+  tiers: TokenTier[]
+  defaultTiers: TokenTier[]
+  includedRules: IncludedRequestRule[]
+} | null {
+  const compiled = compileBillingExpression(source)
+  if (compiled.status !== 'ready') return null
+  const factors = flattenBinary(compiled.ast, '*')
+  const pricing = factors.filter(
+    (factor) => !compiled.requestRules.some((rule) => rule.node === factor)
+  )
+  if (pricing.length !== 1) return null
+  const branches = requestTokenBranches(compiled.source, pricing[0], [], [])
+  if (!branches) return null
+
+  const rules: {
+    rule: CompiledBillingExpression['requestRules'][number]
+    matches: boolean[]
+  }[] = []
+  for (const factor of factors) {
+    if (factor === pricing[0]) continue
+    const rule = compiled.requestRules.find((entry) => entry.node === factor)
+    if (!rule) return null
+    const comparison = requestStringComparison(rule.condition)
+    if (!comparison) return null
+    const matches = branches.map((branch) =>
+      requestComparisonMatches(comparison, branch.requestConditions)
+    )
+    if (matches.every((match) => match !== null)) {
+      rules.push({ rule, matches: matches.map((match) => match === true) })
+    }
+  }
+  const tiers = branches.map((branch, index) => {
+    const multiplier = rules.reduce(
+      (product, entry) =>
+        product * (entry.matches[index] ? entry.rule.multiplier : 1),
+      1
+    )
+    const prices = Object.fromEntries(
+      Object.entries(branch.tier.prices).map(([variable, price]) => [
+        variable,
+        price * multiplier,
+      ])
+    )
+    return { ...branch.tier, prices }
+  })
+  if (
+    tiers.some((tier) =>
+      Object.values(tier.prices).some((price) => !Number.isFinite(price))
+    )
+  ) {
+    return null
+  }
+  const defaultTiers = tiers.filter((_, index) =>
+    branches[index].requestConditions.every((condition) => {
+      const equal = condition.source === 'header' && condition.value === ''
+      return (equal === condition.equal) === condition.matches
+    })
+  )
+  return {
+    tiers,
+    defaultTiers,
+    includedRules: rules.map(({ rule }) => ({
+      cond: rule.cond,
+      multiplier: rule.multiplier,
+    })),
+  }
+}
+
 export function isTimeCondition(node: ExpressionNode): boolean {
   const dependencies = expressionDependencies(node)
   return (

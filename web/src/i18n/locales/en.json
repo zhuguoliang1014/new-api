@@ -2357,6 +2357,7 @@
     "Display Token Statistics": "Display Token Statistics",
     "Displayed": "Displayed",
     "Displayed in": "Displayed in",
+    "Displayed tier prices already include {{multiplier}}× when {{condition}}.": "Displayed tier prices already include {{multiplier}}× when {{condition}}.",
     "Displays the mobile sidebar.": "Displays the mobile sidebar.",
     "Divide by exchange rate (÷ {{rate}})": "Divide by exchange rate (÷ {{rate}})",
     "Do not keep sessions": "Do not keep sessions",
