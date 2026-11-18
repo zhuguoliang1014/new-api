@@ -101,14 +101,8 @@ function describeValueComparison(
     return null
   }
   const label = t(node.left.name === 'header' ? 'Header' : 'Body param')
-  const value =
-    node.left.name === 'param' &&
-    node.left.args[0].value === 'service_tier' &&
-    node.right.value === 'priority'
-      ? 'fast'
-      : node.right.value
   return {
-    text: `${label} ${node.left.args[0].value} ${symbols[operator]} ${value}`,
+    text: `${label} ${node.left.args[0].value} ${symbols[operator]} ${node.right.value}`,
     kind: 'combined',
     timezone: '',
   }
@@ -226,23 +220,6 @@ function describeBillingCondition(
     return null
   }
   const nodes = flattenBinary(node, node.operator)
-  // Fast and its upstream name are one display label; evaluation keeps both.
-  if (
-    node.operator === '||' &&
-    nodes.every(
-      (part) =>
-        part.kind === 'binary' &&
-        part.operator === '==' &&
-        part.left.kind === 'call' &&
-        part.left.name === 'param' &&
-        part.left.args[0]?.kind === 'literal' &&
-        part.left.args[0].value === 'service_tier' &&
-        part.right.kind === 'literal' &&
-        ['fast', 'priority'].includes(String(part.right.value))
-    )
-  ) {
-    return describeValueComparison(nodes[0], t, locale)
-  }
   const parts: Description[] = []
   if (node.operator === '&&') {
     const ranges = new Map<string, TimeComparison[]>()
