@@ -27,6 +27,8 @@ const source = sourceReferenceCatalogSchema.parse(
 )
 const assets = importReferenceAssets(source)
 const retiredIds = [
+  'natural_pose_N001',
+  'natural_pose_N050',
   'full_sexy_P001',
   'full_sexy_P080',
   'pair60_P007',
@@ -47,7 +49,7 @@ const retired: PortraitAsset = {
 }
 
 it('serves only reviewed neutral pose groups and preserves all person and outfit references', () => {
-  expect(assets.filter((asset) => asset.role === 'pose')).toHaveLength(122)
+  expect(assets.filter((asset) => asset.role === 'pose')).toHaveLength(72)
   expect(assets.filter((asset) => asset.role === 'outfit')).toHaveLength(1407)
   expect(assets.filter((asset) => asset.role === 'identity')).toHaveLength(1499)
   for (const id of retiredIds) {

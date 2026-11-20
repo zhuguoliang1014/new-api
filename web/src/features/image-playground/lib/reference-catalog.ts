@@ -12,8 +12,38 @@ import type { PortraitAsset, PortraitView } from './portrait-elements'
 import { isRetiredPoseId } from './pose-availability'
 import { createReferenceTitle } from './reference-names'
 
-/** Built-in media is served by this site from a versioned, read-only catalog. */
+/** Accept the catalog’s known media hosts and versioned local assets. */
 export function isReferenceImagePath(value: string): boolean {
+  if (value.startsWith('https://ai-portrait-gallery.pages.dev/')) {
+    try {
+      const url = new URL(value)
+      return (
+        url.origin === 'https://ai-portrait-gallery.pages.dev' &&
+        url.search === '' &&
+        url.hash === '' &&
+        /^\/img\/(?:full\/[a-zA-Z0-9_-]+\.png|thumb\/[a-zA-Z0-9_-]+\.webp)$/.test(
+          url.pathname
+        )
+      )
+    } catch {
+      return false
+    }
+  }
+  if (value.startsWith('https://hruiccc.github.io/RuiC-PoseAtlas/')) {
+    try {
+      const url = new URL(value)
+      return (
+        url.origin === 'https://hruiccc.github.io' &&
+        url.search === '' &&
+        url.hash === '' &&
+        /^\/RuiC-PoseAtlas\/(?:img|thumbs|costume\/img|costume\/thumbs)\/[a-zA-Z0-9_-]+\.(?:png|webp|jpg)$/.test(
+          url.pathname
+        )
+      )
+    } catch {
+      return false
+    }
+  }
   return (
     /^\/api\/image-playground\/assets\/20261110\/(?:pose|costume|character)\/(?:originals|images|thumbnails)\/[a-zA-Z0-9_-]+\.(?:png|webp)$/.test(
       value

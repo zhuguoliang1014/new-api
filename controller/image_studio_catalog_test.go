@@ -66,8 +66,8 @@ func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(source)); got != "482f633866c5137b534c0acb4767c02ee5fbb209bfb12cf9c028628048675c98" {
-		t.Fatalf("source catalog changed: %s", got)
+	if fmt.Sprintf("%x", sha256.Sum256(source)) != "8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828" {
+		t.Fatal("reviewed reference allowlist changed")
 	}
 	response, err := imageStudioCatalogResponse()
 	if err != nil {
@@ -98,7 +98,6 @@ func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 	counts := map[string]int{}
 	ids := map[string]bool{}
 	poseViews := 0
-	depthViews := 0
 	for _, item := range catalog.ReferenceCatalog.Items {
 		if ids[item.ID] {
 			t.Fatalf("duplicate id %s", item.ID)
@@ -111,20 +110,27 @@ func TestStudioReferenceCatalogServesReviewedReferences(t *testing.T) {
 				t.Fatalf("missing or duplicated original for %s", item.ID)
 			}
 			views[view.Original] = true
-			if item.Kind == "pose" {
-				if view.Depth == nil || !strings.HasSuffix(view.Depth.Original, "-depth.png") || !strings.HasSuffix(view.Depth.Image, "-depth.webp") || !strings.Contains(view.Depth.Thumbnail, "/thumbnails/") {
-					t.Fatalf("missing depth media for %s/%s", item.ID, view.ID)
-				}
-				depthViews++
-			} else if view.Depth != nil {
-				t.Fatalf("unexpected depth for %s", item.ID)
+			if view.Depth != nil {
+				t.Fatalf("unexpected unavailable depth for %s/%s", item.ID, view.ID)
+			}
+			if item.Kind == "pose" && !strings.HasPrefix(view.Original, poseAtlasBase+"img/") {
+				t.Fatalf("invalid pose URL %q", view.Original)
+			}
+			if item.Kind == "costume" && !strings.HasPrefix(view.Original, poseAtlasBase+"costume/img/") {
+				t.Fatalf("invalid costume URL %q", view.Original)
+			}
+			if item.Kind == "character" && !strings.HasPrefix(view.Original, "https://ai-portrait-gallery.pages.dev/img/full/") {
+				t.Fatalf("invalid portrait URL %q", view.Original)
 			}
 		}
 		if item.Kind == "pose" {
 			poseViews += len(item.Variants)
 		}
 	}
-	if counts["pose"] != 122 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 610 || depthViews != 610 {
+	if ids["full_sexy_P001"] || ids["natural_pose_N001"] || !ids["full_single_P015"] || !ids["SPR-0001"] || !ids["portrait-f71f980dde3"] {
+		t.Fatal("unexpected selection or changed asset IDs")
+	}
+	if counts["pose"] != 72 || counts["costume"] != 1407 || counts["character"] != 1499 || poseViews != 360 {
 		t.Fatalf("incomplete import: %v, %d pose views", counts, poseViews)
 	}
 }

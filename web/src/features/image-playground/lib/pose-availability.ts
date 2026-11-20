@@ -85,7 +85,7 @@ const availablePoseIds = new Set([
 export function isRetiredPoseId(id?: string): boolean {
   return Boolean(
     id &&
-    /^(?:full_sexy_|full_single_|upper80v2_|pair60_)/.test(id) &&
+    /^(?:natural_pose_N|full_sexy_|full_single_|upper80v2_|pair60_)/.test(id) &&
     !availablePoseIds.has(id)
   )
 }
