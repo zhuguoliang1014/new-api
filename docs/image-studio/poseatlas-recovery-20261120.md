@@ -13,3 +13,7 @@
 首轮 `e54c08b267c607a8d6251e52df2d2b71984a3531` / Actions `44763787471` 已于北京时间 23:35:13 自动上线，应用 healthy、HTTP 版本/定价通过，其余五个容器 ID 一致。186341236 字节数据库备份 SHA256 `036d41ec206bf7b16cdcbcb356619ac4ba2ab0dddce57c1ec2348845cac9402e`，完整读取校验通过。恢复目录 `/root/upgrade-recovery/newapi-auto-deploy/44763787471-1`，仅切应用，不整库恢复。
 
 正式站 Browser MCP 既有会话核验三类数量、缩略/预览加载和原图跨域选中：`full_single_P001_side`、`portrait-f71f980dde3`、`SPR-0001` 均成功选入，姿势角度保持侧面，没有发起生成。人物原图 1122px、衣装原图 1366px 能正常读取。验收发现卡片优先使用 preview，外链人物 preview 为原始 PNG，导致浏览列表加载大图；追加修正卡片优先使用 thumbnail，悬浮预览和实际选取原图不变。补充一项先失败后通过的真实组件回归，并通过相关5项测试、类型/lint/格式和641.0 KiB构建。
+
+最终应用 `45ff05e435aa5d07be0e6cc40ddd293b43f17225` / Actions `44765505601` 于北京时间 23:45:51 自动上线 healthy，固定镜像 `sha256:4cc46fc92132a3676139309b162e1f1f391a98e4858235f7be740509006ff320`。正式站列表抽样已改为360px衣装缩略图和400px人物缩略图，悬浮预览仍读取1122px人物原图。两入口状态/定价200、完整版本相符，移除的N001与敏感姿势旧地址均404；搜索两者均0结果。验收选入的三项参考已移除，未提交生成、未发送公告。
+
+第二轮备份186355234字节，SHA256 `f6e05964d67bdc8deb30b712ab0da9b39789dfce11c104b693ea639cf5fd0b23`，完整读取验证通过。恢复目录 `/root/upgrade-recovery/newapi-auto-deploy/44765505601-1`；失败保护仅回上一应用，不整库恢复。其余五个容器ID保持一致。本机核验材料 `/Users/zhuguoliang/.codex/operations/poseatlas-recovery-20261120`。

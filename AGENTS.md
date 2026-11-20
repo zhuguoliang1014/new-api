@@ -1,5 +1,7 @@
 # AGENTS.md — Project Conventions for new-api
 
+- **工作台图库恢复（2026-11-20）**：用户不要自行生成的50组自然姿势，`natural_pose_N…` 已从目录、资源允许列表及旧缓存/草稿中排除；敏感姿势继续屏蔽。恢复72组普通姿势/360视角、1407服装、1499人物，图片按需从RuiC-PoseAtlas/原人物站读取，深度图暂不提供；列表优先缩略图，悬浮与选取保留清晰原图。功能e54c08b26、缩略图修正45ff05e435aa5d07be0e6cc40ddd293b43f17225均已push main，最终Actions44765505601于北京时间23:45:51自动上线healthy，正式站三类选图、两入口版本/状态/定价、N001及敏感素材404通过。246项工作台回归及追加5项相关测试、类型/lint/格式/641.0KiB构建、相关Go/race/vet/构建通过。未发起生成、未发送公告；迁移私有暂存保留。最终备份186355234字节全读通过，恢复目录/root/upgrade-recovery/newapi-auto-deploy/44765505601-1，仅回应用不整库恢复。隔离树发布，不含主工作区未发布的rc.51合并/日志UI草稿；详情docs/image-studio/poseatlas-recovery-20261120.md。
+
 DO NOT send optional commentary
 
 ## Overview
