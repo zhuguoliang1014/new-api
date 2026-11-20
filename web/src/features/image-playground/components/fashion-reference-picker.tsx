@@ -284,8 +284,8 @@ export function FashionReferencePicker(props: {
                     <div>
                       <ReferenceThumbnail
                         src={
-                          view?.preview ??
                           view?.thumbnail ??
+                          view?.preview ??
                           view?.src ??
                           asset.src
                         }
