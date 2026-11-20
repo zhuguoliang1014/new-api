@@ -21,22 +21,9 @@ import { policyNavigation } from '@/features/system-settings/section-navigation'
 import { createSectionRegistry } from '../utils/section-registry'
 import { ChannelHealthSection } from './channel-health-section'
 import type { RequestPolicySettings } from './defaults'
-import { RequestChecksSection } from './request-checks-section'
 import { RoutingPolicySection } from './routing-section'
 
 const POLICY_SECTIONS = [
-  {
-    ...policyNavigation.getSectionMeta('filtering'),
-    build: (settings: RequestPolicySettings) => (
-      <RequestChecksSection
-        defaultValues={{
-          CheckSensitiveEnabled: settings.CheckSensitiveEnabled,
-          CheckSensitiveOnPromptEnabled: settings.CheckSensitiveOnPromptEnabled,
-          SensitiveWords: settings.SensitiveWords,
-        }}
-      />
-    ),
-  },
   {
     ...policyNavigation.getSectionMeta('routing'),
     build: () => <RoutingPolicySection />,

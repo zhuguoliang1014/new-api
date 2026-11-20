@@ -143,7 +143,6 @@ export const getSiteSectionNavItems = siteNavigation.getSectionNavItems
 
 export const policyNavigation = createSectionNavigation({
   sections: [
-    { id: 'filtering', titleKey: 'Request checks' },
     { id: 'routing', titleKey: 'Sessions and retries' },
     { id: 'health', titleKey: 'Channel health' },
   ] as const,

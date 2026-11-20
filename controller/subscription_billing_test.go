@@ -614,7 +614,8 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 								usage := &dto.RealtimeUsage{}
 								for _, total := range []int{60, 181} {
 									usage.TotalTokens, usage.InputTokens, usage.InputTokenDetails.TextTokens = total, total, total
-									require.NoError(t, service.PreWssConsumeQuota(c, info, usage))
+									_, err := service.PreWssConsumeQuota(c, info, usage)
+									require.NoError(t, err)
 								}
 								service.PostWssConsumeQuota(c, info, tc.model, usage, nil)
 							} else {

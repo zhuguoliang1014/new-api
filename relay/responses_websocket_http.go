@@ -200,7 +200,7 @@ func (h *responsesWSHTTPState) expand(create responsesWSCreateRequest) (response
 func (s *responsesWSSession) rememberConnectionContext(c *gin.Context, channel *appmodel.Channel, info *relaycommon.RelayInfo, model string) {
 	s.lockedModel, s.lockedChannelID, s.lockedGroup = model, channel.Id, info.UsingGroup
 	s.lockedKey, s.lockedKeyIndex = info.ApiKey, info.ChannelMultiKeyIndex
-	s.lockedRoute, _ = channel.GetOtherSettings().AdvancedCustom.MatchPathForModel(c.Request.URL.Path, model)
+	s.lockedRoute, _ = connectionOtherSettings(c, channel).AdvancedCustom.MatchPathForModel(c.Request.URL.Path, model)
 	s.lockedContext = make(map[appconstant.ContextKey]any)
 	for _, key := range []appconstant.ContextKey{
 		appconstant.ContextKeyChannelId, appconstant.ContextKeyChannelName, appconstant.ContextKeyChannelType,
@@ -208,7 +208,7 @@ func (s *responsesWSSession) rememberConnectionContext(c *gin.Context, channel *
 		appconstant.ContextKeyChannelParamOverride, appconstant.ContextKeyChannelHeaderOverride, appconstant.ContextKeyChannelOrganization,
 		appconstant.ContextKeyChannelAutoBan, appconstant.ContextKeyChannelModelMapping, appconstant.ContextKeyChannelStatusCodeMapping,
 		appconstant.ContextKeyChannelIsMultiKey, appconstant.ContextKeyChannelMultiKeyIndex, appconstant.ContextKeyChannelKey, appconstant.ContextKeyChannelBaseUrl,
-		appconstant.ContextKeyUpstreamRequestOrigin,
+		appconstant.ContextKeyUpstreamRequestOrigin, appconstant.ContextKeyProviderPlugin,
 	} {
 		if value, ok := c.Get(string(key)); ok {
 			s.lockedContext[key] = value
