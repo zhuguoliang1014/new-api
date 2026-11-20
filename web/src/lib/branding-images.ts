@@ -17,7 +17,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import favicon from '@/assets/branding/aiproxy-favicon.png?inline'
-import logo from '@/assets/branding/aiproxy-logo.webp?inline'
+
+// Keep the exact logo independently cacheable and out of blocking JavaScript.
+const logo = '/assets/branding/aiproxy-logo-85eb9da89811.webp'
 
 const BRAND_SOURCE_PATH =
   '/static/uploads/images/20261029-aiproxy-brand-light-52157c6838a3.png'

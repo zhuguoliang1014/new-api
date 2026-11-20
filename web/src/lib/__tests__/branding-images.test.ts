@@ -16,6 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import { getBrandingImage } from '../branding-images'
@@ -24,6 +28,18 @@ const original =
   'https://92ai.asia/static/uploads/images/20261029-aiproxy-brand-light-52157c6838a3.png'
 
 describe('branding image sizes', () => {
+  it('serves the production logo as a content-versioned asset outside startup JavaScript', () => {
+    const logo = getBrandingImage(original)
+    expect(logo).toMatch(
+      /^\/assets\/branding\/aiproxy-logo-[a-f0-9]{12}\.webp$/
+    )
+    const bytes = readFileSync(resolve('public', logo.slice(1)))
+    const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 12)
+    expect(logo).toBe(`/assets/branding/aiproxy-logo-${hash}.webp`)
+    expect(bytes.subarray(0, 4).toString()).toBe('RIFF')
+    expect(bytes.subarray(8, 12).toString()).toBe('WEBP')
+  })
+
   it('uses small bundled variants for the known production source without changing the brand', () => {
     expect(getBrandingImage(original)).not.toBe(original)
     expect(getBrandingImage(original, 'favicon')).not.toBe(original)
