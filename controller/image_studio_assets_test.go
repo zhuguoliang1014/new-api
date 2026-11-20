@@ -35,7 +35,7 @@ func TestStudioRetiredPoseMediaAreNotServedEvenWhenFilesExist(t *testing.T) {
 	t.Setenv("IMAGE_STUDIO_ASSET_DIR", root)
 	router := gin.New()
 	router.GET("/assets/:version/:kind/:variant/:file", GetImageStudioAsset)
-	names := []string{"full_sexy_P001_front", "pair60_P007_front", "upper80v2_P026_front", "upper80v2_P051_front", "full_single_P003_front"}
+	names := []string{"natural_pose_N001_front", "natural_pose_N050_low", "full_sexy_P001_front", "pair60_P007_front", "upper80v2_P026_front", "upper80v2_P051_front", "full_single_P003_front"}
 	for _, name := range names {
 		for _, variant := range []string{"originals", "images", "thumbnails"} {
 			for _, depth := range []string{"", "-depth"} {
@@ -55,5 +55,5 @@ func TestStudioRetiredPoseMediaAreNotServedEvenWhenFilesExist(t *testing.T) {
 			}
 		}
 	}
-	require.Len(t, imageStudioPoseMedia(), 610*6)
+	require.Len(t, imageStudioPoseMedia(), 360*6)
 }

@@ -29,15 +29,15 @@ const assets = importReferenceAssets(source)
 
 it('preserves the entire pinned source catalog and all available camera angles', () => {
   expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-    '482f633866c5137b534c0acb4767c02ee5fbb209bfb12cf9c028628048675c98'
+    '8548d2857d814bcab46014d0fa27778c1fad1b191219faebae022912498ca828'
   )
-  expect(assets).toHaveLength(3028)
-  expect(new Set(assets.map((a) => a.id)).size).toBe(3028)
+  expect(assets).toHaveLength(2978)
+  expect(new Set(assets.map((a) => a.id)).size).toBe(2978)
   expect(assets.filter((a) => a.role === 'outfit')).toHaveLength(1407)
   expect(assets.filter((a) => a.role === 'identity')).toHaveLength(1499)
   const poses = assets.filter((a) => a.role === 'pose')
-  expect(poses).toHaveLength(122)
-  expect(poses.flatMap((a) => a.views)).toHaveLength(610)
+  expect(poses).toHaveLength(72)
+  expect(poses.flatMap((a) => a.views)).toHaveLength(360)
   for (const asset of assets) {
     const original = source.items.find((item) => item.id === asset.id)
     assert(original)
@@ -126,7 +126,7 @@ it('keeps every retained depth view and leaves person and outfit data unchanged'
   const views = assets
     .filter((asset) => asset.role === 'pose')
     .flatMap((asset) => asset.views)
-  expect(views.filter((view) => view.depth)).toHaveLength(610)
+  expect(views.filter((view) => view.depth)).toHaveLength(360)
   const pose = assets.find((asset) => asset.role === 'pose')
   assert(pose)
   const plain = selectedPortraitView(pose, pose.views[0].id)
@@ -136,30 +136,59 @@ it('keeps every retained depth view and leaves person and outfit data unchanged'
   expect(depth?.src).toBe(pose.views[0].depth?.src)
 })
 
-it('makes all fifty natural poses searchable with five distinct selectable views and paired depth', () => {
-  const additions = assets.filter((asset) =>
-    asset.id.startsWith('natural_pose_N')
+it('excludes all fifty removed generated pose groups from the shipped catalog', () => {
+  expect(
+    source.items.some((item) => item.id.startsWith('natural_pose_N'))
+  ).toBe(false)
+})
+
+it('accepts reviewed upstream images and keeps saved view IDs selectable', () => {
+  const original = source.items.find((item) => item.id === 'full_single_P015')
+  assert(original)
+  const variants = original.variants.map((view) => ({
+    id: view.id,
+    angle: view.angle,
+    label: view.label,
+    original: `https://hruiccc.github.io/RuiC-PoseAtlas/img/${view.id}.png`,
+    image: `https://hruiccc.github.io/RuiC-PoseAtlas/thumbs/${view.id}.jpg`,
+    thumbnail: `https://hruiccc.github.io/RuiC-PoseAtlas/thumbs/${view.id}.jpg`,
+  }))
+  const parsed = sourceReferenceCatalogSchema.parse({
+    items: [{ ...original, variants }],
+    stats: {
+      poseGroups: 1,
+      poseImages: 5,
+      costumes: 0,
+      characters: 0,
+      references: 1,
+      images: 5,
+    },
+  })
+  const pose = importReferenceAssets(parsed)[0]
+  expect(selectedPortraitView(pose, 'full_single_P015_diag')?.src).toContain(
+    'full_single_P015_diag.png'
   )
-  expect(additions).toHaveLength(50)
-  const paths = new Set<string>()
-  for (const asset of additions) {
-    assert(asset.code)
-    expect(
-      filterLibraryAssets(assets, 'pose', asset.code, emptyLibraryFilters)
-    ).toContain(asset)
-    expect(asset.views.map((view) => view.label?.en).sort()).toEqual(
-      ['Front', 'High angle', 'Low angle', 'Side', 'Three-quarter'].sort()
+  expect(
+    selectedPortraitView(pose, 'full_single_P015_diag:depth')?.depth
+  ).toBeUndefined()
+  expect(
+    isReferenceImagePath(
+      'https://hruiccc.github.io/RuiC-PoseAtlas/costume/img/SPR-0001.webp'
     )
-    for (const view of asset.views) {
-      const selected = selectedPortraitView(asset, `${view.id}:depth`)
-      expect(selected?.src).toBe(view.depth?.src)
-      expect(selected?.instruction).toContain(`Camera: ${view.label?.en}`)
-      assert(view.depth)
-      expect(paths.has(view.src)).toBe(false)
-      expect(paths.has(view.depth.src)).toBe(false)
-      paths.add(view.src)
-      paths.add(view.depth.src)
-    }
-  }
-  expect(paths.size).toBe(500)
+  ).toBe(true)
+  expect(
+    isReferenceImagePath(
+      'https://ai-portrait-gallery.pages.dev/img/full/f71f980dde3.png'
+    )
+  ).toBe(true)
+  expect(
+    isReferenceImagePath(
+      'https://hruiccc.github.io/RuiC-PoseAtlas/img/full_single_P015_front.png?token=x'
+    )
+  ).toBe(false)
+  expect(
+    isReferenceImagePath(
+      'https://hruiccc.github.io.evil.test/RuiC-PoseAtlas/img/full_single_P015_front.png'
+    )
+  ).toBe(false)
 })
