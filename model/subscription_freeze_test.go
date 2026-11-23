@@ -218,7 +218,7 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 			active, err := HasActiveUserSubscription(user.Id)
 			require.NoError(t, err)
 			assert.False(t, active)
-			_, err = PreConsumeUserSubscriptionWithGroupQuota("frozen-request", user.Id, "gpt-test", 100, 100)
+			_, err = PreConsumeUserSubscriptionWithGroupQuota("frozen-request", user.Id, DefaultSubscriptionGroup, 100, 100)
 			require.ErrorContains(t, err, "no active subscription")
 			history, historyCount, err := GetInactiveUserSubscriptionsPaginated(user.Id, &common.PageInfo{})
 			require.NoError(t, err)
@@ -444,7 +444,7 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 				// fixed holiday clock. Keep the billing fixture active on both clocks.
 				billingSub := UserSubscription{UserId: billingUser.Id, PlanId: billingPlan.Id, Status: "active", StartTime: holiday - 60, EndTime: max(holiday, GetDBTimestamp()) + 30*86400, AmountTotal: 1000, AmountUsed: 317}
 				require.NoError(t, db.Create(&billingSub).Error)
-				reservation, err := PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, "gpt-test", 100, 100)
+				reservation, err := PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, DefaultSubscriptionGroup, 100, 100)
 				require.NoError(t, err)
 				assert.EqualValues(t, 417, reservation.AmountUsedAfter)
 				frozenSaved := make(chan struct{})
@@ -463,22 +463,22 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 				consumeResult := make(chan error, 1)
 				go func() {
 					close(started)
-					_, err := PreConsumeUserSubscriptionWithGroupQuota("during-freeze", billingUser.Id, "gpt-test", 100, 100)
+					_, err := PreConsumeUserSubscriptionWithGroupQuota("during-freeze", billingUser.Id, DefaultSubscriptionGroup, 100, 100)
 					consumeResult <- err
 				}()
 				<-started
 				close(releaseFreeze)
 				require.NoError(t, <-freezeResult)
 				require.Error(t, <-consumeResult, "concurrent new reservations must not charge the frozen plan")
-				_, err = PreConsumeUserSubscriptionWithGroupQuota("after-freeze", billingUser.Id, "gpt-test", 100, 100)
+				_, err = PreConsumeUserSubscriptionWithGroupQuota("after-freeze", billingUser.Id, DefaultSubscriptionGroup, 100, 100)
 				require.ErrorContains(t, err, "no active subscription")
-				replay, err := PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, "gpt-test", 100, 100)
+				replay, err := PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, DefaultSubscriptionGroup, 100, 100)
 				require.NoError(t, err)
 				assert.Equal(t, reservation.UserSubscriptionId, replay.UserSubscriptionId)
 				assert.Equal(t, reservation.PreConsumed, replay.PreConsumed)
 				require.NoError(t, RefundSubscriptionPreConsume("before-freeze"))
 				require.NoError(t, RefundSubscriptionPreConsume("before-freeze"))
-				_, err = PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, "gpt-test", 100, 100)
+				_, err = PreConsumeUserSubscriptionWithGroupQuota("before-freeze", billingUser.Id, DefaultSubscriptionGroup, 100, 100)
 				require.ErrorContains(t, err, "already refunded")
 				var saved UserSubscription
 				require.NoError(t, db.First(&saved, billingSub.Id).Error)

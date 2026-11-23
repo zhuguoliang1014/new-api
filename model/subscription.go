@@ -199,12 +199,15 @@ type SubscriptionPlan struct {
 	LimitedSale bool `json:"limited_sale" gorm:"not null;default:false"`
 	SalesLimit  int  `json:"sales_limit" gorm:"type:int;not null;default:0"`
 
-	// AllowedChannelTypes stores model-provider identifiers using legacy channel-type IDs.
-	// It matches the requested model family, never the selected transport (1=OpenAI, 14=Anthropic).
-	// Empty means no restriction — all model families are allowed.
+	// AllowedGroups matches the resolved API key group. Missing legacy values
+	// use DefaultSubscriptionGroup, including purchased plan snapshots.
+	AllowedGroups []string `json:"allowed_groups" gorm:"serializer:json;type:text"`
+
+	// Deprecated: retained for legacy snapshots and their billing-rate semantics.
+	// Model-provider restrictions no longer control subscription eligibility.
 	AllowedChannelTypes string `json:"allowed_channel_types" gorm:"type:varchar(512);default:''"`
 
-	// BillingRatio applies only to model-restricted plans. NULL preserves the legacy 1x rate.
+	// BillingRatio applies to group-restricted plans. NULL preserves the legacy rate.
 	BillingRatio *float64 `json:"billing_ratio"`
 
 	// Upgrade user group after purchase (empty = no change)
@@ -229,25 +232,6 @@ type SubscriptionPlan struct {
 
 	CreatedAt int64 `json:"created_at" gorm:"bigint"`
 	UpdatedAt int64 `json:"updated_at" gorm:"bigint"`
-}
-
-// AllowsChannelType checks a legacy provider ID stored in AllowedChannelTypes.
-// Call AllowsModel when deciding whether a request may use this plan.
-func (p *SubscriptionPlan) AllowsChannelType(channelType int) bool {
-	raw := strings.TrimSpace(p.AllowedChannelTypes)
-	if raw == "" {
-		return true
-	}
-	for part := range strings.SplitSeq(raw, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		if v, err := strconv.Atoi(part); err == nil && v == channelType {
-			return true
-		}
-	}
-	return false
 }
 
 // IsWithinSaleWindow reports whether the plan is currently purchasable.
@@ -1442,6 +1426,7 @@ func AdminResetPlanSubscriptions(planId int, advanceResetTime bool) (*Subscripti
 }
 
 type SubscriptionPreConsumeResult struct {
+	AllowedGroups      []string
 	UsePlanRatio       bool
 	BillingRatio       float64
 	UserSubscriptionId int
@@ -1621,26 +1606,26 @@ func maybeResetUserSubscriptionWithPlanTx(tx *gorm.DB, sub *UserSubscription, pl
 }
 
 // PreConsumeUserSubscription pre-consumes from any active subscription total quota.
-// Restricted plans are matched against the requested model family, not transport.
+// Plans are matched against the resolved API key group.
 // The last argument is retained for compatibility and is intentionally ignored.
-func PreConsumeUserSubscription(requestId string, userId int, modelName string, quotaType int, amount int64, _ int) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscription(requestId string, userId int, usingGroup string, quotaType int, amount int64, _ int) (*SubscriptionPreConsumeResult, error) {
 	if amount <= 0 {
 		return nil, errors.New("amount must be > 0")
 	}
-	return PreConsumeUserSubscriptionWithGroupQuota(requestId, userId, modelName, amount, amount)
+	return PreConsumeUserSubscriptionWithGroupQuota(requestId, userId, usingGroup, amount, amount)
 }
 
 // PreConsumeUserSubscriptionWithGroupQuota selects and reserves in one transaction.
 // Restricted plans apply their configured ratio; unrestricted plans retain the group discount.
-func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, modelName string, groupAmount, unitAmount int64) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscriptionWithGroupQuota(requestId string, userId int, usingGroup string, groupAmount, unitAmount int64) (*SubscriptionPreConsumeResult, error) {
 	if unitAmount <= 0 {
 		return nil, errors.New("unit amount must be positive")
 	}
-	return PreConsumeUserSubscriptionWithPricing(requestId, userId, modelName, groupAmount, float64(unitAmount), false)
+	return PreConsumeUserSubscriptionWithPricing(requestId, userId, usingGroup, groupAmount, float64(unitAmount), false)
 }
 
 // PreConsumeUserSubscriptionWithPricing applies the selected plan ratio before quota rounding.
-func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelName string, groupAmount int64, quotaBeforeGroup float64, roundQuota bool) (*SubscriptionPreConsumeResult, error) {
+func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, usingGroup string, groupAmount int64, quotaBeforeGroup float64, roundQuota bool) (*SubscriptionPreConsumeResult, error) {
 	if userId <= 0 {
 		return nil, errors.New("invalid userId")
 	}
@@ -1672,12 +1657,16 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 			if err != nil {
 				return err
 			}
-			returnValue.UsePlanRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			if sub.UserId != userId || !plan.AllowsGroup(usingGroup) {
+				return errors.New("subscription group mismatch")
+			}
+			returnValue.UsePlanRatio = plan.UsesPlanBillingRatio()
 			returnValue.BillingRatio = 1
 			if existing.BillingRatio != nil {
 				returnValue.UsePlanRatio = *existing.BillingRatio > 0
 				returnValue.BillingRatio = *existing.BillingRatio
 			}
+			returnValue.AllowedGroups = append([]string(nil), plan.EffectiveAllowedGroups()...)
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = existing.PreConsumed
 			returnValue.AmountTotal = sub.AmountTotal
@@ -1702,14 +1691,14 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 			if err != nil {
 				return err
 			}
-			if !plan.AllowsModel(modelName) {
-				common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=model_mismatch", requestId, userId, modelName, sub.Id, plan.Id))
+			if !plan.AllowsGroup(usingGroup) {
+				common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d group=%q subscription_id=%d plan_id=%d reason=group_mismatch", requestId, userId, usingGroup, sub.Id, plan.Id))
 				continue
 			}
 			if err := maybeResetUserSubscriptionWithPlanTx(tx, &sub, plan, now); err != nil {
 				return err
 			}
-			usePlanRatio := strings.TrimSpace(plan.AllowedChannelTypes) != ""
+			usePlanRatio := plan.UsesPlanBillingRatio()
 			amount := groupAmount
 			billingRatio := 0.0
 			if usePlanRatio {
@@ -1732,7 +1721,7 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 			if sub.AmountTotal > 0 {
 				remain := sub.AmountTotal - usedBefore
 				if remain < amount {
-					common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d model=%q subscription_id=%d plan_id=%d reason=quota_insufficient required_quota=%d remaining_quota=%d plan_rate=%t", requestId, userId, modelName, sub.Id, plan.Id, amount, remain, usePlanRatio))
+					common.SysLog(fmt.Sprintf("billing_audit event=subscription_skipped request_id=%q user_id=%d group=%q subscription_id=%d plan_id=%d reason=quota_insufficient required_quota=%d remaining_quota=%d plan_rate=%t", requestId, userId, usingGroup, sub.Id, plan.Id, amount, remain, usePlanRatio))
 					continue
 				}
 			}
@@ -1756,17 +1745,21 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 					if err := tx.Where("id = ?", dup.UserSubscriptionId).First(&sub).Error; err != nil {
 						return err
 					}
+					plan, err := getUserSubscriptionPlanTx(tx, &sub)
+					if err != nil {
+						return err
+					}
+					if sub.UserId != userId || !plan.AllowsGroup(usingGroup) {
+						return errors.New("subscription group mismatch")
+					}
 					if dup.BillingRatio != nil {
 						returnValue.UsePlanRatio = *dup.BillingRatio > 0
 						returnValue.BillingRatio = *dup.BillingRatio
 					} else {
-						plan, err := getUserSubscriptionPlanTx(tx, &sub)
-						if err != nil {
-							return err
-						}
-						returnValue.UsePlanRatio = strings.TrimSpace(plan.AllowedChannelTypes) != ""
+						returnValue.UsePlanRatio = plan.UsesPlanBillingRatio()
 						returnValue.BillingRatio = 1
 					}
+					returnValue.AllowedGroups = append([]string(nil), plan.EffectiveAllowedGroups()...)
 					returnValue.UserSubscriptionId = sub.Id
 					returnValue.PreConsumed = dup.PreConsumed
 					returnValue.AmountTotal = sub.AmountTotal
@@ -1780,6 +1773,7 @@ func PreConsumeUserSubscriptionWithPricing(requestId string, userId int, modelNa
 			if err := tx.Save(&sub).Error; err != nil {
 				return err
 			}
+			returnValue.AllowedGroups = append([]string(nil), plan.EffectiveAllowedGroups()...)
 			returnValue.UserSubscriptionId = sub.Id
 			returnValue.PreConsumed = amount
 			returnValue.AmountTotal = sub.AmountTotal

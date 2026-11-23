@@ -19,7 +19,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -31,6 +30,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	hosttypes "github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
@@ -44,6 +44,13 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 	useTransaction := len(committed) == 0 || !committed[0]
 	t.Helper()
 	require.NoError(t, i18n.Init())
+	oldGroups := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(oldGroups)) })
+	groups := ratio_setting.GetGroupRatioCopy()
+	groups[model.DefaultSubscriptionGroup] = 0.36
+	groupJSON, err := common.Marshal(groups)
+	require.NoError(t, err)
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(string(groupJSON)))
 	dialect := common.DatabaseTypeSQLite
 	var driver gorm.Dialector = sqlite.Open(":memory:")
 	switch os.Getenv("TEST_SUBSCRIPTION_CONTROLLER_DIALECT") {
@@ -82,7 +89,7 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 		common.RedisEnabled, common.BatchUpdateEnabled, common.MemoryCacheEnabled = oldRedis, oldBatch, oldMemory
 		require.NoError(t, sqlDB.Close())
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.SubscriptionOrder{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.Channel{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.SubscriptionOrder{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.Channel{}, &model.Log{}, &model.SystemTask{}))
 	if useTransaction {
 		db = db.Begin()
 		require.NoError(t, db.Error)
@@ -94,171 +101,115 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 	return db
 }
 
-func TestSubscriptionModelRestrictionUpdatePersists(t *testing.T) {
-	for _, tc := range []struct{ name, before, after string }{
-		{"add restriction", "", "1"},
-		{"change restriction", "1", "14"},
-		{"remove restriction", "1", ""},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			db := subscriptionBillingDB(t)
-			confirmPaymentComplianceForTest(t)
-			plan := model.SubscriptionPlan{Title: "review plan", PriceAmount: 10, PriceCNY: 70, AllowedChannelTypes: tc.before}
-			body, err := common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: plan})
-			require.NoError(t, err)
-			createRecorder := httptest.NewRecorder()
-			createContext, _ := gin.CreateTestContext(createRecorder)
-			createContext.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/admin/plans", bytes.NewReader(body))
-			createContext.Request.Header.Set("Content-Type", "application/json")
-			AdminCreateSubscriptionPlan(createContext)
-			require.Contains(t, createRecorder.Body.String(), `"success":true`)
-			require.NoError(t, db.First(&plan).Error)
-			require.Equal(t, tc.before, plan.AllowedChannelTypes)
-			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
-			plan.AllowedChannelTypes = tc.after
-			body, err = common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: plan})
-			require.NoError(t, err)
-			recorder := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(recorder)
-			c.Params = gin.Params{{Key: "id", Value: fmt.Sprint(plan.Id)}}
-			c.Request = httptest.NewRequest(http.MethodPut, "/api/subscription/admin/plans/1", bytes.NewReader(body))
-			c.Request.Header.Set("Content-Type", "application/json")
-			AdminUpdateSubscriptionPlan(c)
-			require.Contains(t, recorder.Body.String(), `"success":true`)
-			var saved model.SubscriptionPlan
-			require.NoError(t, db.First(&saved, plan.Id).Error)
-			assert.Equal(t, tc.after, saved.AllowedChannelTypes, "successful update must persist requested model restriction")
-		})
-	}
-}
-
-func TestSubscriptionModelOwnershipSurvivesTransportRetry(t *testing.T) {
-	for _, tc := range []struct {
-		name, model, source string
-		used                int64
-	}{
-		{"Claude never charges GPT plan", "claude-sonnet-4-5", service.BillingSourceWallet, 0},
-		{"GPT retains GPT plan across transport switch", "gpt-4o", service.BillingSourceSubscription, 80},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			db := subscriptionBillingDB(t)
-			user := model.User{Username: "review", Quota: 1000, Status: common.UserStatusEnabled}
-			require.NoError(t, db.Create(&user).Error)
-			token := model.Token{UserId: user.Id, Key: "review-token", RemainQuota: 1000, Status: common.TokenStatusEnabled}
-			require.NoError(t, db.Create(&token).Error)
-			plan := model.SubscriptionPlan{Title: "OpenAI only", AllowedChannelTypes: "1", QuotaResetPeriod: model.SubscriptionResetNever}
-			require.NoError(t, db.Create(&plan).Error)
-			model.InvalidateSubscriptionPlanCache(plan.Id)
-			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
-			now := model.GetDBTimestamp()
-			sub := model.UserSubscription{UserId: user.Id, PlanId: plan.Id, Status: "active", AmountTotal: 1000, StartTime: now - 60, EndTime: now + 3600}
-			require.NoError(t, db.Create(&sub).Error)
-			c, _ := gin.CreateTestContext(httptest.NewRecorder())
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-			baseURL := "http://127.0.0.1:1"
-			first := model.Channel{Id: 1, Type: constant.ChannelTypeOpenAI, Name: "first", Key: "test-key", BaseURL: &baseURL}
-			require.Nil(t, middleware.SetupContextForSelectedChannel(c, &first, "review-model"))
-			info := &relaycommon.RelayInfo{RequestId: "review-retry", UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: "default", ForcePreConsume: true, UserSetting: dto.UserSetting{BillingPreference: "subscription_only"}}
-			require.Nil(t, service.PreConsumeBilling(c, 100, info))
-			require.Equal(t, tc.source, info.BillingSource)
-			info.InitChannelMeta(c)
-			// Reproduce Relay's retry lifecycle: replace the selected context, run
-			// its before-attempt billing hook, initialize adaptor metadata, settle.
-			second := model.Channel{Id: 2, Type: constant.ChannelTypeAnthropic, Name: "retry", Key: "test-key", BaseURL: &baseURL}
-			require.False(t, plan.AllowsChannelType(second.Type))
-			require.Nil(t, middleware.SetupContextForSelectedChannel(c, &second, "review-model"))
-			info.RetryIndex = 1
-			require.Nil(t, service.PrepareTieredBillingForSelectedGroup(c, info))
-			info.InitChannelMeta(c)
-			require.Equal(t, constant.ChannelTypeAnthropic, info.GetChannelType())
-			require.NoError(t, info.Billing.Settle(80))
-			var persisted model.UserSubscription
-			require.NoError(t, db.First(&persisted, sub.Id).Error)
-			t.Logf("actual channel type=%d, allowed=%s, billed subscription quota=%d", info.GetChannelType(), plan.AllowedChannelTypes, persisted.AmountUsed)
-			assert.Equal(t, tc.used, persisted.AmountUsed, "model ownership must not change when the transport changes")
-		})
-	}
-}
-
-func TestSubscriptionModelProviderValidation(t *testing.T) {
-	for _, tc := range []struct {
-		raw, normalized string
-		invalid         bool
-	}{
-		{raw: "", normalized: ""},
-		{raw: " 1,14,1 ", normalized: "1,14"},
-		{raw: "3", invalid: true}, // Azure is a transport, not a model family.
-		{raw: "0", invalid: true},
-		{raw: "1,garbage", invalid: true},
-		{raw: "1,", invalid: true},
-		{raw: strings.Repeat("1,", 257), invalid: true},
-	} {
-		t.Run(tc.raw[:min(len(tc.raw), 30)], func(t *testing.T) {
-			actual, err := model.NormalizeSubscriptionModelProviders(tc.raw)
-			if tc.invalid {
-				require.Error(t, err)
-				return
-			}
-			require.NoError(t, err)
-			assert.Equal(t, tc.normalized, actual)
-		})
-	}
-	for _, tc := range []struct {
-		model, allowed string
-		matches        bool
-	}{
-		{" OpenAI/GPT-4o ", "1", true},
-		{"us.anthropic.claude-sonnet-4-5-v1:0", "14", true},
-		{"openai/claude-sonnet-4-5", "1", false},
-		{"o3", "1", true},
-		{"gemini-2.5-pro", "24", true},
-		{"deepseek-chat", "43", true},
-		{"kimi-k2", "25", true},
-		{"grok-4", "48", true},
-		{"qwen3-32b", "17", true},
-		{"glm-4.5", "26", true},
-		{"MiniMax-M2", "35", true},
-		{"mistral-large-latest", "42", true},
-		{"my-gpt-alias", "1", false},
-		{"claudeish", "14", false},
-		{"custom", "", true},
-	} {
-		t.Run(tc.model, func(t *testing.T) {
-			plan := model.SubscriptionPlan{AllowedChannelTypes: tc.allowed}
-			assert.Equal(t, tc.matches, plan.AllowsModel(tc.model))
-		})
-	}
-}
-
-func TestSubscriptionModelRestrictionRejectsInvalidSave(t *testing.T) {
+func TestSubscriptionGroupRestrictionSavesAndValidates(t *testing.T) {
 	db := subscriptionBillingDB(t)
 	confirmPaymentComplianceForTest(t)
-	plan := model.SubscriptionPlan{Title: "validated plan", PriceAmount: 10, PriceCNY: 70, AllowedChannelTypes: "1"}
-	require.NoError(t, db.Create(&plan).Error)
-	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
-	for _, update := range []bool{false, true} {
-		for _, raw := range []string{"3", "0", "1,garbage", "1,", strings.Repeat("1,", 257)} {
-			plan.AllowedChannelTypes = raw
-			body, err := common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: plan})
+	// These are the configured groups exposed by /api/group/.
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"【新】GPT稳定号池":0.36,"claude混池":0.8,"group,with,commas":1}`))
+	plan := model.SubscriptionPlan{Title: "group plan", PriceAmount: 10, PriceCNY: 70}
+	for _, tc := range []struct {
+		name            string
+		groups          []string
+		update, invalid bool
+		expected        []string
+	}{
+		{name: "legacy create defaults to designated group", expected: []string{model.DefaultSubscriptionGroup}},
+		{name: "multiple configured groups", update: true, groups: []string{" claude混池 ", model.DefaultSubscriptionGroup, "claude混池", "group,with,commas"}, expected: []string{"claude混池", model.DefaultSubscriptionGroup, "group,with,commas"}},
+		{name: "empty list cannot remove restriction", update: true, groups: []string{}, invalid: true},
+		{name: "unknown group cannot be saved", update: true, groups: []string{"missing"}, invalid: true},
+		{name: "auto is not a concrete group", update: true, groups: []string{"auto"}, invalid: true},
+		{name: "unknown group cannot be created", groups: []string{"missing"}, invalid: true},
+		{name: "single group replaces multiple groups", update: true, groups: []string{"claude混池"}, expected: []string{"claude混池"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requestPlan := plan
+			requestPlan.AllowedGroups = tc.groups
+			body, err := common.Marshal(AdminUpsertSubscriptionPlanRequest{Plan: requestPlan})
 			require.NoError(t, err)
 			recorder := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(recorder)
 			c.Request = httptest.NewRequest(http.MethodPost, "/api/subscription/admin/plans", bytes.NewReader(body))
 			c.Request.Header.Set("Content-Type", "application/json")
-			if update {
+			if tc.update {
 				c.Params = gin.Params{{Key: "id", Value: fmt.Sprint(plan.Id)}}
 				AdminUpdateSubscriptionPlan(c)
 			} else {
 				AdminCreateSubscriptionPlan(c)
 			}
-			require.Contains(t, recorder.Body.String(), `"success":false`)
-			var saved model.SubscriptionPlan
-			require.NoError(t, db.First(&saved, plan.Id).Error)
-			assert.Equal(t, "1", saved.AllowedChannelTypes)
+			if tc.invalid {
+				require.Contains(t, recorder.Body.String(), `"success":false`)
+				var saved model.SubscriptionPlan
+				require.NoError(t, db.First(&saved, plan.Id).Error)
+				assert.Equal(t, plan.AllowedGroups, saved.AllowedGroups)
+			} else {
+				require.Contains(t, recorder.Body.String(), `"success":true`)
+				require.NoError(t, db.Where("title = ?", plan.Title).First(&plan).Error)
+				assert.Equal(t, tc.expected, plan.AllowedGroups)
+			}
 			var count int64
 			require.NoError(t, db.Model(&model.SubscriptionPlan{}).Count(&count).Error)
 			assert.EqualValues(t, 1, count)
-		}
+		})
+	}
+	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+}
+
+func TestSubscriptionGroupEligibilityIgnoresModelAndTransport(t *testing.T) {
+	for _, tc := range []struct {
+		name, group, model string
+		source             string
+	}{
+		{"GPT in allowed group", model.DefaultSubscriptionGroup, "gpt-6.1-sol", service.BillingSourceSubscription},
+		{"second allowed group", "claude混池", "claude-custom", service.BillingSourceSubscription},
+		{"custom model in allowed group", model.DefaultSubscriptionGroup, "private-alias", service.BillingSourceSubscription},
+		{"GPT in another key group", "other", "gpt-6.1-sol", service.BillingSourceWallet},
+		{"unresolved auto group", "auto", "gpt-6.1-sol", service.BillingSourceWallet},
+		{"missing group fails closed", "", "gpt-6.1-sol", service.BillingSourceWallet},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := subscriptionBillingDB(t)
+			user := model.User{Username: "groups", Quota: 1000, Status: common.UserStatusEnabled}
+			require.NoError(t, db.Create(&user).Error)
+			token := model.Token{UserId: user.Id, Key: "groups-token", Group: tc.group, RemainQuota: 1000, Status: common.TokenStatusEnabled}
+			require.NoError(t, db.Create(&token).Error)
+			plan := model.SubscriptionPlan{Title: "group plan", AllowedGroups: []string{model.DefaultSubscriptionGroup, "claude混池"}, AllowedChannelTypes: "1", BillingRatio: common.GetPointer(0.5), QuotaResetPeriod: model.SubscriptionResetNever}
+			require.NoError(t, db.Create(&plan).Error)
+			model.InvalidateSubscriptionPlanCache(plan.Id)
+			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+			sub, err := model.CreateUserSubscriptionFromPlanTx(db, user.Id, &plan, "admin")
+			require.NoError(t, err)
+			require.NoError(t, db.Model(sub).Update("amount_total", 1000).Error)
+			// Purchased groups survive catalog edits, just like price and quota.
+			require.NoError(t, db.Model(&plan).Update("allowed_groups", `["other"]`).Error)
+			model.InvalidateSubscriptionPlanCache(plan.Id)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			info := &relaycommon.RelayInfo{RequestId: "group-request", UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: tc.group, ForcePreConsume: true, PriceData: hosttypes.PriceData{PreConsumeQuotaBeforeGroup: common.GetPointer(100.0)}, ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAnthropic}}
+			require.Nil(t, service.PreConsumeBilling(c, 100, info))
+			require.Equal(t, tc.source, info.BillingSource)
+			require.NoError(t, info.Billing.Settle(40))
+			require.NoError(t, db.First(sub, sub.Id).Error)
+			require.NoError(t, db.First(&user, user.Id).Error)
+			require.NoError(t, db.First(&token, token.Id).Error)
+			if tc.source == service.BillingSourceSubscription {
+				assert.EqualValues(t, 40, sub.AmountUsed)
+				assert.Equal(t, 1000, user.Quota)
+				previousGroup := info.UsingGroup
+				info.UsingGroup = "claude混池"
+				assert.Nil(t, service.ValidateSubscriptionBillingGroup(info), "another purchased group remains eligible")
+				info.UsingGroup = "other"
+				assert.NotNil(t, service.PreConsumeBilling(c, 100, info), "an existing session cannot bypass group restrictions on retry")
+				info.UsingGroup = previousGroup
+
+				// An idempotent replay cannot borrow this reservation from another group.
+				_, err := model.PreConsumeUserSubscriptionWithPricing(info.RequestId, user.Id, "other", 100, 100, false)
+				assert.Error(t, err)
+			} else {
+				assert.Zero(t, sub.AmountUsed)
+				assert.Equal(t, 960, user.Quota)
+			}
+			assert.Equal(t, 960, token.RemainQuota)
+		})
 	}
 }
 
@@ -281,7 +232,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 	for _, mode := range []string{"ratio", "per_call", "tiered_token", "tiered_fixed"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, tc := range []struct {
-				name, model                                                                     string
+				name, model, group                                                              string
 				plans                                                                           []planSpec
 				ratios                                                                          []float64
 				changeRatioAfterReserve                                                         bool
@@ -305,7 +256,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "images retain wallet group rate despite configured plan ratio", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, wallet: 1000, selected: -1, image: true},
 				{name: "GPT-only plan uses rate one", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0},
 				{name: "GPT prefix without dash", model: "gpt5-custom", plans: []planSpec{special}, wallet: 1000, selected: 0},
-				{name: "Claude skips GPT plan", model: "claude-sonnet-4-5", plans: []planSpec{special}, wallet: 1000, selected: -1},
+				{name: "GPT in another key group skips subscription", group: "other", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: -1},
 				{name: "unrestricted plan accepts GPT", model: "gpt-4o", plans: []planSpec{general}, wallet: 1000, selected: 0},
 				{name: "unrestricted plan accepts Claude", model: "claude-sonnet-4-5", plans: []planSpec{general}, wallet: 1000, selected: 0},
 				{name: "higher priority restricted plan wins", model: "gpt-4o", plans: []planSpec{general, special}, wallet: 1000, selected: 1},
@@ -318,7 +269,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "no subscriptions empty wallet", model: "gpt-4o", selected: -1, rejected: true},
 				{name: "restricted plan works with insufficient wallet", model: "gpt-4o", plans: []planSpec{special}, wallet: 1, selected: 0},
 				{name: "unrestricted plan works with empty wallet", model: "claude-sonnet-4-5", plans: []planSpec{general}, selected: 0},
-				{name: "mismatched plan and insufficient wallet", model: "claude-sonnet-4-5", plans: []planSpec{special}, wallet: 35, selected: -1, rejected: true},
+				{name: "mismatched plan and insufficient wallet", group: "other", model: "claude-sonnet-4-5", plans: []planSpec{special}, wallet: 35, selected: -1, rejected: true},
 				{name: "all plans and wallet insufficient", model: "gpt-4o", plans: []planSpec{{"1", 50, 30}, {"", 20, 10}}, wallet: 35, selected: -1, rejected: true},
 				{name: "token shortage rolls back unit-rate subscription", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0, rejected: true, tokenInsufficient: true},
 				{name: "failed request refunds unit-rate subscription once", model: "gpt-4o", plans: []planSpec{special}, wallet: 1000, selected: 0, refund: true},
@@ -327,7 +278,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				{name: "zero group ratio cannot make restricted plan free", model: "gpt-4o", plans: []planSpec{special}, selected: 0, freeGroup: true},
 				{name: "unrestricted plan retains free group even with empty API token", model: "gpt-4o", plans: []planSpec{general}, selected: 0, freeGroup: true, emptyToken: true},
 				{name: "free wallet without subscription needs no billing session", model: "gpt-4o", selected: -1, freeGroup: true, emptyToken: true},
-				{name: "mismatched plan falls back to free wallet", model: "claude-sonnet-4-5", plans: []planSpec{special}, selected: -1, freeGroup: true, emptyToken: true},
+				{name: "mismatched plan falls back to free wallet", group: "other", model: "claude-sonnet-4-5", plans: []planSpec{special}, selected: -1, freeGroup: true, emptyToken: true},
 				{name: "realtime restricted plan with empty wallet", model: "gpt-4o", plans: []planSpec{special}, selected: 0, realtime: true},
 				{name: "realtime unrestricted plan with empty wallet", model: "gpt-4o", plans: []planSpec{general}, selected: 0, realtime: true},
 				{name: "realtime wallet retains group rate", model: "gpt-4o", wallet: 1000, selected: -1, realtime: true},
@@ -369,15 +320,15 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					db := subscriptionBillingDB(t, true)
 					require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
 						"billing_setting.billing_mode": "{}", "billing_setting.billing_expr": "{}",
-						"group_ratio_setting.group_ratio":       `{"subscription-test":0.36,"retry-test":0.12}`,
+						"group_ratio_setting.group_ratio":       `{"【新】GPT稳定号池":0.36,"other":0.36,"retry-test":0.12}`,
 						"group_ratio_setting.group_group_ratio": "{}",
 						"quota_setting.pre_consume_multiplier":  "1", "quota_setting.enable_free_model_pre_consume": "false",
 					}))
 					if tc.specialGroup {
-						require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"group_ratio_setting.group_ratio": `{"subscription-test":0.7}`, "group_ratio_setting.group_group_ratio": `{"subscription-user":{"subscription-test":0.36}}`}))
+						require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"group_ratio_setting.group_ratio": `{"【新】GPT稳定号池":0.7}`, "group_ratio_setting.group_group_ratio": `{"subscription-user":{"【新】GPT稳定号池":0.36}}`}))
 					}
 					if tc.freeGroup {
-						require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"group_ratio_setting.group_ratio": `{"subscription-test":0}`}))
+						require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{"group_ratio_setting.group_ratio": `{"【新】GPT稳定号池":0,"other":0}`}))
 					}
 					// Override each model explicitly so published model prices never affect the fixture.
 					priceSettings := map[string]string{"ModelPrice": "{}", "ModelRatio": fmt.Sprintf(`{%q:1}`, tc.model), "CompletionRatio": fmt.Sprintf(`{%q:1}`, tc.model)}
@@ -436,6 +387,9 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					var subs []model.UserSubscription
 					for i, spec := range tc.plans {
 						plan := model.SubscriptionPlan{Title: "rate plan", AllowedChannelTypes: spec.allowed, QuotaResetPeriod: model.SubscriptionResetNever}
+						if spec.allowed == "14" {
+							plan.AllowedGroups = []string{"other"}
+						}
 						if i < len(tc.ratios) {
 							plan.BillingRatio = &tc.ratios[i]
 						}
@@ -456,7 +410,10 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 					}
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-					info := &relaycommon.RelayInfo{RequestId: fmt.Sprintf("subscription-rate-%d", user.Id), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: "subscription-test", UserGroup: "subscription-user", ForcePreConsume: true, UserSetting: dto.UserSetting{QuotaWarningThreshold: -1}, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id, ChannelType: constant.ChannelTypeOpenAI}}
+					info := &relaycommon.RelayInfo{RequestId: fmt.Sprintf("subscription-rate-%d", user.Id), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: model.DefaultSubscriptionGroup, UserGroup: "subscription-user", ForcePreConsume: true, UserSetting: dto.UserSetting{QuotaWarningThreshold: -1}, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id, ChannelType: constant.ChannelTypeOpenAI}}
+					if tc.group != "" {
+						info.UsingGroup = tc.group
+					}
 					info.BillingRequestInput = &billingexpr.RequestInput{}
 					if tc.image {
 						info.ImageRequestCount = 1
@@ -530,7 +487,7 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 							planID := subs[tc.selected].PlanId
 							require.NoError(t, db.Model(&model.SubscriptionPlan{}).Where("id = ?", planID).Update("billing_ratio", 3).Error)
 							model.InvalidateSubscriptionPlanCache(planID)
-							replayed, err := model.PreConsumeUserSubscriptionWithGroupQuota(info.RequestId, user.Id, tc.model, 36, 101)
+							replayed, err := model.PreConsumeUserSubscriptionWithGroupQuota(info.RequestId, user.Id, info.UsingGroup, 36, 101)
 							require.NoError(t, err)
 							assert.Equal(t, wantedRate, replayed.BillingRatio)
 							assert.EqualValues(t, expectedReserve, replayed.PreConsumed)
@@ -786,7 +743,7 @@ func TestSubscriptionBillingRatioRejectsUnsafeCharges(t *testing.T) {
 	t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
 	sub := model.UserSubscription{UserId: 987, PlanId: plan.Id, Status: "active", EndTime: model.GetDBTimestamp() + 3600}
 	require.NoError(t, db.Create(&sub).Error)
-	_, err := model.PreConsumeUserSubscriptionWithPricing("ratio-overflow", sub.UserId, "gpt-test", 36, 100, false)
+	_, err := model.PreConsumeUserSubscriptionWithPricing("ratio-overflow", sub.UserId, model.DefaultSubscriptionGroup, 36, 100, false)
 	require.Error(t, err)
 	require.NoError(t, db.First(&sub, sub.Id).Error)
 	assert.Zero(t, sub.AmountUsed)
@@ -887,6 +844,7 @@ func TestSubscriptionBillingRatioMigration(t *testing.T) {
 				var persisted model.SubscriptionPlan
 				require.NoError(t, db.First(&persisted, plan.Id).Error)
 				assert.Nil(t, persisted.BillingRatio)
+				assert.Equal(t, []string{model.DefaultSubscriptionGroup}, persisted.EffectiveAllowedGroups())
 				ratio, err := persisted.EffectiveBillingRatio()
 				require.NoError(t, err)
 				assert.Equal(t, 1.0, ratio)

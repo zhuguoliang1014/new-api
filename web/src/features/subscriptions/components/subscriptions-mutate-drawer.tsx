@@ -82,6 +82,7 @@ import {
   type PlanFormValues,
 } from '../lib'
 import type { PlanRecord } from '../types'
+import { PlanGroupFields } from './plan-group-fields'
 import { PlanPromotionFields } from './plan-promotion-fields'
 import { useSubscriptions } from './subscriptions-provider'
 
@@ -405,6 +406,8 @@ export function SubscriptionsMutateDrawer({
                   )}
                 />
               </div>
+
+              <PlanGroupFields groupOptions={groupOptions} />
 
               <div className='grid grid-cols-1 gap-3 sm:grid-cols-2'>
                 <FormField

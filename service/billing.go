@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -16,6 +17,25 @@ const (
 	BillingSourceWallet       = "wallet"
 	BillingSourceSubscription = "subscription"
 )
+
+// ValidateSubscriptionBillingGroup prevents cross-group retries from reusing
+// a subscription reservation outside its purchased group list.
+func ValidateSubscriptionBillingGroup(info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info == nil || info.Billing == nil {
+		return nil
+	}
+	session, ok := info.Billing.(*BillingSession)
+	if !ok {
+		return nil
+	}
+	funding, ok := session.funding.(*SubscriptionFunding)
+	if !ok || slices.Contains(funding.allowedGroups, info.UsingGroup) {
+		return nil
+	}
+	return types.NewErrorWithStatusCode(
+		errors.New("subscription does not support the selected API key group"),
+		types.ErrorCodeInsufficientUserQuota, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+}
 
 // PreConsumeBilling 根据用户计费偏好创建 BillingSession 并执行预扣费。
 // 会话存储在 relayInfo.Billing 上，供后续 Settle / Refund 使用。
@@ -39,6 +59,9 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 		)
 	}
 	if relayInfo != nil && relayInfo.Billing != nil {
+		if apiErr := ValidateSubscriptionBillingGroup(relayInfo); apiErr != nil {
+			return apiErr
+		}
 		if err := relayInfo.Billing.ReserveBeforeSubmit(preConsumedQuota); err != nil {
 			var apiErr *types.NewAPIError
 			if errors.As(err, &apiErr) {

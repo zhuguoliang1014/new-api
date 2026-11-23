@@ -54,6 +54,7 @@ import {
 } from '../lib'
 import type { PlanRecord } from '../types'
 import { PlanAdvancedFields } from './plan-advanced-fields'
+import { PlanGroupFields } from './plan-group-fields'
 import { PlanPricingFields } from './plan-pricing-fields'
 import { PlanPromotionFields } from './plan-promotion-fields'
 import { useSubscriptions } from './subscriptions-provider'
@@ -61,7 +62,6 @@ import { useSubscriptions } from './subscriptions-provider'
 const NEW_GPT_MONTHLY_PLAN: PlanCreateFormValues = {
   ...PLAN_CREATE_FORM_DEFAULTS,
   enabled: false,
-  allowed_channel_types: [1],
   pricing_ratio: 0.29,
   minimum_effective_ratio: 0.18,
 }
@@ -161,6 +161,7 @@ export function SubscriptionCreateDrawer({
   const onInvalid = (errors: FieldErrors<PlanCreateFormValues>) => {
     const visible = new Set([
       'title',
+      'allowed_groups',
       'subtitle',
       'price_cny',
       'price_amount',
@@ -242,6 +243,9 @@ export function SubscriptionCreateDrawer({
                   </FormItem>
                 )}
               />
+            </SideDrawerSection>
+            <SideDrawerSection>
+              <PlanGroupFields groupOptions={groupOptions} />
             </SideDrawerSection>
             <SideDrawerSection>
               <PlanPricingFields

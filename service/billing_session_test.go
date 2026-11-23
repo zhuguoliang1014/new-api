@@ -25,7 +25,7 @@ import (
 )
 
 // External DSNs must point to isolated test databases, never application data.
-func TestSubscriptionBillingModelProviders(t *testing.T) {
+func TestSubscriptionBillingGroups(t *testing.T) {
 	for _, dialect := range []struct {
 		name common.DatabaseType
 		env  string
@@ -64,7 +64,7 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 				common.SetDatabaseTypes(oldMainType, oldLogType)
 				common.RedisEnabled, common.BatchUpdateEnabled = oldRedis, oldBatch
 			})
-			require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}))
+			require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.SubscriptionPlan{}, &model.UserSubscription{}, &model.SubscriptionPreConsumeRecord{}, &model.SystemTask{}))
 			versionQuery := "select version()"
 			if dialect.name == common.DatabaseTypeSQLite {
 				versionQuery = "select sqlite_version()"
@@ -74,26 +74,26 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 			t.Logf("database: %s", version)
 
 			for i, tc := range []struct {
-				name, preference, allowed, source, model  string
-				channel, metadataChannel                  int
-				wallet                                    int
-				priorPlans, exhausted, overflow, rejected bool
-				request                                   dto.Request
-				format                                    types.RelayFormat
-				pluginProtocol                            string
-				upstreamModel                             string
+				name, preference, allowed, source, model, group string
+				channel, metadataChannel                        int
+				wallet                                          int
+				priorPlans, exhausted, overflow, rejected       bool
+				request                                         dto.Request
+				format                                          types.RelayFormat
+				pluginProtocol                                  string
+				upstreamModel                                   string
 			}{
 				{name: "GPT before metadata initialization", model: "gpt-4o", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
-				{name: "Claude on OpenAI transport skips GPT plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "GPT in another group skips subscription", model: "gpt-4o", group: "other", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
 				{name: "GPT on different transport still uses GPT plan", model: "gpt-4o", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceSubscription},
-				{name: "Claude matches Anthropic plan on compatible transport", model: "anthropic/claude-sonnet-4-5", preference: "wallet_first", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
+				{name: "second configured group permits Claude", group: "claude混池", model: "anthropic/claude-sonnet-4-5", preference: "wallet_first", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
 				{name: "unrestricted plan accepts unknown model", model: "custom-model", preference: "subscription_only", channel: constant.ChannelTypeAnthropic, wallet: 1000, source: BillingSourceSubscription},
-				{name: "stale metadata cannot change model ownership", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
-				{name: "unknown model never borrows transport ownership", model: "unknown-model", preference: "subscription_only", allowed: "1", metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "stale metadata cannot override key group", group: "other", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceWallet},
+				{name: "unknown model can use designated group", model: "unknown-model", preference: "subscription_only", allowed: "1", metadataChannel: constant.ChannelTypeOpenAI, wallet: 1000, source: BillingSourceSubscription},
 				{name: "empty wallet still uses matching subscription", model: "gpt-4o", preference: "wallet_first", allowed: "1", channel: constant.ChannelTypeOpenAI, source: BillingSourceSubscription},
-				{name: "legacy overflow restriction cannot block balance fallback", model: "claude-sonnet-4-5", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, rejected: false, source: BillingSourceWallet},
-				{name: "mismatched subscription and insufficient wallet reject without charging", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 50, rejected: true},
-				{name: "unknown model with empty wallet rejects", model: "unknown-model", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeOpenAI, rejected: true},
+				{name: "legacy overflow restriction cannot block balance fallback", group: "other", model: "claude-sonnet-4-5", preference: "subscription_first", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 1000, rejected: false, source: BillingSourceWallet},
+				{name: "mismatched subscription and insufficient wallet reject without charging", group: "other", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "1", channel: constant.ChannelTypeAnthropic, wallet: 50, rejected: true},
+				{name: "wrong group with empty wallet rejects", group: "other", model: "unknown-model", preference: "wallet_only", allowed: "1", channel: constant.ChannelTypeOpenAI, rejected: true},
 				{name: "skip mismatched and exhausted subscriptions before matching later plan", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, source: BillingSourceSubscription},
 				{name: "all matching subscriptions exhausted falls back to wallet", model: "claude-sonnet-4-5", preference: "subscription_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 1000, priorPlans: true, exhausted: true, source: BillingSourceWallet},
 				{name: "all subscriptions and wallet insufficient rejects without charging", model: "claude-sonnet-4-5", preference: "wallet_only", allowed: "14", channel: constant.ChannelTypeOpenAI, wallet: 50, priorPlans: true, exhausted: true, rejected: true},
@@ -120,6 +120,9 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 					require.NoError(t, db.Create(&token).Error)
 					t.Cleanup(func() { require.NoError(t, db.Unscoped().Delete(&token).Error) })
 					plan := model.SubscriptionPlan{Title: tc.name, AllowedChannelTypes: tc.allowed, QuotaResetPeriod: model.SubscriptionResetNever}
+					if tc.allowed == "14" {
+						plan.AllowedGroups = []string{model.DefaultSubscriptionGroup, "claude混池"}
+					}
 					require.NoError(t, db.Create(&plan).Error)
 					model.InvalidateSubscriptionPlanCache(plan.Id)
 					t.Cleanup(func() {
@@ -135,7 +138,10 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 					var priorSubs []model.UserSubscription
 					if tc.priorPlans {
 						for j, allowed := range []string{"1", "14"} {
-							priorPlan := model.SubscriptionPlan{Title: "prior plan", AllowedChannelTypes: allowed, QuotaResetPeriod: model.SubscriptionResetNever}
+							priorPlan := model.SubscriptionPlan{Title: "prior plan", AllowedChannelTypes: allowed, QuotaResetPeriod: model.SubscriptionResetNever, AllowedGroups: []string{model.DefaultSubscriptionGroup}}
+							if j == 0 {
+								priorPlan.AllowedGroups = []string{"other"}
+							}
 							require.NoError(t, db.Create(&priorPlan).Error)
 							model.InvalidateSubscriptionPlanCache(priorPlan.Id)
 							t.Cleanup(func() {
@@ -169,10 +175,13 @@ func TestSubscriptionBillingModelProviders(t *testing.T) {
 					}
 					info := &relaycommon.RelayInfo{
 						RequestId: fmt.Sprintf("billing-channel-%d", i), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key,
-						OriginModelName: tc.model, ForcePreConsume: true,
+						OriginModelName: tc.model, ForcePreConsume: true, UsingGroup: model.DefaultSubscriptionGroup,
 						UserSetting: dto.UserSetting{BillingPreference: tc.preference},
 						Request:     tc.request, RelayFormat: tc.format,
 						PriceData: hosttypes.PriceData{GroupRatioInfo: hosttypes.GroupRatioInfo{GroupRatio: 2.25}},
+					}
+					if tc.group != "" {
+						info.UsingGroup = tc.group
 					}
 					if tc.metadataChannel != 0 {
 						info.ChannelMeta = &relaycommon.ChannelMeta{ChannelType: tc.metadataChannel, UpstreamModelName: tc.upstreamModel}

@@ -72,10 +72,10 @@ export function MyWallet(props: MyWalletProps) {
                     className='relative h-auto! w-full min-w-0 flex-col items-center gap-1.5 px-1 py-2.5 sm:w-auto sm:min-w-max sm:px-5'
                   >
                     <span className='text-center text-sm leading-tight font-semibold whitespace-normal sm:text-base sm:leading-none sm:whitespace-nowrap'>
-                      {t('GPT Subscription')}
+                      {t('Subscription')}
                     </span>
                     <span className='text-muted-foreground text-center text-[11px] leading-tight font-normal whitespace-normal sm:leading-none sm:whitespace-nowrap'>
-                      {t('GPT only · plan quota')}
+                      {t('Specified groups · plan quota')}
                     </span>
                     {savingsPercent > 0 && (
                       <Badge

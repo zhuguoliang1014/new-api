@@ -2,7 +2,6 @@ import { CalendarClock, RefreshCw } from 'lucide-react'
 import { useFormContext } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
-import { MultiSelect } from '@/components/multi-select'
 import {
   FormControl,
   FormDescription,
@@ -21,11 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 
-import {
-  getDurationUnitOptions,
-  getResetPeriodOptions,
-  SUBSCRIPTION_MODEL_PROVIDERS,
-} from '../constants'
+import { getDurationUnitOptions, getResetPeriodOptions } from '../constants'
 import type { PlanCreateFormValues } from '../lib'
 
 export function PlanAdvancedFields(props: { groupOptions: string[] }) {
@@ -193,42 +188,6 @@ export function PlanAdvancedFields(props: { groupOptions: string[] }) {
       </section>
 
       <section className='space-y-4'>
-        <h3 className='text-sm font-medium'>
-          {t('Model provider restrictions')}
-        </h3>
-        <FormField
-          control={form.control}
-          name='allowed_channel_types'
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('Allowed model providers')}</FormLabel>
-              <FormControl>
-                <MultiSelect
-                  options={SUBSCRIPTION_MODEL_PROVIDERS.map((o) => ({
-                    value: String(o.value),
-                    label: o.label,
-                  }))}
-                  selected={(field.value ?? []).map(String)}
-                  onChange={(vals) =>
-                    field.onChange(
-                      vals.map(Number).filter((n) => !Number.isNaN(n))
-                    )
-                  }
-                  placeholder={t('Allow all model providers')}
-                />
-              </FormControl>
-              <FormDescription>
-                {t(
-                  'Match the requested model family, not the channel. Skip ineligible or exhausted subscriptions, then use wallet balance. Leave empty to allow all models.'
-                )}{' '}
-                {t(
-                  'Restricted plans use the plan billing multiplier, defaulting to 1x. Unrestricted plans and wallet charges use the API key group multiplier.'
-                )}
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
         <FormField
           control={form.control}
           name='billing_ratio'
@@ -360,7 +319,7 @@ export function PlanAdvancedFields(props: { groupOptions: string[] }) {
             </FormControl>
             <FormDescription>
               {t(
-                'Optional price floor for fixed-quota GPT plans. Discounts below this effective multiplier cannot be saved.'
+                'Optional price floor for fixed-quota plans. Discounts below this effective multiplier cannot be saved.'
               )}
             </FormDescription>
             <FormMessage />

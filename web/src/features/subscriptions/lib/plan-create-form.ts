@@ -1,6 +1,7 @@
 import type { TFunction } from 'i18next'
 import { z } from 'zod'
 
+import { DEFAULT_SUBSCRIPTION_GROUP } from '../constants'
 import type { PlanPayload, SubscriptionPlan } from '../types'
 
 // 简化版套餐表单：只包含自己新面板用得到的字段。
@@ -42,7 +43,9 @@ export function getPlanCreateFormSchema(t: TFunction) {
       upgrade_group: z.string().optional(),
       starts_at: z.coerce.number().min(0).optional(),
       expires_at: z.coerce.number().min(0).optional(),
-      allowed_channel_types: z.array(z.number()).optional(),
+      allowed_groups: z
+        .array(z.string())
+        .min(1, t('Select at least one subscription group')),
       billing_ratio: z.coerce
         .number()
         .positive(t('Billing multiplier must be greater than zero'))
@@ -92,7 +95,7 @@ export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
   upgrade_group: '',
   starts_at: 0,
   expires_at: 0,
-  allowed_channel_types: [],
+  allowed_groups: [DEFAULT_SUBSCRIPTION_GROUP],
   billing_ratio: 1,
 }
 
@@ -134,14 +137,7 @@ export function planToCreateFormValues(
     starts_at: Number(plan.starts_at || 0),
     expires_at: Number(plan.expires_at || 0),
     billing_ratio: plan.billing_ratio ?? 1,
-    allowed_channel_types: plan.allowed_channel_types
-      ? plan.allowed_channel_types
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map(Number)
-          .filter((n) => !Number.isNaN(n))
-      : [],
+    allowed_groups: plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP],
   }
 }
 
@@ -199,10 +195,7 @@ export function createFormValuesToPayload(
       starts_at: Number(values.starts_at || 0),
       expires_at: Number(values.expires_at || 0),
       billing_ratio: values.billing_ratio ?? null,
-      allowed_channel_types:
-        values.allowed_channel_types && values.allowed_channel_types.length > 0
-          ? values.allowed_channel_types.join(',')
-          : '',
+      allowed_groups: values.allowed_groups,
     },
   }
 }

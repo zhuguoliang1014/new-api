@@ -9,7 +9,12 @@ import { useSubscriptionSavings } from '../use-subscription-savings'
 
 const pricing = { unitPrice: 1 }
 
-function gptPlan(id: number, priceCny: number, quotaUsd: number) {
+function gptPlan(
+  id: number,
+  priceCny: number,
+  quotaUsd: number,
+  groups = ['【新】GPT稳定号池']
+) {
   return {
     total_amount_usd: quotaUsd,
     plan: {
@@ -17,7 +22,7 @@ function gptPlan(id: number, priceCny: number, quotaUsd: number) {
       title: `Plan ${id}`,
       price_cny: priceCny,
       enabled: true,
-      allowed_channel_types: '1',
+      allowed_groups: groups,
       billing_ratio: 1,
     },
   }
@@ -49,7 +54,7 @@ function mockApi(
 
 afterEach(() => vi.restoreAllMocks())
 
-it('compares against the highest-ratio GPT group without any user selection', async () => {
+it('compares a legacy-default plan against its designated group', async () => {
   mockApi({
     '【新】GPT稳定号池': { desc: 'GPT stable', ratio: 0.36 },
     '【新】GPT普通号池': { desc: 'GPT normal', ratio: 0.25 },
@@ -66,13 +71,13 @@ it('compares against the highest-ratio GPT group without any user selection', as
   expect(result.current.comparisonGroup).toBe('【新】GPT稳定号池')
 })
 
-it('ignores non-GPT groups even when they have the highest ratio', async () => {
+it('ignores groups outside the plan even when they have the highest ratio', async () => {
   mockApi(
     {
       '【新】GPT普通号池': { desc: 'GPT normal', ratio: 0.25 },
       '【新】aws-claude-高缓存': { desc: 'Claude', ratio: 1 },
     },
-    [gptPlan(1, 200, 1155)]
+    [gptPlan(1, 200, 1155, ['【新】GPT普通号池'])]
   )
 
   const { result } = renderHook(() => useSubscriptionSavings(pricing), {
@@ -114,7 +119,7 @@ it('reports max savings across plans for the tab badge', async () => {
   expect(result.current.maxSavings).toBeCloseTo(1 - 2000 / 8800 / 0.36)
 })
 
-it('reports no savings when the user has no GPT group', async () => {
+it('reports no savings when the user has no eligible plan group', async () => {
   mockApi({ 'claude-max': { desc: 'Claude', ratio: 0.8 } })
 
   const { result } = renderHook(() => useSubscriptionSavings(pricing), {
@@ -131,7 +136,7 @@ it('shares topup configuration and the same savings between sidebar and wallet c
     let data: unknown
     if (url === '/api/subscription/plans') data = [gptPlan(1, 300, 1155)]
     else if (url === '/api/user/self/groups') {
-      data = { GPT: { desc: 'GPT', ratio: 0.36 } }
+      data = { '【新】GPT稳定号池': { desc: 'GPT', ratio: 0.36 } }
     } else if (url === '/api/user/topup/info') {
       data = {
         enable_online_topup: false,
@@ -162,4 +167,21 @@ it('shares topup configuration and the same savings between sidebar and wallet c
   expect(
     get.mock.calls.filter(([url]) => url === '/api/subscription/plans')
   ).toHaveLength(1)
+})
+
+it('compares each plan only with its allowed groups, including non-GPT groups', async () => {
+  mockApi(
+    {
+      '【新】GPT稳定号池': { desc: 'GPT', ratio: 0.36 },
+      claude混池: { desc: 'Claude', ratio: 0.8 },
+      'GPT expensive': { desc: 'not allowed', ratio: 5 },
+    },
+    [gptPlan(1, 200, 1155), gptPlan(2, 400, 1155, ['claude混池'])]
+  )
+  const { result } = renderHook(() => useSubscriptionSavings(pricing), {
+    wrapper,
+  })
+  await waitFor(() => expect(result.current.byPlan.size).toBe(2))
+  expect(result.current.byPlan.get(1)?.rechargeRatio).toBe(0.36)
+  expect(result.current.byPlan.get(2)?.rechargeRatio).toBe(0.8)
 })

@@ -32,15 +32,12 @@ export function PlanPricingFields(props: {
   const quota = props.quotaUSD
   const ratio = Number(form.watch('pricing_ratio') || 0)
   const discount = Number(form.watch('discount_rate') ?? 1)
-  const providers = form.watch('allowed_channel_types') ?? []
-  const isGPTMonthly =
-    providers.length === 1 &&
-    providers[0] === 1 &&
+  const isMonthly =
     form.watch('duration_unit') === 'month' &&
     form.watch('duration_value') === 1 &&
     form.watch('quota_reset_period') === 'never' &&
     (form.watch('billing_ratio') ?? 1) === 1
-  const auto = automatic && isGPTMonthly
+  const auto = automatic && isMonthly
   const updateQuota = (newPrice: number, newRatio: number) => {
     if (newPrice > 0 && newRatio > 0) {
       form.setValue('price_amount', calculatePlanQuotaUSD(newPrice, newRatio), {
@@ -57,7 +54,7 @@ export function PlanPricingFields(props: {
           'Set the regular selling price and how much usage it includes.'
         )}
       />
-      {isGPTMonthly && (
+      {isMonthly && (
         <ToggleGroup
           value={[auto ? 'automatic' : 'manual']}
           onValueChange={(value) => {
@@ -189,8 +186,8 @@ export function PlanPricingFields(props: {
         </div>
       </div>
       <p className='text-muted-foreground text-xs'>
-        {isGPTMonthly
-          ? t('GPT only · one month · shared monthly quota')
+        {isMonthly
+          ? t('One month · shared monthly quota')
           : t(
               'This plan uses custom entitlement settings. Review Advanced Settings before changing its pricing.'
             )}

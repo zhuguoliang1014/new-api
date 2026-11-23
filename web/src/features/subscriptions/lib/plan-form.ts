@@ -21,6 +21,7 @@ import { z } from 'zod'
 
 import { parseQuotaFromDollars, quotaUnitsToDollars } from '@/lib/format'
 
+import { DEFAULT_SUBSCRIPTION_GROUP } from '../constants'
 import type { SubscriptionPlan, PlanPayload } from '../types'
 
 export function getPlanFormSchema(t: TFunction) {
@@ -62,7 +63,9 @@ export function getPlanFormSchema(t: TFunction) {
       stripe_price_id: z.string().optional(),
       creem_product_id: z.string().optional(),
       waffo_pancake_product_id: z.string().optional(),
-      allowed_channel_types: z.array(z.number()).optional(),
+      allowed_groups: z
+        .array(z.string())
+        .min(1, t('Select at least one subscription group')),
       billing_ratio: z.coerce
         .number()
         .positive(t('Billing multiplier must be greater than zero'))
@@ -114,7 +117,7 @@ export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   stripe_price_id: '',
   creem_product_id: '',
   waffo_pancake_product_id: '',
-  allowed_channel_types: [],
+  allowed_groups: [DEFAULT_SUBSCRIPTION_GROUP],
   billing_ratio: 1,
 }
 
@@ -147,14 +150,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
     creem_product_id: plan.creem_product_id || '',
     waffo_pancake_product_id: plan.waffo_pancake_product_id || '',
     billing_ratio: plan.billing_ratio ?? 1,
-    allowed_channel_types: plan.allowed_channel_types
-      ? plan.allowed_channel_types
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-          .map(Number)
-          .filter((n) => !Number.isNaN(n))
-      : [],
+    allowed_groups: plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP],
   }
 }
 
@@ -184,10 +180,7 @@ export function formValuesToPlanPayload(values: PlanFormValues): PlanPayload {
       upgrade_group: values.upgrade_group || '',
       downgrade_group: values.downgrade_group || '',
       billing_ratio: values.billing_ratio ?? null,
-      allowed_channel_types:
-        values.allowed_channel_types && values.allowed_channel_types.length > 0
-          ? values.allowed_channel_types.join(',')
-          : '',
+      allowed_groups: values.allowed_groups,
     },
   }
 }

@@ -136,6 +136,7 @@ func TestSubscriptionPlanMigration(t *testing.T) {
 							assert.EqualValues(t, 500000, previous.TotalAmount)
 							assert.True(t, previous.Enabled)
 							assert.Empty(t, previous.AllowedChannelTypes)
+							assert.Equal(t, []string{DefaultSubscriptionGroup}, previous.EffectiveAllowedGroups())
 							assert.Nil(t, previous.BillingRatio)
 							assert.Zero(t, previous.SalesLimit)
 							ratio, err := previous.EffectiveBillingRatio()
@@ -143,13 +144,14 @@ func TestSubscriptionPlanMigration(t *testing.T) {
 							assert.Equal(t, 1.0, ratio)
 						}
 						if pass == 0 {
-							current := SubscriptionPlan{Title: "GPT plan", PriceAmount: 100, PriceCNY: 300, TotalAmount: 577500000, AllowedChannelTypes: "1", BillingRatio: common.GetPointer(0.75), Enabled: true, SalesLimit: 30}
+							current := SubscriptionPlan{Title: "Group plan", AllowedGroups: []string{DefaultSubscriptionGroup, "claude混池"}, PriceAmount: 100, PriceCNY: 300, TotalAmount: 577500000, AllowedChannelTypes: "1", BillingRatio: common.GetPointer(0.75), Enabled: true, SalesLimit: 30}
 							require.NoError(t, db.Create(&current).Error)
 							currentID = current.Id
 						}
 						var current SubscriptionPlan
 						require.NoError(t, db.First(&current, currentID).Error)
 						assert.Equal(t, "1", current.AllowedChannelTypes)
+						assert.Equal(t, []string{DefaultSubscriptionGroup, "claude混池"}, current.AllowedGroups)
 						require.NotNil(t, current.BillingRatio)
 						assert.Equal(t, 0.75, *current.BillingRatio)
 						assert.Equal(t, 300.0, current.PriceCNY)

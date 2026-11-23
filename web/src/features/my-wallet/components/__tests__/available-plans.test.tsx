@@ -415,7 +415,7 @@ it('keeps the savings summary compact and puts the comparison group inside detai
   })
   const card = within(screen.getByRole('article', { name: '苍穹版' }))
   expect(card.getByText('Save about 28% vs wallet payment')).toBeVisible()
-  expect(card.queryByText('Wallet GPT · GPT stable')).not.toBeInTheDocument()
+  expect(card.queryByText('Wallet · GPT stable')).not.toBeInTheDocument()
   expect(
     card.queryByText('Assumes quota is used before expiry or reset')
   ).not.toBeInTheDocument()
@@ -424,7 +424,7 @@ it('keeps the savings summary compact and puts the comparison group inside detai
   await userEvent.click(
     card.getByRole('button', { name: 'How savings are calculated' })
   )
-  expect(card.getByText('Wallet GPT · GPT stable')).toBeVisible()
+  expect(card.getByText('Wallet · GPT stable')).toBeVisible()
   const otherCard = within(screen.getByRole('article', { name: '凌云版' }))
   expect(otherCard.queryByText(/Save about/)).not.toBeInTheDocument()
   expect(
@@ -439,7 +439,7 @@ it('reveals pricing multipliers and their meaning through keyboard-accessible de
     ]),
   })
   const card = within(screen.getByRole('article', { name: '苍穹版' }))
-  expect(card.queryByText('Wallet GPT')).not.toBeInTheDocument()
+  expect(card.queryByText('Wallet')).not.toBeInTheDocument()
   const trigger = card.getByRole('button', {
     name: 'How savings are calculated',
   })
@@ -447,7 +447,7 @@ it('reveals pricing multipliers and their meaning through keyboard-accessible de
   trigger.focus()
   await userEvent.keyboard('{Enter}')
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
-  expect(card.getByText('Wallet GPT')).toBeVisible()
+  expect(card.getByText('Wallet')).toBeVisible()
   expect(
     card.getByText('Assumes quota is used before expiry or reset')
   ).toBeVisible()
@@ -814,4 +814,19 @@ it('keeps plain and timed cards at a shared row height while preserving touch-si
   }
   expect(screen.getByLabelText('Limited to 20 · 20 available')).toBeVisible()
   expect(screen.getByRole('timer', { name: 'Ends in' })).toBeVisible()
+})
+
+it('shows allowed groups instead of obsolete GPT-only subtitles and preserves custom copy', async () => {
+  await renderPlans([
+    plan({ allowed_groups: ['【新】GPT稳定号池', 'claude混池'] }),
+    plan({ id: 2, title: 'Custom plan', subtitle: 'Team allowance' }),
+  ])
+  expect(
+    screen.getByText('Subscription groups: 【新】GPT稳定号池、claude混池')
+  ).toBeVisible()
+  expect(
+    screen.getByText('Subscription groups: 【新】GPT稳定号池')
+  ).toBeVisible()
+  expect(screen.queryByText('仅限 GPT 模型')).not.toBeInTheDocument()
+  expect(screen.getByText('Team allowance')).toBeVisible()
 })

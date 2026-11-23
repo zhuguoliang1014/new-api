@@ -8,14 +8,15 @@ import (
 
 func TestPurchasedSubscriptionKeepsOriginalPlanAfterEdit(t *testing.T) {
 	truncateTables(t)
-	plan := &SubscriptionPlan{Title: "Original GPT month", Enabled: true, PriceAmount: 100, PriceCNY: 100, TotalAmount: 50000000, DurationUnit: "month", DurationValue: 1, AllowedChannelTypes: "1", BillingRatio: common.GetPointer(0.3)}
+	plan := &SubscriptionPlan{Title: "Original GPT month", AllowedGroups: []string{DefaultSubscriptionGroup, "claude混池"}, Enabled: true, PriceAmount: 100, PriceCNY: 100, TotalAmount: 50000000, DurationUnit: "month", DurationValue: 1, AllowedChannelTypes: "1", BillingRatio: common.GetPointer(0.3)}
 	require.NoError(t, DB.Create(plan).Error)
 	sub, err := CreateUserSubscriptionFromPlanTx(DB, 123, plan, "admin")
 	require.NoError(t, err)
-	require.NoError(t, DB.Model(plan).Updates(map[string]any{"title": "Changed", "billing_ratio": 0.9, "allowed_channel_types": "14", "quota_reset_period": "daily"}).Error)
+	require.NoError(t, DB.Model(plan).Updates(map[string]any{"title": "Changed", "allowed_groups": `["other"]`, "billing_ratio": 0.9, "allowed_channel_types": "14", "quota_reset_period": "daily"}).Error)
 	InvalidateSubscriptionPlanCache(plan.Id)
 	summaries := buildSubscriptionSummaries([]UserSubscription{*sub})
 	require.Equal(t, "Original GPT month", summaries[0].PlanTitle)
+	require.Equal(t, []string{DefaultSubscriptionGroup, "claude混池"}, summaries[0].Plan.AllowedGroups)
 	require.Equal(t, "1", summaries[0].Plan.AllowedChannelTypes)
 	require.InDelta(t, 0.3, *summaries[0].Plan.BillingRatio, 0.000001)
 }
@@ -94,7 +95,7 @@ func TestLegacySnapshotAndBillingAreUnaffectedByCatalogEdits(t *testing.T) {
 	require.Equal(t, first.StartTime, second.StartTime)
 	require.Equal(t, first.EndTime, second.EndTime)
 	InvalidateSubscriptionPlanCache(plan.Id)
-	result, err := PreConsumeUserSubscriptionWithPricing("snapshot-billing-test", 234, "gpt-6.1-sol", 360, 1000, false)
+	result, err := PreConsumeUserSubscriptionWithPricing("snapshot-billing-test", 234, DefaultSubscriptionGroup, 360, 1000, false)
 	require.NoError(t, err)
 	require.InDelta(t, 0.3, result.BillingRatio, 0.000001)
 	require.EqualValues(t, 300, result.PreConsumed)
@@ -124,7 +125,7 @@ func TestRemovedCatalogPlanPreservesAdministrativeResetAndBilling(t *testing.T) 
 	reset, err := AdminResetUserSubscriptionsByPlan(456, plan.Id, true)
 	require.NoError(t, err)
 	require.Equal(t, 1, reset.ResetCount)
-	got, err := PreConsumeUserSubscriptionWithPricing("archived-snapshot", 456, "gpt-6.1-sol", 10, 100, false)
+	got, err := PreConsumeUserSubscriptionWithPricing("archived-snapshot", 456, DefaultSubscriptionGroup, 10, 100, false)
 	require.NoError(t, err)
 	require.EqualValues(t, 100, got.PreConsumed)
 	require.NoError(t, DB.Where("request_id = ?", "archived-snapshot").Delete(&SubscriptionPreConsumeRecord{}).Error)

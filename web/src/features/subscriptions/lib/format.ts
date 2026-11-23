@@ -66,3 +66,16 @@ export function formatTimestamp(ts: number): string {
   if (!ts) return '-'
   return dayjs(ts * 1000).format('YYYY-MM-DD HH:mm:ss')
 }
+
+// Released catalogs used the subtitle for a model-family restriction. Those
+// descriptions no longer apply now that eligibility is configured by group.
+export function getPlanSubtitle(subtitle?: string): string | undefined {
+  if (
+    /^(?:仅限\s*GPT\s*模型(?:使用)?|GPT\s*专属月卡)$/.test(
+      subtitle?.trim() ?? ''
+    )
+  ) {
+    return undefined
+  }
+  return subtitle
+}

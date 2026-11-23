@@ -368,12 +368,12 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
-	if providerErr != nil {
-		common.ApiError(c, providerErr)
+	groups, groupErr := model.NormalizeSubscriptionGroups(req.Plan.AllowedGroups)
+	if groupErr != nil {
+		common.ApiError(c, groupErr)
 		return
 	}
-	req.Plan.AllowedChannelTypes = providers
+	req.Plan.AllowedGroups = groups
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorT(c, "Custom reset cycle must be greater than 0 seconds")
@@ -486,12 +486,12 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	providers, providerErr := model.NormalizeSubscriptionModelProviders(req.Plan.AllowedChannelTypes)
-	if providerErr != nil {
-		common.ApiError(c, providerErr)
+	groups, groupErr := model.NormalizeSubscriptionGroups(req.Plan.AllowedGroups)
+	if groupErr != nil {
+		common.ApiError(c, groupErr)
 		return
 	}
-	req.Plan.AllowedChannelTypes = providers
+	req.Plan.AllowedGroups = groups
 	req.Plan.QuotaResetPeriod = model.NormalizeResetPeriod(req.Plan.QuotaResetPeriod)
 	if req.Plan.QuotaResetPeriod == model.SubscriptionResetCustom && req.Plan.QuotaResetCustomSeconds <= 0 {
 		common.ApiErrorT(c, "Custom reset cycle must be greater than 0 seconds")
@@ -503,6 +503,11 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			return err
 		}
 		if err := model.SnapshotLegacySubscriptionPlanTx(tx, id); err != nil {
+			return err
+		}
+		// Map updates need the serialized TEXT value, rather than a SQL slice.
+		groupsJSON, err := common.Marshal(req.Plan.AllowedGroups)
+		if err != nil {
 			return err
 		}
 		// update plan (allow zero values updates with map)
@@ -527,7 +532,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"max_purchase_per_user":      req.Plan.MaxPurchasePerUser,
 			"sales_limit":                req.Plan.SalesLimit,
 			"limited_sale":               req.Plan.LimitedSale,
-			"allowed_channel_types":      req.Plan.AllowedChannelTypes,
+			"allowed_groups":             string(groupsJSON),
 			"billing_ratio":              req.Plan.BillingRatio,
 			"total_amount":               req.Plan.TotalAmount,
 			"upgrade_group":              req.Plan.UpgradeGroup,

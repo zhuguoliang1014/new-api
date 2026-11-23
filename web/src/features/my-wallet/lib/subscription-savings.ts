@@ -7,6 +7,7 @@ export interface RechargePricing {
 }
 
 export interface PlanSavings {
+  comparisonGroup?: string
   /** Effective group ratio when paying through this plan. */
   planRatio: number
   /** Group ratio of the comparison group when paying from recharged balance. */
@@ -81,12 +82,13 @@ export function computeSavingsByPlan(
   return result
 }
 
-export function filterGPTGroups(
-  groups: Record<string, UserGroup> | undefined
+export function filterSubscriptionGroups(
+  groups: Record<string, UserGroup> | undefined,
+  allowedGroups: string[]
 ): Array<{ name: string; ratio: number }> {
   if (!groups) return []
   return Object.entries(groups)
-    .filter(([name]) => name.toUpperCase().includes('GPT'))
+    .filter(([name]) => allowedGroups.includes(name))
     .map(([name, info]) => ({
       name,
       ratio: typeof info.ratio === 'string' ? Number(info.ratio) : info.ratio,

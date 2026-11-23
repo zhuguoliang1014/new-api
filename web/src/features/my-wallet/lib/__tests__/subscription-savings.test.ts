@@ -8,7 +8,7 @@ import type {
 import {
   computePlanSavings,
   computeSavingsByPlan,
-  filterGPTGroups,
+  filterSubscriptionGroups,
   getSavingsPercent,
 } from '../subscription-savings'
 
@@ -119,47 +119,28 @@ describe('computeSavingsByPlan', () => {
   })
 })
 
-describe('filterGPTGroups', () => {
-  it('filters groups containing GPT (case insensitive) and sorts by ratio descending', () => {
-    const groups = {
-      '【新】GPT稳定号池': { desc: 'GPT stable', ratio: 0.36 },
-      '【新】GPT普通号池': { desc: 'GPT normal', ratio: 0.25 },
-      'claude-max': { desc: 'Claude', ratio: 0.8 },
-      国模分组: { desc: 'Local', ratio: 0.12 },
-    }
-
-    const result = filterGPTGroups(groups)
-
-    expect(result).toEqual([
+describe('filterSubscriptionGroups', () => {
+  it('matches configured plan groups by exact name and orders valid ratios', () => {
+    expect(
+      filterSubscriptionGroups(
+        {
+          '【新】GPT稳定号池': { desc: 'GPT', ratio: 0.36 },
+          claude混池: { desc: 'Claude', ratio: '0.8' },
+          'GPT expensive': { desc: 'not allowed', ratio: 5 },
+          free: { desc: 'free', ratio: 0 },
+        },
+        ['【新】GPT稳定号池', 'claude混池', 'free']
+      )
+    ).toEqual([
+      { name: 'claude混池', ratio: 0.8 },
       { name: '【新】GPT稳定号池', ratio: 0.36 },
-      { name: '【新】GPT普通号池', ratio: 0.25 },
     ])
-  })
-
-  it('parses string ratios', () => {
-    const groups = {
-      'GPT-4': { desc: 'GPT-4', ratio: '0.5' },
-    }
-
-    const result = filterGPTGroups(groups)
-
-    expect(result).toEqual([{ name: 'GPT-4', ratio: 0.5 }])
-  })
-
-  it('returns empty array when groups is undefined', () => {
-    expect(filterGPTGroups(undefined)).toEqual([])
-  })
-
-  it('filters out zero or negative ratios', () => {
-    const groups = {
-      'GPT-A': { desc: 'A', ratio: 0 },
-      'GPT-B': { desc: 'B', ratio: -1 },
-      'GPT-C': { desc: 'C', ratio: 0.5 },
-    }
-
-    const result = filterGPTGroups(groups)
-
-    expect(result).toEqual([{ name: 'GPT-C', ratio: 0.5 }])
+    expect(filterSubscriptionGroups(undefined, ['【新】GPT稳定号池'])).toEqual(
+      []
+    )
+    expect(
+      filterSubscriptionGroups({ GPT: { desc: '', ratio: 1 } }, [])
+    ).toEqual([])
   })
 })
 
@@ -182,10 +163,13 @@ it.each([
 
 it('excludes invalid GPT group ratios instead of advertising a 100% discount', () => {
   expect(
-    filterGPTGroups({
-      'GPT-invalid': { desc: 'invalid', ratio: Number.POSITIVE_INFINITY },
-      'GPT-text': { desc: 'invalid text', ratio: '0.36invalid' },
-      'GPT-valid': { desc: 'valid', ratio: 0.36 },
-    })
+    filterSubscriptionGroups(
+      {
+        'GPT-invalid': { desc: 'invalid', ratio: Number.POSITIVE_INFINITY },
+        'GPT-text': { desc: 'invalid text', ratio: '0.36invalid' },
+        'GPT-valid': { desc: 'valid', ratio: 0.36 },
+      },
+      ['GPT-invalid', 'GPT-text', 'GPT-valid']
+    )
   ).toEqual([{ name: 'GPT-valid', ratio: 0.36 }])
 })

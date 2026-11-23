@@ -90,7 +90,8 @@ func (w *WalletFunding) Refund() error {
 type SubscriptionFunding struct {
 	requestId        string
 	userId           int
-	modelName        string
+	usingGroup       string
+	allowedGroups    []string
 	quotaBeforeGroup float64
 	roundQuota       bool
 	billingRatio     float64
@@ -109,10 +110,11 @@ func (s *SubscriptionFunding) Source() string { return BillingSourceSubscription
 
 func (s *SubscriptionFunding) PreConsume(_ int) error {
 	// Resolve the plan ratio and reserve the corresponding quota atomically.
-	res, err := model.PreConsumeUserSubscriptionWithPricing(s.requestId, s.userId, s.modelName, s.amount, s.quotaBeforeGroup, s.roundQuota)
+	res, err := model.PreConsumeUserSubscriptionWithPricing(s.requestId, s.userId, s.usingGroup, s.amount, s.quotaBeforeGroup, s.roundQuota)
 	if err != nil {
 		return err
 	}
+	s.allowedGroups = res.AllowedGroups
 	s.usePlanRatio = res.UsePlanRatio
 	s.billingRatio = res.BillingRatio
 	s.subscriptionId = res.UserSubscriptionId

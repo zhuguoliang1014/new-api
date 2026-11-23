@@ -38,8 +38,8 @@ func (p *SubscriptionPlan) ValidatePromotion() error {
 		}
 	}
 	if p.MinimumEffectiveRatio != nil {
-		if *p.MinimumEffectiveRatio <= 0 || math.IsNaN(*p.MinimumEffectiveRatio) || math.IsInf(*p.MinimumEffectiveRatio, 0) || p.TotalAmount <= 0 || common.QuotaPerUnit <= 0 || p.QuotaResetPeriod != SubscriptionResetNever || p.DurationUnit != SubscriptionDurationMonth || p.DurationValue != 1 || p.AllowedChannelTypes != "1" {
-			return common.NewMessage("Minimum effective multiplier requires a GPT plan with a fixed monthly quota")
+		if *p.MinimumEffectiveRatio <= 0 || math.IsNaN(*p.MinimumEffectiveRatio) || math.IsInf(*p.MinimumEffectiveRatio, 0) || p.TotalAmount <= 0 || common.QuotaPerUnit <= 0 || p.QuotaResetPeriod != SubscriptionResetNever || p.DurationUnit != SubscriptionDurationMonth || p.DurationValue != 1 {
+			return common.NewMessage("Minimum effective multiplier requires a plan with a fixed monthly quota")
 		}
 		ratio, err := p.EffectiveBillingRatio()
 		if err != nil {

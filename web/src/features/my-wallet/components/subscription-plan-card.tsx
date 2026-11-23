@@ -19,11 +19,13 @@ import {
 } from '@/components/ui/tooltip'
 import { PlanPromotionPrice } from '@/features/subscriptions/components/plan-promotion-price'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
+import { DEFAULT_SUBSCRIPTION_GROUP } from '@/features/subscriptions/constants'
 import {
   formatDuration,
   formatResetPeriod,
   formatTimestamp,
 } from '@/features/subscriptions/lib'
+import { getPlanSubtitle } from '@/features/subscriptions/lib/format'
 import {
   getPromotionQuote,
   getPromotionRate,
@@ -126,6 +128,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
   const soldCount = Number(p.sold_count || 0)
   const resetPeriod = formatResetPeriod(plan, t)
   const savings = props.savings
+  const comparisonGroup = savings?.comparisonGroup ?? props.comparisonGroup
 
   const sale = computeSaleWindow(plan, props.now)
   const isSaleable = sale.status !== 'upcoming' && sale.status !== 'ended'
@@ -224,12 +227,19 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
                   />
                 )}
               </div>
-              {plan.subtitle && (
+              <p className='text-muted-foreground mt-1 text-xs break-words'>
+                {t('Subscription groups: {{groups}}', {
+                  groups: (
+                    plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
+                  ).join('、'),
+                })}
+              </p>
+              {getPlanSubtitle(plan.subtitle) && (
                 <p
-                  title={plan.subtitle}
+                  title={getPlanSubtitle(plan.subtitle)}
                   className='text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-snug break-words'
                 >
-                  {plan.subtitle}
+                  {getPlanSubtitle(plan.subtitle)}
                 </p>
               )}
             </div>
@@ -334,11 +344,11 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
                     <dl className='space-y-1'>
                       <div className='flex items-start justify-between gap-3'>
                         <dt className='min-w-0 break-words'>
-                          {props.comparisonGroup
-                            ? t('Wallet GPT · {{group}}', {
-                                group: props.comparisonGroup,
+                          {comparisonGroup
+                            ? t('Wallet · {{group}}', {
+                                group: comparisonGroup,
                               })
-                            : t('Wallet GPT')}
+                            : t('Wallet')}
                         </dt>
                         <dd className='shrink-0 tabular-nums'>
                           {formatNumber(savings.rechargeRatio, locale)}x

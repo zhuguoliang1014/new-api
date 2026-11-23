@@ -184,7 +184,7 @@ export function PlanPromotionFields(props: {
                 </FormControl>
                 <FormDescription>
                   {t(
-                    'Optional price floor for fixed-quota GPT plans. Discounts below this effective multiplier cannot be saved.'
+                    'Optional price floor for fixed-quota plans. Discounts below this effective multiplier cannot be saved.'
                   )}
                 </FormDescription>
                 <FormMessage />

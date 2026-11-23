@@ -2,14 +2,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { getPublicPlans } from '@/features/subscriptions/api'
+import { DEFAULT_SUBSCRIPTION_GROUP } from '@/features/subscriptions/constants'
 import { usePromotionClock } from '@/features/subscriptions/hooks/use-promotion-clock'
 import { useTopupInfoQuery } from '@/features/wallet/hooks/use-topup-info-query'
 import { getUserGroups } from '@/lib/api'
 import { statusQueryOptions } from '@/lib/status-query'
 
 import {
-  computeSavingsByPlan,
-  filterGPTGroups,
+  computePlanSavings,
+  filterSubscriptionGroups,
   type PlanSavings,
   type RechargePricing,
 } from '../lib/subscription-savings'
@@ -53,36 +54,39 @@ export function useSubscriptionSavings(
     staleTime: 5 * 60 * 1000,
   })
 
-  // `filterGPTGroups` sorts by ratio descending, so the first entry is the most
-  // expensive GPT group the user can recharge into — the honest baseline to
-  // compare a subscription against.
-  const gptGroups = useMemo(() => {
-    if (!groupsQuery.data?.success) return []
-    return filterGPTGroups(groupsQuery.data.data)
-  }, [groupsQuery.data])
-
-  const comparisonRatio = gptGroups[0]?.ratio ?? 0
-
   const plans = plansQuery.data?.data
   const promotionNow = usePromotionClock(
     !!plans?.some((record) => record.plan.discount_ends_at)
   )
   const result = useMemo(() => {
-    if (!plans || !sharedPricing || comparisonRatio <= 0) {
-      return { byPlan: new Map<number, PlanSavings>(), maxSavings: 0 }
-    }
-    const byPlan = computeSavingsByPlan(
-      plans,
-      comparisonRatio,
-      sharedPricing,
-      promotionNow
-    )
+    const byPlan = new Map<number, PlanSavings>()
     let maxSavings = 0
-    for (const item of byPlan.values()) {
-      maxSavings = Math.max(maxSavings, item.savings)
+    let comparisonGroup: string | undefined
+    if (!plans || !sharedPricing || !groupsQuery.data?.success) {
+      return { byPlan, maxSavings, comparisonGroup }
     }
-    return { byPlan, maxSavings }
-  }, [plans, comparisonRatio, sharedPricing, promotionNow])
+    for (const record of plans) {
+      if (!record.plan.enabled) continue
+      const group = filterSubscriptionGroups(
+        groupsQuery.data.data,
+        record.plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
+      )[0]
+      if (!group) continue
+      const savings = computePlanSavings(
+        record,
+        group.ratio,
+        sharedPricing,
+        promotionNow
+      )
+      if (!savings) continue
+      byPlan.set(record.plan.id, { ...savings, comparisonGroup: group.name })
+      if (savings.savings > maxSavings) {
+        maxSavings = savings.savings
+        comparisonGroup = group.name
+      }
+    }
+    return { byPlan, maxSavings, comparisonGroup }
+  }, [plans, groupsQuery.data, sharedPricing, promotionNow])
 
-  return { ...result, comparisonGroup: gptGroups[0]?.name }
+  return result
 }

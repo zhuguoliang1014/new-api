@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { Crown, RefreshCw, Sparkles, Check } from 'lucide-react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -43,8 +25,28 @@ import {
 import { SubscriptionPurchaseDialog } from '@/features/subscriptions/components/dialogs/subscription-purchase-dialog'
 import { PlanPromotionPrice } from '@/features/subscriptions/components/plan-promotion-price'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
+import { DEFAULT_SUBSCRIPTION_GROUP } from '@/features/subscriptions/constants'
 import { usePromotionClock } from '@/features/subscriptions/hooks/use-promotion-clock'
 import { formatDuration, formatResetPeriod } from '@/features/subscriptions/lib'
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+import { getPlanSubtitle } from '@/features/subscriptions/lib/format'
 import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type {
@@ -449,9 +451,18 @@ export function SubscriptionPlansCard({
                         <h4 className='truncate font-semibold'>
                           {plan.title || t('Subscription Plans')}
                         </h4>
-                        {plan.subtitle && (
+                        <p className='text-muted-foreground mt-1 text-xs break-words'>
+                          {t('Subscription groups: {{groups}}', {
+                            groups: (
+                              plan.allowed_groups ?? [
+                                DEFAULT_SUBSCRIPTION_GROUP,
+                              ]
+                            ).join('、'),
+                          })}
+                        </p>
+                        {getPlanSubtitle(plan.subtitle) && (
                           <p className='text-muted-foreground truncate text-xs'>
-                            {plan.subtitle}
+                            {getPlanSubtitle(plan.subtitle)}
                           </p>
                         )}
                       </div>

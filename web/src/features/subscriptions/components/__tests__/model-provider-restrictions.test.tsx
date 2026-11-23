@@ -39,14 +39,14 @@ import { SubscriptionsProvider } from '../subscriptions-provider'
 
 // Exercise the real editor and API payload; only the HTTP boundary is stubbed.
 test.each([
-  { action: 'switch', expected: '14', ratio: 0.75 },
-  { action: 'clear', expected: '', ratio: null },
+  { action: 'switch', expected: ['claude混池'], ratio: 0.75 },
+  { action: 'add', expected: ['【新】GPT稳定号池', 'claude混池'], ratio: null },
 ])(
-  'persists a model provider $action from the editor',
+  'persists multiple allowed groups from the editor ($action)',
   async ({ action, expected, ratio }) => {
     const user = userEvent.setup()
     vi.spyOn(api, 'get').mockResolvedValue({
-      data: { success: true, data: [] },
+      data: { success: true, data: ['【新】GPT稳定号池', 'claude混池'] },
     })
     const save = vi
       .spyOn(api, 'put')
@@ -61,7 +61,7 @@ test.each([
           title: 'GPT plan',
           price_amount: 10,
           price_cny: 70,
-          allowed_channel_types: [1],
+          allowed_groups: ['【新】GPT稳定号池'],
           billing_ratio: 0.5,
         },
         500000
@@ -79,6 +79,11 @@ test.each([
         </SubscriptionsProvider>
       </QueryClientProvider>
     )
+    expect(
+      await screen.findByRole('combobox', {
+        name: 'Select subscription groups',
+      })
+    ).toBeVisible()
     await user.click(screen.getByRole('switch', { name: 'Limited edition' }))
     const salesLimit = await screen.findByRole('spinbutton', {
       name: 'Total Sales Limit',
@@ -101,17 +106,15 @@ test.each([
     await user.clear(multiplier)
     if (ratio !== null) await user.type(multiplier, String(ratio))
     const selector = await screen.findByRole('combobox', {
-      name: 'Allow all model providers',
+      name: 'Select subscription groups',
     })
     await user.click(selector)
-    await user.click(
-      await screen.findByRole('option', { name: 'OpenAI (GPT / o-series)' })
-    )
     if (action === 'switch') {
       await user.click(
-        await screen.findByRole('option', { name: 'Anthropic (Claude)' })
+        await screen.findByRole('option', { name: '【新】GPT稳定号池' })
       )
     }
+    await user.click(await screen.findByRole('option', { name: 'claude混池' }))
     await user.keyboard('{Escape}')
     await user.click(screen.getByRole('button', { name: 'Save changes' }))
     await waitFor(() =>
@@ -119,7 +122,7 @@ test.each([
         '/api/subscription/admin/plans/7',
         expect.objectContaining({
           plan: expect.objectContaining({
-            allowed_channel_types: expected,
+            allowed_groups: expected,
             billing_ratio: ratio,
             sales_limit: 30,
           }),
@@ -202,3 +205,24 @@ test.each([0, 30])(
     ).toBe(sales_limit)
   }
 )
+
+test('both editors default legacy plans to the designated group and reject an empty selection', () => {
+  const legacy = subscriptionPlanSchema.parse({
+    ...createFormValuesToPayload(
+      { ...PLAN_CREATE_FORM_DEFAULTS, title: 'Legacy', price_cny: 70 },
+      500000
+    ).plan,
+    id: 7,
+    allowed_groups: null,
+  })
+  expect(planToCreateFormValues(legacy).allowed_groups).toEqual([
+    '【新】GPT稳定号池',
+  ])
+  expect(planToFormValues(legacy).allowed_groups).toEqual(['【新】GPT稳定号池'])
+  expect(
+    getPlanCreateFormSchema(t).shape.allowed_groups.safeParse([]).success
+  ).toBe(false)
+  expect(getPlanFormSchema(t).shape.allowed_groups.safeParse([]).success).toBe(
+    false
+  )
+})

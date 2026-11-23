@@ -48,6 +48,7 @@ import {
   updateSubscriptionPriorities,
   setSubscriptionFrozen,
 } from '@/features/subscriptions/api'
+import { DEFAULT_SUBSCRIPTION_GROUP } from '@/features/subscriptions/constants'
 import type {
   PlanRecord,
   UserSubscriptionRecord,
@@ -167,6 +168,14 @@ function SubscriptionRow({
                 copyable={false}
               />
             </div>
+
+            <p className='text-muted-foreground mt-1 text-xs break-words'>
+              {t('Subscription groups: {{groups}}', {
+                groups: (
+                  record.plan?.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
+                ).join('、'),
+              })}
+            </p>
 
             <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
               <span className='text-muted-foreground inline-flex items-center gap-1'>
