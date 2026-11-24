@@ -143,6 +143,87 @@ it('opens expense entry from the page and submits exact cents without crediting 
   )
 })
 
+it('shows the recorded creation date and time in Shanghai while preserving the payment date', async () => {
+  const user = userEvent.setup()
+  const createdAt = Date.parse('2026-11-24T18:23:45Z') / 1000
+  vi.mocked(api.get).mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data: url.endsWith('/report')
+        ? report
+        : {
+            items: [
+              {
+                id: 3,
+                kind: 'expense',
+                date: '2026-11-24',
+                month: '2026-11',
+                created_at: createdAt,
+                updated_at: createdAt + 60,
+                amount_cents: 20000,
+                currency: 'CNY',
+                counterparty: 'TinySnow',
+                payer: '国良',
+                category: 'upstream_credit',
+              },
+            ],
+            total: 1,
+          },
+    },
+  }))
+  renderFinance()
+  await user.click(
+    await screen.findByRole('tab', { name: 'Expense management' })
+  )
+  const row = await screen.findByRole('row', { name: /TinySnow/ })
+  expect(within(row).getByText('2026-11-24')).toBeVisible()
+  const time = within(row).getByText(/Created At:/)
+  expect(time).toHaveTextContent('11/25/2026, 02:23:45')
+  expect(time.querySelector('time')).toHaveAttribute(
+    'dateTime',
+    '2026-11-24T18:23:45.000Z'
+  )
+
+  i18next.addResourceBundle('zh', 'translation', zh.translation)
+  await act(() => i18next.changeLanguage('zh'))
+  expect(within(row).getByText(/创建时间:/)).toHaveTextContent(
+    '2026/11/25 02:23:45'
+  )
+})
+
+it('keeps imported month-only records without inventing missing times', async () => {
+  const user = userEvent.setup()
+  vi.mocked(api.get).mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data: url.endsWith('/report')
+        ? report
+        : {
+            items: [
+              {
+                id: 4,
+                kind: 'expense',
+                date: '',
+                month: '2026-10',
+                created_at: 0,
+                amount_cents: 100,
+                currency: 'CNY',
+                counterparty: 'Historical supplier',
+              },
+            ],
+            total: 1,
+          },
+    },
+  }))
+  renderFinance()
+  await user.click(
+    await screen.findByRole('tab', { name: 'Expense management' })
+  )
+  const row = await screen.findByRole('row', { name: /Historical supplier/ })
+  expect(within(row).getByText('2026-10')).toBeVisible()
+  expect(within(row).queryByText(/Created At:/)).not.toBeInTheDocument()
+})
+
 it('records a WeChat receipt with its own zero fee rather than the Alipay rate', async () => {
   const user = userEvent.setup()
   const request = vi

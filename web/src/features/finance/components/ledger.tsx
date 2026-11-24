@@ -177,7 +177,35 @@ export function FinanceLedger(props: {
               {
                 id: 'date',
                 header: t('Date'),
-                cell: (row) => row.date || row.month,
+                cell: (row) => (
+                  <div className='flex flex-col gap-1'>
+                    <span>{row.date || row.month}</span>
+                    {row.created_at > 0 && (
+                      <span className='text-muted-foreground text-xs'>
+                        {t('Created At')}:{' '}
+                        <time
+                          dateTime={new Date(
+                            row.created_at * 1000
+                          ).toISOString()}
+                        >
+                          {new Date(row.created_at * 1000).toLocaleString(
+                            locale,
+                            {
+                              timeZone: 'Asia/Shanghai',
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                              hourCycle: 'h23',
+                            }
+                          )}
+                        </time>
+                      </span>
+                    )}
+                  </div>
+                ),
               },
               {
                 id: 'type',

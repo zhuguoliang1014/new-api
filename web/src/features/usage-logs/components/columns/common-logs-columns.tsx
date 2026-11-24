@@ -95,6 +95,18 @@ function formatRatioCompact(ratio: number | undefined): string {
     : ratio.toFixed(4).replace(/\.?0+$/, '')
 }
 
+function formatTokenRatio(ratio: number | undefined): string {
+  if (ratio == null || !Number.isFinite(ratio)) return '-'
+  // Slice decimal text to avoid rounding or binary multiplication errors.
+  const [integer, fraction = ''] = ratio
+    .toLocaleString('en-US', {
+      useGrouping: false,
+      maximumSignificantDigits: 21,
+    })
+    .split('.')
+  return `${integer}.${fraction.slice(0, 3).padEnd(3, '0')}`
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   alipay: '支付宝',
   wxpay: '微信支付',
@@ -687,7 +699,7 @@ export function useCommonLogsColumns(
                   : null}
                 {groupRatio != null && !billingRatio.restricted ? (
                   <span className='text-muted-foreground/60 relative top-px align-baseline tabular-nums'>
-                    {formatRatioCompact(groupRatio)}x
+                    {formatTokenRatio(groupRatio)}x
                   </span>
                 ) : null}
               </span>
@@ -702,7 +714,7 @@ export function useCommonLogsColumns(
               >
                 {planRatio != null ? (
                   <>
-                    {t('Plan multiplier')} · {formatRatioCompact(planRatio)}x
+                    {t('Plan multiplier')} · {formatTokenRatio(planRatio)}x
                   </>
                 ) : (
                   t('Restricted subscription')

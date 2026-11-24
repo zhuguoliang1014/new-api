@@ -504,6 +504,63 @@ test.each(['missing schema', 'unsupported expression', 'unknown tier'])(
   }
 )
 
+test.each([
+  { ratio: 0.2353, expected: '0.235' },
+  { ratio: 0.2308, expected: '0.230' },
+  { ratio: 0.99999, expected: '0.999' },
+  { ratio: 1.001, expected: '1.001' },
+  { ratio: 0.45, expected: '0.450' },
+  { ratio: 0, expected: '0.000' },
+  { ratio: 1e-7, expected: '0.000' },
+])(
+  'token column truncates $ratio to $expected with three decimal places',
+  ({ ratio, expected }) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={client}>
+          <UsageLogsProvider>
+            <DetailPreview
+              isAdmin={false}
+              columnId='token_name'
+              other={{ billing_group_ratio: ratio }}
+            />
+          </UsageLogsProvider>
+        </QueryClientProvider>
+      </I18nextProvider>
+    )
+    expect(screen.getByText(`${expected}x`)).toBeVisible()
+  }
+)
+
+test.each([
+  { ratio: 0.2353, expected: '0.235' },
+  { ratio: 0.2308, expected: '0.230' },
+  { ratio: 0.99999, expected: '0.999' },
+])(
+  'token column truncates purchased plan ratio $ratio to $expected',
+  ({ ratio, expected }) => {
+    render(
+      <I18nextProvider i18n={i18n}>
+        <QueryClientProvider client={client}>
+          <UsageLogsProvider>
+            <DetailPreview
+              isAdmin={false}
+              columnId='token_name'
+              other={{
+                billing_source: 'subscription',
+                billing_group_ratio: 1,
+                billing_ratio_source: 'subscription_unit',
+                subscription_purchase_ratio: ratio,
+              }}
+            />
+          </UsageLogsProvider>
+        </QueryClientProvider>
+      </I18nextProvider>
+    )
+    expect(screen.getByText(`Plan multiplier · ${expected}x`)).toBeVisible()
+  }
+)
+
 test('token column identifies restricted subscription rate even when legacy group fields contain 0.36', () => {
   render(
     <I18nextProvider i18n={i18n}>
@@ -548,8 +605,8 @@ test('token column shows the purchased plan multiplier and updates its explanati
       </QueryClientProvider>
     </I18nextProvider>
   )
-  expect(screen.getByText('Plan multiplier · 0.18x')).toBeVisible()
-  expect(screen.getByText('Plan multiplier · 0.18x')).toHaveAttribute(
+  expect(screen.getByText('Plan multiplier · 0.180x')).toBeVisible()
+  expect(screen.getByText('Plan multiplier · 0.180x')).toHaveAttribute(
     'title',
     'The plan discount is already included in the credited quota. Usage is deducted at 1x without applying the purchase multiplier again.'
   )
@@ -557,7 +614,7 @@ test('token column shows the purchased plan multiplier and updates its explanati
   await act(async () => {
     await i18n.changeLanguage('zh')
   })
-  expect(screen.getByText('套餐倍率 · 0.18x')).toHaveAttribute(
+  expect(screen.getByText('套餐倍率 · 0.180x')).toHaveAttribute(
     'title',
     '套餐优惠已折算为到账额度，使用时按 1 倍扣减，不会重复计算套餐倍率。'
   )
