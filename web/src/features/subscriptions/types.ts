@@ -171,6 +171,8 @@ export interface SubscriptionResetResult {
 // Self Subscription Data (user-facing)
 // ============================================================================
 
+export type BillingPreference = 'subscription_first' | 'wallet_first'
+
 export interface SelfSubscriptionData {
   billing_preference: string
   subscriptions: UserSubscriptionRecord[]

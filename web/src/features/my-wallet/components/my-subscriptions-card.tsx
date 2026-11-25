@@ -20,6 +20,8 @@ import { useMutation } from '@tanstack/react-query'
 import {
   CalendarClock,
   ChevronDown,
+  ArrowUp,
+  ArrowDown,
   CreditCard,
   GripVertical,
   History,
@@ -28,7 +30,7 @@ import {
   Snowflake,
   Play,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -39,17 +41,21 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TitledCard } from '@/components/ui/titled-card'
 import {
   getPublicPlans,
   getSelfSubscriptionFull,
   updateSubscriptionPriorities,
+  updateBillingPreference,
   setSubscriptionFrozen,
 } from '@/features/subscriptions/api'
 import { DEFAULT_SUBSCRIPTION_GROUP } from '@/features/subscriptions/constants'
 import type {
+  BillingPreference,
   PlanRecord,
   UserSubscriptionRecord,
   SubscriptionFreezePolicy,
@@ -70,10 +76,18 @@ function SubscriptionRow({
   freezeAllowed,
   freezePending,
   onFreeze,
+  order,
+  onMove,
+  moveUpDisabled,
+  moveDownDisabled,
 }: {
   record: UserSubscriptionRecord
   planTitle: string
   draggable: boolean
+  order?: number
+  onMove?: (offset: number) => void
+  moveUpDisabled?: boolean
+  moveDownDisabled?: boolean
   nowSec: number
   freezeAllowed: boolean
   freezePending: boolean
@@ -89,7 +103,7 @@ function SubscriptionRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id, disabled: !draggable })
+  } = useSortable({ id, disabled: !draggable || freezePending })
   const now = nowSec
   const isExpired = (subscription.end_time || 0) < now
   const isCancelled = subscription.status === 'cancelled'
@@ -128,6 +142,7 @@ function SubscriptionRow({
   return (
     <div
       ref={setNodeRef}
+      role='listitem'
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
@@ -141,24 +156,62 @@ function SubscriptionRow({
       )}
     >
       <div className='flex items-stretch'>
-        {draggable ? (
-          <Button
-            type='button'
-            variant='ghost'
-            className='text-muted-foreground h-auto w-11 shrink-0 cursor-grab touch-none self-stretch rounded-r-none active:cursor-grabbing'
-            aria-label={t('Drag to reorder')}
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className='size-4' />
-          </Button>
-        ) : null}
+        {draggable && (
+          <div className='flex shrink-0 flex-col items-center justify-center pl-1'>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='size-10'
+              aria-label={t('Move {{title}} up', {
+                title: planTitle || t('Subscription'),
+              })}
+              disabled={moveUpDisabled}
+              onClick={() => onMove?.(-1)}
+            >
+              <ArrowUp className='size-4' aria-hidden='true' />
+            </Button>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='text-muted-foreground size-10 cursor-grab touch-none active:cursor-grabbing'
+              aria-label={t('Drag to reorder')}
+              disabled={freezePending}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className='size-4' aria-hidden='true' />
+            </Button>
+            <Button
+              type='button'
+              variant='ghost'
+              size='icon'
+              className='size-10'
+              aria-label={t('Move {{title}} down', {
+                title: planTitle || t('Subscription'),
+              })}
+              disabled={moveDownDisabled}
+              onClick={() => onMove?.(1)}
+            >
+              <ArrowDown className='size-4' aria-hidden='true' />
+            </Button>
+          </div>
+        )}
 
         <div className='grid min-w-0 flex-1 items-center gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] md:gap-6'>
           <div className='min-w-0'>
             <div className='flex flex-wrap items-center justify-between gap-2'>
               <div className='min-w-0 flex-1'>
                 <span className='text-sm font-semibold break-words'>
+                  {order !== undefined && (
+                    <span
+                      className='text-muted-foreground mr-2'
+                      aria-hidden='true'
+                    >
+                      {formatNumber(order)}.
+                    </span>
+                  )}
                   {planTitle || t('Subscription')}
                 </span>
               </div>
@@ -278,12 +331,13 @@ export function MySubscriptionsCard({
   const [plans, setPlans] = useState<PlanRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [billingPreference, setBillingPreference] =
+    useState<BillingPreference>('subscription_first')
+  const preferenceId = useId()
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
   const [freezePolicy, setFreezePolicy] = useState<SubscriptionFreezePolicy>()
-  const initialOrderRef = useRef<number[]>([])
 
   useEffect(() => {
     const id = window.setInterval(
@@ -306,7 +360,9 @@ export function MySubscriptionsCard({
       getSelfSubscriptionFull(),
       getPublicPlans(),
     ])
-    if (subRes.success && subRes.data) {
+    requireServerSuccess(subRes)
+    requireServerSuccess(planRes)
+    if (subRes.data) {
       const active = subRes.data.subscriptions || []
       const all = subRes.data.all_subscriptions || []
       const order = [...active]
@@ -314,14 +370,20 @@ export function MySubscriptionsCard({
           const pa = a.subscription.user_priority ?? 0
           const pb = b.subscription.user_priority ?? 0
           if (pb !== pa) return pb - pa
-          return a.subscription.id - b.subscription.id
+          const endDifference =
+            a.subscription.end_time - b.subscription.end_time
+          return endDifference || a.subscription.id - b.subscription.id
         })
         .map((item) => item.subscription.id)
+      setBillingPreference(
+        ['wallet_first', 'wallet_only'].includes(subRes.data.billing_preference)
+          ? 'wallet_first'
+          : 'subscription_first'
+      )
       setActiveSubscriptions(active)
       setAllSubscriptions(all)
       setFreezePolicy(subRes.data.freeze_policy)
       setActiveOrder(order)
-      initialOrderRef.current = order
     }
     if (planRes.success) setPlans(planRes.data || [])
   }, [])
@@ -370,8 +432,54 @@ export function MySubscriptionsCard({
     onError: (error) => handleServerError(error),
   })
 
+  const preferenceMutation = useMutation({
+    mutationFn: async (preference: BillingPreference) => {
+      const response = await updateBillingPreference(preference)
+      requireServerSuccess(response)
+      return response.data?.billing_preference ?? preference
+    },
+    retry: false,
+    onSuccess: (preference) => {
+      setBillingPreference(preference)
+      toast.success(t('Billing preference updated'))
+    },
+    onError: (error) => handleServerError(error),
+  })
+
+  const priorityMutation = useMutation({
+    mutationFn: async (input: { order: number[]; previousOrder: number[] }) => {
+      const response = await updateSubscriptionPriorities(
+        input.order.map((id, index) => ({
+          id,
+          priority: input.order.length - index,
+        }))
+      )
+      requireServerSuccess(response)
+    },
+    retry: false,
+    onSuccess: (_, input) => {
+      setActiveSubscriptions((records) =>
+        records.map((record) => ({
+          ...record,
+          subscription: {
+            ...record.subscription,
+            user_priority:
+              input.order.length - input.order.indexOf(record.subscription.id),
+          },
+        }))
+      )
+      toast.success(t('Priority updated'))
+    },
+    onError: (error, input) => {
+      setActiveOrder(input.previousOrder)
+      handleServerError(error)
+    },
+  })
+  const saving = priorityMutation.isPending || preferenceMutation.isPending
+  const busy = saving || refreshing || freezeMutation.isPending
+
   const handleFreeze = (id: number, frozen: boolean) => {
-    if (freezeMutation.isPending) return
+    if (busy) return
     freezeMutation.mutate({ id, frozen })
   }
 
@@ -390,9 +498,16 @@ export function MySubscriptionsCard({
   }, [fetchData])
 
   useEffect(() => {
-    if (refreshSignal === undefined || refreshSignal === 0) return
+    if (
+      refreshSignal === undefined ||
+      refreshSignal === 0 ||
+      saving ||
+      freezeMutation.isPending
+    ) {
+      return
+    }
     void fetchData().catch(handleServerError)
-  }, [refreshSignal, fetchData])
+  }, [refreshSignal, fetchData, saving, freezeMutation.isPending])
 
   const planTitleMap = useMemo(() => {
     return new Map(plans.map((item) => [item.plan.id, item.plan.title]))
@@ -433,40 +548,21 @@ export function MySubscriptionsCard({
     }
   }
 
+  const saveOrder = (order: number[]) => {
+    if (busy || order.every((id, index) => id === activeOrder[index])) return
+    const previousOrder = activeOrder
+    setActiveOrder(order)
+    priorityMutation.mutate({ order, previousOrder })
+  }
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) return
-    setActiveOrder((prev) => {
-      const oldIndex = prev.indexOf(active.id as number)
-      const newIndex = prev.indexOf(over.id as number)
-      return arrayMove(prev, oldIndex, newIndex)
-    })
+    const oldIndex = activeOrder.indexOf(Number(active.id))
+    const newIndex = activeOrder.indexOf(Number(over.id))
+    if (oldIndex < 0 || newIndex < 0) return
+    saveOrder(arrayMove(activeOrder, oldIndex, newIndex))
   }
-
-  useEffect(() => {
-    if (loading || freezeMutation.isPending || activeOrder.length === 0) return
-    const unchanged =
-      activeOrder.length === initialOrderRef.current.length &&
-      activeOrder.every((id, index) => id === initialOrderRef.current[index])
-    if (unchanged) return
-
-    const items = activeOrder.map((id, index) => ({
-      id,
-      priority: activeOrder.length - index,
-    }))
-    setSaving(true)
-    updateSubscriptionPriorities(items)
-      .then((res) => {
-        if (res.success) {
-          initialOrderRef.current = activeOrder
-          toast.success(t('Priority updated'))
-        } else {
-          toast.error(res.message || t('Update failed'))
-        }
-      })
-      .finally(() => setSaving(false))
-      .catch(() => toast.error(t('Request failed')))
-  }, [activeOrder, loading, freezeMutation.isPending, t])
 
   const activeCount = activeSubscriptions.length
   const inactiveCount = inactive.length
@@ -538,6 +634,7 @@ export function MySubscriptionsCard({
 
               {draggable && (
                 <CollapsibleTrigger
+                  disabled={busy}
                   render={<Button variant='outline' className='h-9 gap-2' />}
                 >
                   {showAllSubscriptions
@@ -568,7 +665,7 @@ export function MySubscriptionsCard({
                 className='size-9'
                 aria-label={t('Refresh')}
                 onClick={handleRefresh}
-                disabled={refreshing || saving || freezeMutation.isPending}
+                disabled={busy}
               >
                 <RefreshCw
                   className={cn('size-4', refreshing && 'animate-spin')}
@@ -578,6 +675,45 @@ export function MySubscriptionsCard({
             </div>
           }
         >
+          <div className='mb-4 space-y-2'>
+            <p id={preferenceId} className='text-sm font-medium'>
+              {t('Billing preference')}
+            </p>
+            <RadioGroup
+              aria-labelledby={preferenceId}
+              value={billingPreference}
+              disabled={busy}
+              onValueChange={(value) => {
+                if (
+                  !busy &&
+                  (value === 'subscription_first' ||
+                    value === 'wallet_first') &&
+                  value !== billingPreference
+                ) {
+                  preferenceMutation.mutate(value)
+                }
+              }}
+              className='flex flex-wrap gap-x-6 gap-y-3'
+            >
+              <Label className='flex min-h-9 items-center gap-2'>
+                <RadioGroupItem value='subscription_first' />
+                {t('Subscription first')}
+              </Label>
+              <Label className='flex min-h-9 items-center gap-2'>
+                <RadioGroupItem value='wallet_first' />
+                {t('Wallet first')}
+              </Label>
+            </RadioGroup>
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              {billingPreference === 'wallet_first'
+                ? t(
+                    'Use wallet balance first, then eligible subscriptions if the balance is insufficient.'
+                  )
+                : t(
+                    'Use eligible subscriptions first, then wallet balance if no subscription can cover the request.'
+                  )}
+            </p>
+          </div>
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -588,27 +724,37 @@ export function MySubscriptionsCard({
               strategy={verticalListSortingStrategy}
             >
               {!showAllSubscriptions && firstSubscription && (
-                <SubscriptionRow
-                  record={firstSubscription}
-                  planTitle={
-                    firstSubscription.plan_title ||
-                    planTitleMap.get(firstSubscription.subscription.plan_id) ||
-                    ''
-                  }
-                  draggable={false}
-                  nowSec={nowSec}
-                  freezeAllowed={freezePolicy?.allowed === true}
-                  freezePending={freezeMutation.isPending}
-                  onFreeze={handleFreeze}
-                />
+                <div role='list' aria-label={t('Subscription deduction order')}>
+                  <SubscriptionRow
+                    record={firstSubscription}
+                    planTitle={
+                      firstSubscription.plan_title ||
+                      planTitleMap.get(
+                        firstSubscription.subscription.plan_id
+                      ) ||
+                      ''
+                    }
+                    draggable={false}
+                    nowSec={nowSec}
+                    freezeAllowed={freezePolicy?.allowed === true}
+                    freezePending={busy}
+                    onFreeze={handleFreeze}
+                  />
+                </div>
               )}
               <CollapsibleContent>
-                <p className='text-muted-foreground mb-3 text-xs'>
-                  {t('Drag subscriptions to set deduction order')}
+                <p className='text-muted-foreground mb-3 text-xs leading-relaxed'>
+                  {t(
+                    'Drag or use the arrows to change the order. Eligible subscriptions are tried from top to bottom.'
+                  )}
                 </p>
-                <div className='space-y-2'>
+                <div
+                  role='list'
+                  aria-label={t('Subscription deduction order')}
+                  className='space-y-2'
+                >
                   {showAllSubscriptions &&
-                    orderedActive.map((record) => (
+                    orderedActive.map((record, index) => (
                       <SubscriptionRow
                         key={record.subscription.id}
                         record={record}
@@ -617,12 +763,20 @@ export function MySubscriptionsCard({
                           planTitleMap.get(record.subscription.plan_id) ||
                           ''
                         }
-                        draggable={
-                          draggable && !freezeMutation.isPending && !saving
+                        draggable={draggable}
+                        order={index + 1}
+                        onMove={(offset) =>
+                          saveOrder(
+                            arrayMove(activeOrder, index, index + offset)
+                          )
+                        }
+                        moveUpDisabled={busy || index === 0}
+                        moveDownDisabled={
+                          busy || index === activeOrder.length - 1
                         }
                         nowSec={nowSec}
                         freezeAllowed={freezePolicy?.allowed === true}
-                        freezePending={freezeMutation.isPending}
+                        freezePending={busy}
                         onFreeze={handleFreeze}
                       />
                     ))}
@@ -631,7 +785,10 @@ export function MySubscriptionsCard({
             </SortableContext>
           </DndContext>
           {frozenSubscriptions.length > 0 && (
-            <div className={cn('space-y-2', firstSubscription && 'mt-3')}>
+            <div
+              role='list'
+              className={cn('space-y-2', firstSubscription && 'mt-3')}
+            >
               {frozenSubscriptions.map((record) => (
                 <SubscriptionRow
                   key={record.subscription.id}
@@ -644,7 +801,7 @@ export function MySubscriptionsCard({
                   draggable={false}
                   nowSec={nowSec}
                   freezeAllowed={false}
-                  freezePending={freezeMutation.isPending}
+                  freezePending={busy}
                   onFreeze={handleFreeze}
                 />
               ))}

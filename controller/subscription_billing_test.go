@@ -101,6 +101,74 @@ func subscriptionBillingDB(t *testing.T, committed ...bool) *gorm.DB {
 	return db
 }
 
+func TestSubscriptionBillingPreferenceAndPriorityAPI(t *testing.T) {
+	db := subscriptionBillingDB(t)
+	setting := dto.UserSetting{Language: "en", SidebarModules: "preserved", QuotaWarningThreshold: 42, BillingPreference: "subscription_only"}
+	user := model.User{Username: "preference-api", Quota: 1000, Status: common.UserStatusEnabled}
+	user.SetSetting(setting)
+	require.NoError(t, db.Create(&user).Error)
+	call := func(method, body string, handler gin.HandlerFunc) *httptest.ResponseRecorder {
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Set("id", user.Id)
+		c.Request = httptest.NewRequest(method, "/api/subscription/self", strings.NewReader(body))
+		c.Request.Header.Set("Content-Type", "application/json")
+		handler(c)
+		return recorder
+	}
+	readPreference := func(expected string) {
+		t.Helper()
+		var response struct {
+			Success bool
+			Data    struct {
+				BillingPreference string `json:"billing_preference"`
+			}
+		}
+		require.NoError(t, common.Unmarshal(call(http.MethodGet, "", GetSubscriptionSelf).Body.Bytes(), &response))
+		require.True(t, response.Success)
+		assert.Equal(t, expected, response.Data.BillingPreference)
+	}
+	readPreference("subscription_first")
+	for _, pref := range []string{"wallet_first", "subscription_first"} {
+		response := call(http.MethodPut, fmt.Sprintf(`{"billing_preference":%q}`, pref), UpdateSubscriptionPreference)
+		require.Contains(t, response.Body.String(), `"success":true`)
+		require.NoError(t, db.First(&user, user.Id).Error)
+		stored := user.GetSetting()
+		setting.BillingPreference = pref
+		assert.Equal(t, setting, stored, "saving preference must preserve other settings")
+		readPreference(pref)
+	}
+	for _, body := range []string{`{}`, `{"billing_preference":"wallet_only"}`, `{"billing_preference":"invalid"}`, `{"billing_preference":null}`, `{"billing_preference":1}`} {
+		response := call(http.MethodPut, body, UpdateSubscriptionPreference)
+		require.Contains(t, response.Body.String(), `"success":false`)
+		readPreference("subscription_first")
+	}
+	now := model.GetDBTimestamp()
+	subs := []model.UserSubscription{
+		{UserId: user.Id, PlanId: 1, Status: "active", EndTime: now + 3600},
+		{UserId: user.Id, PlanId: 1, Status: "active", EndTime: now + 3600},
+		{UserId: user.Id + 1, PlanId: 1, Status: "active", EndTime: now + 3600},
+		{UserId: user.Id, PlanId: 1, Status: "frozen", EndTime: now + 3600},
+		{UserId: user.Id, PlanId: 1, Status: "active", EndTime: now - 1},
+	}
+	require.NoError(t, db.Create(&subs).Error)
+	body, err := common.Marshal(SubscriptionPriorityRequest{Items: []model.SubscriptionPriorityItem{{Id: subs[0].Id, Priority: 1}, {Id: subs[1].Id, Priority: 2}}})
+	require.NoError(t, err)
+	require.Contains(t, call(http.MethodPut, string(body), UpdateSubscriptionPriority).Body.String(), `"success":true`)
+	for _, id := range []int{subs[0].Id, subs[2].Id, subs[3].Id, subs[4].Id, subs[4].Id + 1000} {
+		body, err = common.Marshal(SubscriptionPriorityRequest{Items: []model.SubscriptionPriorityItem{{Id: subs[0].Id, Priority: 10}, {Id: id, Priority: 20}}})
+		require.NoError(t, err)
+		require.Contains(t, call(http.MethodPut, string(body), UpdateSubscriptionPriority).Body.String(), `"success":false`)
+		var persisted []model.UserSubscription
+		require.NoError(t, db.Order("id").Find(&persisted).Error)
+		assert.Equal(t, 1, persisted[0].UserPriority, "invalid batches must not partially update")
+		assert.Equal(t, 2, persisted[1].UserPriority)
+		for _, sub := range persisted[2:] {
+			assert.Zero(t, sub.UserPriority)
+		}
+	}
+}
+
 func TestSubscriptionGroupRestrictionSavesAndValidates(t *testing.T) {
 	db := subscriptionBillingDB(t)
 	confirmPaymentComplianceForTest(t)
@@ -232,10 +300,10 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 	for _, mode := range []string{"ratio", "per_call", "tiered_token", "tiered_fixed"} {
 		t.Run(mode, func(t *testing.T) {
 			for _, tc := range []struct {
-				name, model, group                                                              string
+				name, model, group, preference                                                  string
 				plans                                                                           []planSpec
 				ratios                                                                          []float64
-				changeRatioAfterReserve                                                         bool
+				changeRatioAfterReserve, reversePriority                                        bool
 				frozenPlans                                                                     []int
 				wallet                                                                          int
 				selected                                                                        int // -1 = wallet; rejected cases must leave all accounts unchanged.
@@ -243,6 +311,12 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 				realtime, task, image, imageReserveRejected                                     bool
 				freezeAfterReserve, resumeBeforeReserve, taskRefund, taskExtra                  bool
 			}{
+				{name: "wallet first uses group rate instead of funded plan rate", model: "gpt-4o", preference: "wallet_first", plans: []planSpec{special}, ratios: []float64{2}, wallet: 1000, selected: -1},
+				{name: "wallet first shortage falls back to plan rate", model: "gpt-4o", preference: "wallet_first", plans: []planSpec{special}, ratios: []float64{0.75}, wallet: 1, selected: 0},
+				{name: "wallet first token shortage never falls back to subscription", model: "gpt-4o", preference: "wallet_first", plans: []planSpec{special}, wallet: 1000, selected: -1, rejected: true, tokenInsufficient: true, emptyToken: true},
+				{name: "wallet first empty balance and mismatched plan reject", group: "other", model: "gpt-4o", preference: "wallet_first", plans: []planSpec{special}, selected: -1, rejected: true},
+				{name: "wallet first failed request refunds wallet once", model: "gpt-4o", preference: "wallet_first", plans: []planSpec{special}, wallet: 1000, selected: -1, refund: true},
+				{name: "saved user order changes selected subscription", model: "gpt-4o", plans: []planSpec{special, {"1", 1000, 10}}, ratios: []float64{2, 0.75}, reversePriority: true, selected: 1},
 				{name: "discounted plan applies configured ratio before rounding", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{0.75}, selected: 0},
 				{name: "plan surcharge ignores API group discount", model: "gpt-4o", plans: []planSpec{special}, ratios: []float64{2}, selected: 0, specialGroup: true},
 				{name: "configured ratio shortage falls back to wallet", model: "gpt-4o", plans: []planSpec{{"1", 150, 20}}, ratios: []float64{2}, wallet: 1000, selected: -1},
@@ -404,13 +478,24 @@ func TestSubscriptionFundingPriorityAndGroupRate(t *testing.T) {
 						require.NoError(t, db.Create(&sub).Error)
 						subs = append(subs, sub)
 					}
+					if tc.reversePriority {
+						recorder := httptest.NewRecorder()
+						priorityContext, _ := gin.CreateTestContext(recorder)
+						priorityContext.Set("id", user.Id)
+						body, err := common.Marshal(SubscriptionPriorityRequest{Items: []model.SubscriptionPriorityItem{{Id: subs[0].Id, Priority: 1}, {Id: subs[1].Id, Priority: 2}}})
+						require.NoError(t, err)
+						priorityContext.Request = httptest.NewRequest(http.MethodPut, "/api/subscription/self/priority", bytes.NewReader(body))
+						priorityContext.Request.Header.Set("Content-Type", "application/json")
+						UpdateSubscriptionPriority(priorityContext)
+						require.Contains(t, recorder.Body.String(), `"success":true`)
+					}
 					if tc.resumeBeforeReserve {
 						_, err := model.SetUserSubscriptionFrozen(user.Id, subs[tc.selected].Id, false)
 						require.NoError(t, err)
 					}
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-					info := &relaycommon.RelayInfo{RequestId: fmt.Sprintf("subscription-rate-%d", user.Id), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: model.DefaultSubscriptionGroup, UserGroup: "subscription-user", ForcePreConsume: true, UserSetting: dto.UserSetting{QuotaWarningThreshold: -1}, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id, ChannelType: constant.ChannelTypeOpenAI}}
+					info := &relaycommon.RelayInfo{RequestId: fmt.Sprintf("subscription-rate-%d", user.Id), UserId: user.Id, TokenId: token.Id, TokenKey: token.Key, OriginModelName: tc.model, UsingGroup: model.DefaultSubscriptionGroup, UserGroup: "subscription-user", ForcePreConsume: true, UserSetting: dto.UserSetting{QuotaWarningThreshold: -1, BillingPreference: tc.preference}, StartTime: time.Now(), ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channel.Id, ChannelType: constant.ChannelTypeOpenAI}}
 					if tc.group != "" {
 						info.UsingGroup = tc.group
 					}

@@ -1940,16 +1940,33 @@ type SubscriptionPriorityItem struct {
 	Priority int `json:"priority"`
 }
 
-// UpdateUserSubscriptionPriorities atomically sets user_priority for a list of
-// subscriptions that belong to the given user. Only active subscriptions are updated.
+// UpdateUserSubscriptionPriorities atomically sets the order of the user's active subscriptions.
+// A stale or invalid item rejects the entire batch instead of reporting a partial save.
 func UpdateUserSubscriptionPriorities(userId int, items []SubscriptionPriorityItem) error {
 	if userId <= 0 || len(items) == 0 {
-		return nil
+		return common.NewMessage("Invalid parameters")
+	}
+	ids := make([]int, 0, len(items))
+	seen := make(map[int]bool, len(items))
+	for _, item := range items {
+		if item.Id <= 0 || seen[item.Id] {
+			return common.NewMessage("Invalid parameters")
+		}
+		seen[item.Id] = true
+		ids = append(ids, item.Id)
 	}
 	return DB.Transaction(func(tx *gorm.DB) error {
+		var subs []UserSubscription
+		if err := lockForUpdate(tx).Select("id").
+			Where("id IN ? AND user_id = ? AND status = ? AND end_time > ?", ids, userId, "active", getDBTimestampTx(tx)).
+			Order("id").Find(&subs).Error; err != nil {
+			return err
+		}
+		if len(subs) != len(items) {
+			return common.NewMessage("Invalid parameters")
+		}
 		for _, item := range items {
-			if err := tx.Model(&UserSubscription{}).
-				Where("id = ? AND user_id = ? AND status = ?", item.Id, userId, "active").
+			if err := tx.Model(&UserSubscription{}).Where("id = ? AND user_id = ?", item.Id, userId).
 				Update("user_priority", item.Priority).Error; err != nil {
 				return err
 			}

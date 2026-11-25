@@ -158,7 +158,12 @@ func GetSubscriptionPlans(c *gin.Context) {
 
 func GetSubscriptionSelf(c *gin.Context) {
 	userId := c.GetInt("id")
-	pref := "subscription_first"
+	user, err := model.GetUserById(userId, false)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	pref := common.NormalizeBillingPreference(user.GetSetting().BillingPreference)
 
 	// Get all subscriptions (including expired)
 	allSubscriptions, err := model.GetAllUserSubscriptions(userId)
@@ -221,7 +226,11 @@ func UpdateSubscriptionPreference(c *gin.Context) {
 		common.ApiErrorT(c, "Invalid parameters")
 		return
 	}
-	pref := "subscription_first"
+	pref := req.BillingPreference
+	if pref != "subscription_first" && pref != "wallet_first" {
+		common.ApiErrorT(c, "Invalid parameters")
+		return
+	}
 
 	user, err := model.GetUserById(userId, true)
 	if err != nil {

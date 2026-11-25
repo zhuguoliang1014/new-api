@@ -20,6 +20,7 @@ import { api } from '@/lib/api'
 
 import type {
   ApiResponse,
+  BillingPreference,
   PlanRecord,
   PlanPayload,
   UserSubscriptionRecord,
@@ -237,8 +238,8 @@ export async function getPublicPlans(): Promise<ApiResponse<PlanRecord[]>> {
 }
 
 export async function updateBillingPreference(
-  preference: string
-): Promise<ApiResponse<{ billing_preference?: string }>> {
+  preference: BillingPreference
+): Promise<ApiResponse<{ billing_preference: BillingPreference }>> {
   const res = await api.put('/api/subscription/self/preference', {
     billing_preference: preference,
   })

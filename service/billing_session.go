@@ -448,10 +448,11 @@ func (s *BillingSession) syncRelayInfo() {
 }
 
 // ---------------------------------------------------------------------------
-// NewBillingSession — matching subscriptions first, then wallet balance
+// NewBillingSession — user-selected source preference with balance fallback
 // ---------------------------------------------------------------------------
 
-// NewBillingSession tries eligible subscriptions in priority order, then the wallet.
+// NewBillingSession honors the preferred source and falls back only on insufficient quota.
+// Eligible subscriptions are tried in the user-defined priority order.
 func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -460,7 +461,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		relayInfo.RequestId = common.NewRequestId()
 	}
 
-	relayInfo.UserSetting.BillingPreference = "subscription_first"
+	relayInfo.UserSetting.BillingPreference = common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 钱包路径需要先检查用户额度
 	tryWallet := func() (*BillingSession, *types.NewAPIError) {
@@ -536,11 +537,23 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return tryWallet()
 	}
 
+	var walletErr *types.NewAPIError
+	if relayInfo.UserSetting.BillingPreference == "wallet_first" {
+		session, apiErr := tryWallet()
+		if apiErr == nil || apiErr.GetErrorCode() != types.ErrorCodeInsufficientUserQuota {
+			return session, apiErr
+		}
+		walletErr = apiErr
+	}
+
 	hasSubscription, err := model.HasActiveUserSubscription(relayInfo.UserId)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
 	}
 	if !hasSubscription {
+		if walletErr != nil {
+			return nil, walletErr
+		}
 		logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_fallback request_id=%q user_id=%d model=%q reason=no_active_subscription", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
 		return tryWallet()
 	}
@@ -550,6 +563,9 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	}
 	if apiErr.GetErrorCode() != types.ErrorCodeInsufficientUserQuota {
 		return nil, apiErr
+	}
+	if walletErr != nil {
+		return nil, walletErr
 	}
 	logger.LogInfo(c, fmt.Sprintf("billing_audit event=wallet_fallback request_id=%q user_id=%d model=%q reason=no_eligible_subscription_with_sufficient_quota", relayInfo.RequestId, relayInfo.UserId, relayInfo.OriginModelName))
 	return tryWallet()
