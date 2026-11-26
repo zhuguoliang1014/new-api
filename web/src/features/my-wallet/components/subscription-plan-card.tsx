@@ -274,7 +274,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
 
         <div
           data-slot='plan-price-quota'
-          className='mt-3 grid min-h-22 grid-cols-2 gap-3'
+          className='mt-3 grid min-h-20 grid-cols-2 gap-3'
         >
           <div className='min-w-0'>
             <div className='text-muted-foreground flex flex-wrap items-baseline gap-x-1 text-[11px]'>
@@ -390,7 +390,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           )}
         </div>
 
-        <div className='mt-auto pt-4'>
+        <div className='mt-auto pt-3'>
           <dl
             data-slot='plan-benefits'
             className='border-border/70 space-y-2 border-t pt-3'
