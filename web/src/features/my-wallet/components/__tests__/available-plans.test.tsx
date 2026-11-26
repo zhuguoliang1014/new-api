@@ -402,8 +402,16 @@ it('rounds the 1088 CNY plan savings to 50% while keeping its displayed equivale
   await userEvent.click(
     card.getByRole('button', { name: 'How savings are calculated' })
   )
-  expect(card.getByText('0.18x')).toBeVisible()
-  expect(card.getByText('0.36x')).toBeVisible()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('0.18x')
+  ).toBeVisible()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('0.36x')
+  ).toBeVisible()
 })
 
 it('keeps the savings summary compact and puts the comparison group inside details', async () => {
@@ -424,8 +432,14 @@ it('keeps the savings summary compact and puts the comparison group inside detai
   await userEvent.click(
     card.getByRole('button', { name: 'How savings are calculated' })
   )
-  expect(card.getByText('Wallet · GPT stable')).toBeVisible()
-  const otherCard = within(screen.getByRole('article', { name: '凌云版' }))
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('Wallet · GPT stable')
+  ).toBeVisible()
+  const otherCard = within(
+    screen.getByRole('article', { name: '凌云版', hidden: true })
+  )
   expect(otherCard.queryByText(/Save about/)).not.toBeInTheDocument()
   expect(
     otherCard.queryByRole('button', { name: 'How savings are calculated' })
@@ -447,17 +461,40 @@ it('reveals pricing multipliers and their meaning through keyboard-accessible de
   trigger.focus()
   await userEvent.keyboard('{Enter}')
   expect(trigger).toHaveAttribute('aria-expanded', 'true')
-  expect(card.getByText('Wallet')).toBeVisible()
   expect(
-    card.getByText('Assumes quota is used before expiry or reset')
+    screen.getByRole('dialog', { name: 'How savings are calculated' })
   ).toBeVisible()
-  expect(card.getByText('0.36x')).toBeVisible()
-  expect(card.getByText('0.26x')).toBeVisible()
+  expect(card.queryByText('Subscription equivalent')).not.toBeInTheDocument()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('Wallet')
+  ).toBeVisible()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('Assumes quota is used before expiry or reset')
+  ).toBeVisible()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('0.36x')
+  ).toBeVisible()
+  expect(
+    within(
+      screen.getByRole('dialog', { name: 'How savings are calculated' })
+    ).getByText('0.26x')
+  ).toBeVisible()
   expect(
     card.queryByText(
       'Multipliers describe GPT usage costs; wallet recharge is credited at its own rate.'
     )
   ).not.toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  await waitFor(() =>
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  )
+  expect(trigger).toHaveFocus()
 })
 
 it.each([
@@ -869,8 +906,21 @@ it('aligns pricing before offers and keeps freeze card counts in the shared bene
   )
   const regular = screen.getByRole('article', { name: 'Regular plan' })
   expect(regular.querySelector('[data-slot=plan-promotion]')).toBeNull()
-  expect(within(regular).getByText('0 cards')).toBeVisible()
+  expect(
+    within(regular).queryByText('Bonus freeze cards')
+  ).not.toBeInTheDocument()
   expect(
     within(regular).getByRole('button', { name: 'Subscribe Now' })
   ).toBeEnabled()
 })
+
+it.each([0, undefined])(
+  'omits the freeze card benefit when the configured bonus is %s',
+  async (freezeCards) => {
+    await renderPlans([plan({ freeze_cards: freezeCards })])
+    const card = within(screen.getByRole('article', { name: '苍穹版' }))
+    expect(card.queryByText('Bonus freeze cards')).not.toBeInTheDocument()
+    expect(card.getByText('Quota Reset')).toBeVisible()
+    expect(card.getByText('Unlimited purchases')).toBeVisible()
+  }
+)

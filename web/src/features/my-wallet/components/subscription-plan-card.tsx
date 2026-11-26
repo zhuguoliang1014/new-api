@@ -1,7 +1,6 @@
 import OpenAI from '@lobehub/icons/es/OpenAI/components/Mono'
 import {
   ArrowRight,
-  BadgeCheck,
   RotateCcw,
   ShoppingBag,
   Snowflake,
@@ -10,12 +9,6 @@ import {
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -51,10 +44,8 @@ import { formatNumber } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
-import {
-  getSavingsPercent,
-  type PlanSavings,
-} from '../lib/subscription-savings'
+import type { PlanSavings } from '../lib/subscription-savings'
+import { PlanSavingsDetails } from './plan-savings-details'
 
 interface SubscriptionPlanCardProps {
   record: PlanRecord
@@ -167,14 +158,18 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             })
           : t('Unlimited purchases'),
     },
-    {
-      label: t('Bonus freeze cards'),
-      value: t('{{count}} cards', {
-        count: formatNumber(plan.freeze_cards ?? 0, locale),
-      }),
-      icon: Snowflake,
-      highlight: (plan.freeze_cards ?? 0) > 0,
-    },
+    ...((plan.freeze_cards ?? 0) > 0
+      ? [
+          {
+            label: t('Bonus freeze cards'),
+            value: t('{{count}} cards', {
+              count: formatNumber(plan.freeze_cards ?? 0, locale),
+            }),
+            icon: Snowflake,
+            highlight: true,
+          },
+        ]
+      : []),
   ]
 
   let saleHint: string | null = null
@@ -338,57 +333,15 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </div>
         )}
 
-        <div className='min-w-0'>
-          {savings && (
-            <div data-slot='plan-savings' className='mt-3'>
-              <Accordion>
-                <AccordionItem value='savings-details'>
-                  <AccordionTrigger
-                    aria-label={t('How savings are calculated')}
-                    className='gap-2 py-1 text-xs font-semibold text-green-700 dark:text-green-400'
-                  >
-                    <span className='flex min-w-0 items-start gap-1.5'>
-                      <BadgeCheck
-                        className='mt-0.5 size-3.5 shrink-0'
-                        aria-hidden='true'
-                      />
-                      <span>
-                        {t('Save about {{percent}}% vs wallet payment', {
-                          percent: getSavingsPercent(savings.savings),
-                        })}
-                      </span>
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent className='text-muted-foreground space-y-2 pt-1 text-xs leading-relaxed'>
-                    <dl className='space-y-1'>
-                      <div className='flex items-start justify-between gap-3'>
-                        <dt className='min-w-0 break-words'>
-                          {comparisonGroup
-                            ? t('Wallet · {{group}}', {
-                                group: comparisonGroup,
-                              })
-                            : t('Wallet')}
-                        </dt>
-                        <dd className='shrink-0 tabular-nums'>
-                          {formatNumber(savings.rechargeRatio, locale)}x
-                        </dd>
-                      </div>
-                      <div className='flex items-start justify-between gap-3'>
-                        <dt>{t('Subscription equivalent')}</dt>
-                        <dd className='shrink-0 tabular-nums'>
-                          {formatNumber(savings.planRatio, locale)}x
-                        </dd>
-                      </div>
-                    </dl>
-                    <div>
-                      {t('Assumes quota is used before expiry or reset')}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
-          )}
-        </div>
+        {savings && (
+          <div data-slot='plan-savings' className='mt-2'>
+            <PlanSavingsDetails
+              savings={savings}
+              planTitle={plan.title || t('Subscription')}
+              comparisonGroup={comparisonGroup}
+            />
+          </div>
+        )}
 
         <div className='mt-auto pt-3'>
           <dl
