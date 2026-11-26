@@ -217,3 +217,37 @@ test('restores the persisted deduction order when saving fails and allows retry'
   await userEvent.click(move)
   await waitFor(() => expect(put).toHaveBeenCalledTimes(2))
 })
+
+test('keeps ordering and freezing in one action row after the subscription details', async () => {
+  const { container } = renderSubscriptions('subscription_first', 2)
+  const rows = within(
+    await screen.findByRole('list', { name: 'Subscription deduction order' })
+  ).getAllByRole('listitem')
+  for (const row of rows) {
+    const actions = row.querySelector('[data-slot="subscription-row-actions"]')
+    if (!actions) throw new Error('Missing subscription actions')
+    expect(
+      within(actions as HTMLElement).getByRole('button', {
+        name: 'Drag to reorder',
+      })
+    ).toBeVisible()
+    expect(
+      within(actions as HTMLElement).getByRole('button', {
+        name: /Freeze Plan/,
+      })
+    ).toHaveClass('min-w-0', 'max-w-full', 'shrink', 'whitespace-normal')
+    const controls = row.querySelector(
+      '[data-slot="subscription-order-controls"]'
+    )
+    expect(controls).toHaveClass('items-center')
+    expect(controls).not.toHaveClass('flex-col')
+    const usage = row.querySelector('[data-slot="subscription-usage"]')
+    if (!usage) throw new Error('Missing subscription usage')
+    expect(
+      usage.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  }
+  expect(
+    container.querySelectorAll('[data-slot="subscription-order-controls"]')
+  ).toHaveLength(2)
+})

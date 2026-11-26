@@ -150,133 +150,143 @@ function SubscriptionRow({
         isDragging && 'z-10 shadow-lg ring-1 ring-primary/40'
       )}
     >
-      <div className='flex items-stretch'>
-        {draggable && (
-          <div className='flex shrink-0 flex-col items-center justify-center pl-1'>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon'
-              className='size-10'
-              aria-label={t('Move {{title}} up', {
-                title: planTitle || t('Subscription'),
-              })}
-              disabled={moveUpDisabled}
-              onClick={() => onMove?.(-1)}
-            >
-              <ArrowUp className='size-4' aria-hidden='true' />
-            </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon'
-              className='text-muted-foreground size-10 cursor-grab touch-none active:cursor-grabbing'
-              aria-label={t('Drag to reorder')}
-              disabled={freezePending}
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className='size-4' aria-hidden='true' />
-            </Button>
-            <Button
-              type='button'
-              variant='ghost'
-              size='icon'
-              className='size-10'
-              aria-label={t('Move {{title}} down', {
-                title: planTitle || t('Subscription'),
-              })}
-              disabled={moveDownDisabled}
-              onClick={() => onMove?.(1)}
-            >
-              <ArrowDown className='size-4' aria-hidden='true' />
-            </Button>
+      <div
+        data-slot='subscription-row-content'
+        className='grid min-w-0 gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] md:items-center md:gap-x-6'
+      >
+        <div className='min-w-0'>
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div className='min-w-0 flex-1'>
+              <span className='text-sm font-semibold break-words'>
+                {order !== undefined && (
+                  <span
+                    className='text-muted-foreground mr-2'
+                    aria-hidden='true'
+                  >
+                    {formatNumber(order)}.
+                  </span>
+                )}
+                {planTitle || t('Subscription')}
+              </span>
+            </div>
+            <StatusBadge
+              label={statusLabel}
+              variant={statusVariant}
+              copyable={false}
+            />
+          </div>
+
+          <p className='text-muted-foreground mt-1 text-xs break-words'>
+            {t('Subscription groups: {{groups}}', {
+              groups: (
+                record.plan?.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
+              ).join('、'),
+            })}
+          </p>
+
+          <div className='mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
+            <span className='text-muted-foreground inline-flex items-center gap-1'>
+              <CalendarClock className='size-3.5' />
+              {endLabel}{' '}
+              <span className='text-foreground/80'>
+                {new Date(
+                  (isFrozen
+                    ? subscription.frozen_at || 0
+                    : subscription.end_time) * 1000
+                ).toLocaleDateString()}
+              </span>
+            </span>
+            {isActive || isFrozen ? (
+              <span className='text-foreground/90 font-medium tabular-nums'>
+                {t('{{count}} days remaining', { count: remainingDays })}
+              </span>
+            ) : null}
+          </div>
+        </div>
+
+        {totalAmount > 0 ? (
+          <div data-slot='subscription-usage' className='min-w-0'>
+            <div className='text-muted-foreground mb-1.5 flex flex-wrap items-center justify-between gap-x-2 text-xs'>
+              <span className='inline-flex items-center gap-1'>
+                <CreditCard className='size-3' />
+                {formatQuota(usedAmount)} / {formatQuota(totalAmount)}
+              </span>
+              <span className='tabular-nums'>{usagePercent}%</span>
+            </div>
+            <Progress
+              value={usagePercent}
+              aria-label={t('Available Quota')}
+              className='h-1.5'
+            />
+            {isActive || isFrozen ? (
+              <div className='text-muted-foreground mt-1.5 text-xs'>
+                {t('Remaining')} {formatQuota(remainingAmount)}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className='text-muted-foreground/70 mt-2 inline-flex items-center gap-1 text-xs'>
+            <Layers className='size-3' />
+            {t('Unlimited')}
           </div>
         )}
-
-        <div className='grid min-w-0 flex-1 items-center gap-3 p-3 sm:p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] md:gap-6'>
-          <div className='min-w-0'>
-            <div className='flex flex-wrap items-center justify-between gap-2'>
-              <div className='min-w-0 flex-1'>
-                <span className='text-sm font-semibold break-words'>
-                  {order !== undefined && (
-                    <span
-                      className='text-muted-foreground mr-2'
-                      aria-hidden='true'
-                    >
-                      {formatNumber(order)}.
-                    </span>
-                  )}
-                  {planTitle || t('Subscription')}
-                </span>
-              </div>
-              <StatusBadge
-                label={statusLabel}
-                variant={statusVariant}
-                copyable={false}
-              />
-            </div>
-
-            <p className='text-muted-foreground mt-1 text-xs break-words'>
-              {t('Subscription groups: {{groups}}', {
-                groups: (
-                  record.plan?.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
-                ).join('、'),
-              })}
-            </p>
-
-            <div className='mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs'>
-              <span className='text-muted-foreground inline-flex items-center gap-1'>
-                <CalendarClock className='size-3.5' />
-                {endLabel}{' '}
-                <span className='text-foreground/80'>
-                  {new Date(
-                    (isFrozen
-                      ? subscription.frozen_at || 0
-                      : subscription.end_time) * 1000
-                  ).toLocaleDateString()}
-                </span>
-              </span>
-              {isActive || isFrozen ? (
-                <span className='text-foreground/90 font-medium tabular-nums'>
-                  {t('{{count}} days remaining', { count: remainingDays })}
-                </span>
-              ) : null}
-            </div>
-          </div>
-
-          {totalAmount > 0 ? (
-            <div className='min-w-0'>
-              <div className='text-muted-foreground mb-1.5 flex flex-wrap items-center justify-between gap-x-2 text-xs'>
-                <span className='inline-flex items-center gap-1'>
-                  <CreditCard className='size-3' />
-                  {formatQuota(usedAmount)} / {formatQuota(totalAmount)}
-                </span>
-                <span className='tabular-nums'>{usagePercent}%</span>
-              </div>
-              <Progress
-                value={usagePercent}
-                aria-label={t('Available Quota')}
-                className='h-1.5'
-              />
-              {isActive || isFrozen ? (
-                <div className='text-muted-foreground mt-1.5 text-xs'>
-                  {t('Remaining')} {formatQuota(remainingAmount)}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className='text-muted-foreground/70 mt-2 inline-flex items-center gap-1 text-xs'>
-              <Layers className='size-3' />
-              {t('Unlimited')}
+        <div
+          data-slot='subscription-row-actions'
+          className='border-border/60 flex min-w-0 items-center justify-between gap-2 border-t pt-2 md:col-span-2'
+        >
+          {draggable && (
+            <div
+              data-slot='subscription-order-controls'
+              className='flex shrink-0 items-center gap-1'
+            >
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-10'
+                aria-label={t('Move {{title}} up', {
+                  title: planTitle || t('Subscription'),
+                })}
+                disabled={moveUpDisabled}
+                onClick={() => onMove?.(-1)}
+              >
+                <ArrowUp className='size-4' aria-hidden='true' />
+              </Button>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='text-muted-foreground size-10 cursor-grab touch-none active:cursor-grabbing'
+                aria-label={t('Drag to reorder')}
+                disabled={freezePending}
+                {...attributes}
+                {...listeners}
+              >
+                <GripVertical className='size-4' aria-hidden='true' />
+              </Button>
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                className='size-10'
+                aria-label={t('Move {{title}} down', {
+                  title: planTitle || t('Subscription'),
+                })}
+                disabled={moveDownDisabled}
+                onClick={() => onMove?.(1)}
+              >
+                <ArrowDown className='size-4' aria-hidden='true' />
+              </Button>
             </div>
           )}
+
           {isActive || isFrozen ? (
-            <div className='flex justify-end'>
+            <div className='ml-auto flex min-w-0 justify-end'>
               <Button
                 type='button'
                 variant='outline'
                 size='sm'
+                className='h-auto min-h-10 max-w-full min-w-0 shrink px-3 py-2 text-xs whitespace-normal sm:text-sm'
                 disabled={freezePending || (!isFrozen && !freezeAllowed)}
                 aria-label={
                   isFrozen
@@ -295,7 +305,11 @@ function SubscriptionRow({
                 ) : (
                   <Snowflake className='size-3.5' aria-hidden='true' />
                 )}
-                {isFrozen ? t('Resume subscription') : t('Freeze subscription')}
+                <span className='min-w-0 break-words'>
+                  {isFrozen
+                    ? t('Resume subscription')
+                    : t('Freeze subscription')}
+                </span>
               </Button>
             </div>
           ) : null}
@@ -592,11 +606,13 @@ export function MySubscriptionsCard({
   const firstSubscription = orderedActive[0]
 
   return (
-    <section aria-label={t('My Subscriptions')}>
+    <section aria-label={t('My Subscriptions')} className='min-w-0'>
       <TitledCard
         title={embedded ? null : <h3>{t('My Subscriptions')}</h3>}
         className={
-          embedded ? 'rounded-none border-0 shadow-none ring-0' : 'rounded-xl'
+          embedded
+            ? 'rounded-none border-0 bg-transparent shadow-none ring-0'
+            : 'rounded-xl'
         }
         titleClassName='text-sm font-semibold sm:text-sm'
         disableHoverEffect
@@ -612,7 +628,7 @@ export function MySubscriptionsCard({
           embedded ? 'p-0 sm:p-0' : 'px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
         }
         action={
-          <div className='flex flex-wrap items-center gap-2'>
+          <div className='flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1'>
             <span className='text-muted-foreground text-xs'>
               {t('Freeze cards: {{count}}', {
                 count: formatNumber(freezeCards, locale),

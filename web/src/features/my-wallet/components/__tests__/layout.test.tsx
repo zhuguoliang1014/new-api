@@ -137,6 +137,11 @@ it('opens active subscriptions from the catalog and restores keyboard focus on c
   const panel = await screen.findByRole('dialog', { name: 'My Subscriptions' })
   expect(await within(panel).findByText('Plan 1')).toBeVisible()
   expect(panel).toHaveClass('w-full', 'sm:max-w-2xl')
+  expect(
+    within(panel)
+      .getByRole('region', { name: 'My Subscriptions' })
+      .querySelector('[data-slot=card]')
+  ).toHaveClass('bg-transparent')
   await userEvent.keyboard('{Escape}')
   await waitFor(() =>
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
