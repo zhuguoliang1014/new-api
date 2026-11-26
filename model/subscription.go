@@ -163,6 +163,9 @@ func PurgeSubscriptionPlanCache() error {
 type SubscriptionPlan struct {
 	Id int `json:"id"`
 
+	// Bonus cards issued once per successful purchase, using the order snapshot.
+	FreezeCards int `json:"freeze_cards" gorm:"type:int;not null;default:0"`
+
 	Title    string `json:"title" gorm:"type:varchar(128);not null"`
 	Subtitle string `json:"subtitle" gorm:"type:varchar(255);default:''"`
 
@@ -362,6 +365,10 @@ type UserSubscription struct {
 	Id           int    `json:"id"`
 	UserId       int    `json:"user_id" gorm:"index;index:idx_user_sub_active,priority:1"`
 	PlanId       int    `json:"plan_id" gorm:"index"`
+
+	// Transactional receipt counters; spending is independent of the granting plan.
+	FreezeCardsGranted int `json:"freeze_cards_granted" gorm:"type:int;not null;default:0"`
+	FreezeCardsUsed    int `json:"freeze_cards_used" gorm:"type:int;not null;default:0"`
 
 	AmountTotal int64 `json:"amount_total" gorm:"type:bigint;not null;default:0"`
 	AmountUsed  int64 `json:"amount_used" gorm:"type:bigint;not null;default:0"`
@@ -605,6 +612,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 	if userId <= 0 {
 		return nil, errors.New("invalid user id")
 	}
+	if err := plan.ValidateFreezeCards(); err != nil {
+		return nil, err
+	}
 	if plan.MaxPurchasePerUser > 0 {
 		var count int64
 		if err := tx.Model(&UserSubscription{}).
@@ -669,6 +679,19 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		AllowWalletOverflow: allowWalletOverflow,
 		CreatedAt:           common.GetTimestamp(),
 		UpdatedAt:           common.GetTimestamp(),
+	}
+	// All paid paths call this inside their payment transaction. Admin grants
+	// intentionally do not issue purchase bonuses.
+	if plan.FreezeCards > 0 && (source == "order" || source == "hupijiao" || source == PaymentMethodBalance) {
+		result := tx.Model(&User{}).Where("id = ? AND freeze_cards <= ?", userId, math.MaxInt32-plan.FreezeCards).
+			UpdateColumn("freeze_cards", gorm.Expr("freeze_cards + ?", plan.FreezeCards))
+		if result.Error != nil {
+			return nil, result.Error
+		}
+		if result.RowsAffected != 1 {
+			return nil, errors.New("冻结卡数量超出有效范围或用户不存在")
+		}
+		sub.FreezeCardsGranted = plan.FreezeCards
 	}
 	if err := tx.Create(sub).Error; err != nil {
 		return nil, err

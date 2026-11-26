@@ -30,8 +30,9 @@ import { Separator } from '@/components/ui/separator'
 import { PlanSalesStatus } from '@/features/subscriptions/components/plan-sales-status'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import { useSystemConfig } from '@/hooks/use-system-config'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
-import { formatQuota } from '@/lib/format'
+import { formatNumber, formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { DEFAULT_CURRENCY_CONFIG } from '@/stores/system-config-store'
 
@@ -85,7 +86,8 @@ interface Props {
 }
 
 export function SubscriptionPurchaseDialog(props: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const { currency } = useSystemConfig()
   const [paying, setPaying] = useState(false)
   const [selectedEpayMethod, setSelectedEpayMethod] = useState('')
@@ -348,6 +350,13 @@ export function SubscriptionPurchaseDialog(props: Props) {
           </div>
         </div>
 
+        {(plan.freeze_cards ?? 0) > 0 && (
+          <p className='text-muted-foreground text-sm'>
+            {t('Includes {{count}} freeze cards', {
+              count: formatNumber(plan.freeze_cards ?? 0, locale),
+            })}
+          </p>
+        )}
         <PlanSalesStatus record={props.plan} />
         {sales.unavailable && (
           <Alert>

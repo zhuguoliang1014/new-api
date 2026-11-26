@@ -120,6 +120,7 @@ func TestSubscriptionPlanMigration(t *testing.T) {
 						require.NoError(t, db.Create(&previous).Error)
 						existingID = previous.Id
 						require.NoError(t, db.Migrator().DropColumn(&SubscriptionPlan{}, "SalesLimit"))
+						require.NoError(t, db.Migrator().DropColumn(&SubscriptionPlan{}, "FreezeCards"))
 					}
 					var currentID int
 					for pass := range 2 {
@@ -139,6 +140,7 @@ func TestSubscriptionPlanMigration(t *testing.T) {
 							assert.Equal(t, []string{DefaultSubscriptionGroup}, previous.EffectiveAllowedGroups())
 							assert.Nil(t, previous.BillingRatio)
 							assert.Zero(t, previous.SalesLimit)
+							assert.Zero(t, previous.FreezeCards)
 							ratio, err := previous.EffectiveBillingRatio()
 							require.NoError(t, err)
 							assert.Equal(t, 1.0, ratio)

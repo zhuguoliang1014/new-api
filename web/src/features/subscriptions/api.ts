@@ -255,9 +255,13 @@ export async function updateSubscriptionPriorities(
 
 export async function setSubscriptionFrozen(
   id: number,
-  frozen: boolean
+  frozen: boolean,
+  useFreezeCard = false
 ): Promise<ApiResponse<UserSubscription>> {
-  const res = await api.put(`/api/subscription/self/${id}/freeze`, { frozen })
+  const res = await api.put(`/api/subscription/self/${id}/freeze`, {
+    frozen,
+    ...(useFreezeCard ? { use_freeze_card: true } : {}),
+  })
   return res.data
 }
 

@@ -29,6 +29,7 @@ export function getPlanFormSchema(t: TFunction) {
     .object({
       title: z.string().min(1, t('Please enter plan title')),
       subtitle: z.string().optional(),
+      freeze_cards: z.coerce.number().int().min(0).max(1000000).default(0),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       price_cny: z.coerce.number().min(0.01, '请输入人民币价格'),
       duration_unit: z.enum(['year', 'month', 'day', 'hour', 'custom']),
@@ -93,6 +94,7 @@ export type PlanFormValues = z.infer<ReturnType<typeof getPlanFormSchema>>
 export const PLAN_FORM_DEFAULTS: PlanFormValues = {
   title: '',
   subtitle: '',
+  freeze_cards: 0,
   price_amount: 0,
   price_cny: 0,
   duration_unit: 'month',
@@ -125,6 +127,7 @@ export function planToFormValues(plan: SubscriptionPlan): PlanFormValues {
   return {
     title: plan.title || '',
     subtitle: plan.subtitle || '',
+    freeze_cards: plan.freeze_cards ?? 0,
     price_amount: Number(plan.price_amount || 0),
     price_cny: Number(plan.price_cny || 0),
     duration_unit: plan.duration_unit || 'month',

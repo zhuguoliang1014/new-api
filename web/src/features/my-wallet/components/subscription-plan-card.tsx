@@ -253,6 +253,13 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </Badge>
         </div>
 
+        {(plan.freeze_cards ?? 0) > 0 && (
+          <p className='text-muted-foreground text-xs'>
+            {t('Includes {{count}} freeze cards', {
+              count: formatNumber(plan.freeze_cards ?? 0, locale),
+            })}
+          </p>
+        )}
         {showPromotion && (
           <PlanPromotionPrice record={p} now={props.now} variant='banner' />
         )}

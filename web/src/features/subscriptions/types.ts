@@ -40,6 +40,7 @@ export const subscriptionPlanSchema = z.object({
   allow_wallet_overflow: z.boolean().optional().default(true),
   max_purchase_per_user: z.number(),
   display_sold_count: z.number().optional(),
+  freeze_cards: z.number().optional(),
   sales_limit: z.number().optional(),
   limited_sale: z.boolean().optional(),
   minimum_effective_ratio: z.number().nullable().optional(),
@@ -177,6 +178,7 @@ export interface SelfSubscriptionData {
   billing_preference: string
   subscriptions: UserSubscriptionRecord[]
   all_subscriptions: UserSubscriptionRecord[]
+  freeze_cards?: number
   freeze_policy?: SubscriptionFreezePolicy
 }
 

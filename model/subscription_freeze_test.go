@@ -168,6 +168,7 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 				})
 			}
 			require.NoError(t, db.AutoMigrate(&User{}, &SubscriptionPlan{}, &SubscriptionPreConsumeRecord{}))
+			t.Run("freeze cards", func(t *testing.T) { testSubscriptionFreezeCards(t, db) })
 			user := User{Username: "freeze-user", Group: "pro", AuthVersion: 1}
 			require.NoError(t, db.Create(&user).Error)
 			plan := SubscriptionPlan{Title: "Freeze plan", DurationUnit: SubscriptionDurationMonth, DurationValue: 1, QuotaResetPeriod: SubscriptionResetDaily, TotalAmount: 1000}
@@ -191,13 +192,13 @@ func TestSubscriptionFreezeDatabaseLifecycle(t *testing.T) {
 			_, err = apply(user.Id, true, holiday+10*86400)
 			require.ErrorContains(t, err, "只能冻结有效订阅")
 			_, err = apply(user.Id, true, holiday-86400)
-			require.ErrorContains(t, err, "仅中国大陆法定节假日")
+			require.ErrorContains(t, err, "需确认使用1张冻结卡")
 			require.NoError(t, db.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{"status": "cancelled"}).Error)
 			_, err = apply(user.Id, true, holiday)
 			require.ErrorContains(t, err, "只能冻结有效订阅")
 			require.NoError(t, db.Model(&UserSubscription{}).Where("id = ?", sub.Id).Updates(map[string]any{"status": "active", "end_time": int64(2000000000)}).Error)
 			_, err = apply(user.Id, true, time.Date(2027, 1, 1, 12, 0, 0, 0, subscriptionHolidayTimezone).Unix())
-			require.ErrorContains(t, err, "当前年份的节假日日历尚未配置")
+			require.ErrorContains(t, err, "需确认使用1张冻结卡")
 			require.NoError(t, db.Model(&UserSubscription{}).Where("id = ?", sub.Id).Update("end_time", sub.EndTime).Error)
 			frozen, err := apply(user.Id, true, holiday)
 			require.NoError(t, err)

@@ -38,6 +38,9 @@ function renderEditor(record?: PlanRecord) {
 test('new plan starts unpublished, has a clear four-section flow and hides advanced controls', () => {
   renderEditor()
   expect(screen.getByRole('switch', { name: 'Publish plan' })).not.toBeChecked()
+  expect(
+    screen.getByRole('spinbutton', { name: 'Bonus freeze cards' })
+  ).toHaveValue(0)
   const headings = screen
     .getAllByRole('heading', { level: 3 })
     .map((node) => node.textContent)
@@ -291,3 +294,29 @@ test.each([0.17, 0.18, 0.180001, 0.181333, 0.23])(
     )
   }
 )
+
+test('editing a plan preserves and saves its bonus freeze card count', async () => {
+  const plan = subscriptionPlanSchema.parse({
+    ...PLAN_CREATE_FORM_DEFAULTS,
+    id: 91,
+    title: 'Cards plan',
+    price_cny: 99,
+    price_amount: 300,
+    total_amount: 150000000,
+    freeze_cards: 3,
+  })
+  const save = renderEditor({ plan })
+  const input = screen.getByRole('spinbutton', { name: 'Bonus freeze cards' })
+  expect(input).toHaveValue(3)
+  await userEvent.clear(input)
+  await userEvent.type(input, '5')
+  await userEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      '/api/subscription/admin/plans/91',
+      expect.objectContaining({
+        plan: expect.objectContaining({ freeze_cards: 5 }),
+      })
+    )
+  )
+})

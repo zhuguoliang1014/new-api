@@ -54,6 +54,7 @@ import {
 } from '../lib'
 import type { PlanRecord } from '../types'
 import { PlanAdvancedFields } from './plan-advanced-fields'
+import { PlanFreezeCardsField } from './plan-freeze-cards-field'
 import { PlanGroupFields } from './plan-group-fields'
 import { PlanPricingFields } from './plan-pricing-fields'
 import { PlanPromotionFields } from './plan-promotion-fields'
@@ -163,6 +164,7 @@ export function SubscriptionCreateDrawer({
       'title',
       'allowed_groups',
       'subtitle',
+      'freeze_cards',
       'price_cny',
       'price_amount',
       'pricing_ratio',
@@ -246,6 +248,7 @@ export function SubscriptionCreateDrawer({
             </SideDrawerSection>
             <SideDrawerSection>
               <PlanGroupFields groupOptions={groupOptions} />
+              <PlanFreezeCardsField />
             </SideDrawerSection>
             <SideDrawerSection>
               <PlanPricingFields

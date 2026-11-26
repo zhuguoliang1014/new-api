@@ -12,6 +12,7 @@ export function getPlanCreateFormSchema(t: TFunction) {
     .object({
       title: z.string().min(1, t('Please enter plan title')),
       subtitle: z.string().optional(),
+      freeze_cards: z.coerce.number().int().min(0).max(1000000).default(0),
       pricing_ratio: z.coerce.number().positive().optional(),
       price_amount: z.coerce.number().min(0, t('Please enter amount')),
       price_cny: z.coerce.number().min(0.01, t('Please enter CNY price')),
@@ -75,6 +76,7 @@ export type PlanCreateFormValues = z.infer<
 export const PLAN_CREATE_FORM_DEFAULTS: PlanCreateFormValues = {
   title: '',
   subtitle: '',
+  freeze_cards: 0,
   price_amount: 0,
   price_cny: 0,
   duration_unit: 'month',
@@ -115,6 +117,7 @@ export function planToCreateFormValues(
         : undefined,
     title: plan.title || '',
     subtitle: plan.subtitle || '',
+    freeze_cards: plan.freeze_cards ?? 0,
     price_amount: Number(plan.price_amount || 0),
     price_cny: Number(plan.price_cny || 0),
     duration_unit: plan.duration_unit || 'month',
@@ -169,6 +172,7 @@ export function createFormValuesToPayload(
       // 新面板管理的字段
       title: values.title,
       subtitle: values.subtitle || '',
+      freeze_cards: values.freeze_cards,
       price_amount: usdQuotaAmount,
       price_cny: priceCny,
       currency: 'USD',

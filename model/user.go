@@ -79,6 +79,7 @@ func resolveUserSortOptions(sortOptions []UserSortOptions) UserSortOptions {
 // User if you add sensitive fields, don't forget to clean them in setupLogin function.
 // Otherwise, the sensitive information will be saved on local storage in plain text!
 type User struct {
+	FreezeCards          int                        `json:"-" gorm:"type:int;not null;default:0"`
 	Id                   int                        `json:"id"`
 	Username             string                     `json:"username" gorm:"unique;index" validate:"max=20"`
 	Password             string                     `json:"password" gorm:"not null;" validate:"min=8,max=128"`
@@ -906,6 +907,7 @@ func (user *User) UpdateWithTx(tx *gorm.DB, updatePassword bool) error {
 		"access_token",
 		"quota",
 		"gift_wallet_enabled",
+		"freeze_cards",
 		"used_quota",
 		"request_count",
 		"aff_count",

@@ -181,6 +181,7 @@ func GetSubscriptionSelf(c *gin.Context) {
 		"billing_preference": pref,
 		"subscriptions":      activeSubscriptions, // all active subscriptions
 		"all_subscriptions":  allSubscriptions,    // all subscriptions including expired
+		"freeze_cards":       user.FreezeCards,
 		"freeze_policy":      model.GetSubscriptionFreezePolicy(common.GetTimestamp()),
 	})
 }
@@ -188,14 +189,15 @@ func GetSubscriptionSelf(c *gin.Context) {
 func SetSubscriptionFrozen(c *gin.Context) {
 	subId, err := strconv.Atoi(c.Param("id"))
 	var req struct {
-		Frozen *bool `json:"frozen" binding:"required"`
+		Frozen        *bool `json:"frozen" binding:"required"`
+		UseFreezeCard bool  `json:"use_freeze_card"`
 	}
 	if err != nil || subId <= 0 || c.ShouldBindJSON(&req) != nil || req.Frozen == nil {
 		common.ApiErrorMsg(c, "参数错误")
 		return
 	}
 	userId := c.GetInt("id")
-	sub, err := model.SetUserSubscriptionFrozen(userId, subId, *req.Frozen)
+	sub, err := model.SetUserSubscriptionFrozen(userId, subId, *req.Frozen, req.UseFreezeCard)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -339,6 +341,10 @@ func AdminCreateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
 		return
 	}
+	if err := req.Plan.ValidateFreezeCards(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if req.Plan.DisplaySoldCount < 0 || req.Plan.DisplaySoldCount > 2147483647 {
 		common.ApiErrorT(c, "Display sold count must be an integer between 0 and 2147483647")
 		return
@@ -461,6 +467,10 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 		common.ApiErrorT(c, "Sales limit must be an integer between 0 and 2147483647")
 		return
 	}
+	if err := req.Plan.ValidateFreezeCards(); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if req.Plan.DisplaySoldCount < 0 || req.Plan.DisplaySoldCount > 2147483647 {
 		common.ApiErrorT(c, "Display sold count must be an integer between 0 and 2147483647")
 		return
@@ -551,6 +561,7 @@ func AdminUpdateSubscriptionPlan(c *gin.Context) {
 			"starts_at":                  req.Plan.StartsAt,
 			"expires_at":                 req.Plan.ExpiresAt,
 			"display_sold_count":         req.Plan.DisplaySoldCount,
+			"freeze_cards":               req.Plan.FreezeCards,
 			"updated_at":                 common.GetTimestamp(),
 		}
 		if req.Plan.AllowBalancePay != nil {

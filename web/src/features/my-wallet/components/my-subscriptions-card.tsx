@@ -34,6 +34,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -337,6 +338,8 @@ export function MySubscriptionsCard({
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
+  const [freezeCards, setFreezeCards] = useState(0)
+  const [confirmFreezeId, setConfirmFreezeId] = useState<number | null>(null)
   const [freezePolicy, setFreezePolicy] = useState<SubscriptionFreezePolicy>()
 
   useEffect(() => {
@@ -383,19 +386,29 @@ export function MySubscriptionsCard({
       setActiveSubscriptions(active)
       setAllSubscriptions(all)
       setFreezePolicy(subRes.data.freeze_policy)
+      setFreezeCards(subRes.data.freeze_cards ?? 0)
       setActiveOrder(order)
     }
     if (planRes.success) setPlans(planRes.data || [])
   }, [])
 
   const freezeMutation = useMutation({
-    mutationFn: async (input: { id: number; frozen: boolean }) => {
-      const response = await setSubscriptionFrozen(input.id, input.frozen)
+    mutationFn: async (input: {
+      id: number
+      frozen: boolean
+      useFreezeCard?: boolean
+    }) => {
+      const response = await setSubscriptionFrozen(
+        input.id,
+        input.frozen,
+        input.useFreezeCard
+      )
       requireServerSuccess(response)
       return { input, subscription: response.data }
     },
     retry: false,
     onSuccess: async (result) => {
+      setConfirmFreezeId(null)
       if (result.subscription) {
         const subscription = result.subscription
         setAllSubscriptions((records) =>
@@ -480,6 +493,10 @@ export function MySubscriptionsCard({
 
   const handleFreeze = (id: number, frozen: boolean) => {
     if (busy) return
+    if (frozen && freezePolicy?.allowed !== true) {
+      setConfirmFreezeId(id)
+      return
+    }
     freezeMutation.mutate({ id, frozen })
   }
 
@@ -605,6 +622,11 @@ export function MySubscriptionsCard({
           }
           action={
             <div className='flex flex-wrap items-center gap-2'>
+              <span className='text-muted-foreground text-xs'>
+                {t('Freeze cards: {{count}}', {
+                  count: formatNumber(freezeCards, locale),
+                })}
+              </span>
               {(activeCount > 0 || frozenSubscriptions.length === 0) && (
                 <StatusBadge
                   copyable={false}
@@ -736,7 +758,9 @@ export function MySubscriptionsCard({
                     }
                     draggable={false}
                     nowSec={nowSec}
-                    freezeAllowed={freezePolicy?.allowed === true}
+                    freezeAllowed={
+                      freezePolicy?.allowed === true || freezeCards > 0
+                    }
                     freezePending={busy}
                     onFreeze={handleFreeze}
                   />
@@ -775,7 +799,9 @@ export function MySubscriptionsCard({
                           busy || index === activeOrder.length - 1
                         }
                         nowSec={nowSec}
-                        freezeAllowed={freezePolicy?.allowed === true}
+                        freezeAllowed={
+                          freezePolicy?.allowed === true || freezeCards > 0
+                        }
                         freezePending={busy}
                         onFreeze={handleFreeze}
                       />
@@ -817,12 +843,12 @@ export function MySubscriptionsCard({
           {(firstSubscription || frozenSubscriptions.length > 0) && (
             <p className='text-muted-foreground mt-3 text-xs leading-relaxed'>
               {t(
-                'Freeze on mainland China public holidays (including adjusted days off), based on Beijing time. Resume anytime; validity and quota reset dates shift by the frozen duration.'
+                'Freezing is free on mainland China public holidays (Beijing time); otherwise it costs 1 freeze card. Resume anytime; validity and quota reset dates shift by the frozen duration.'
               )}
               {freezePolicy && !freezePolicy.calendar_available && (
                 <span className='mt-1 block'>
                   {t(
-                    'The holiday calendar is unavailable. Freezing is temporarily disabled; frozen subscriptions can still be resumed.'
+                    'The holiday calendar is unavailable. Freezing requires 1 freeze card; resuming remains free.'
                   )}
                 </span>
               )}
@@ -830,6 +856,29 @@ export function MySubscriptionsCard({
           )}
         </TitledCard>
       </Collapsible>
+      <ConfirmDialog
+        open={confirmFreezeId !== null}
+        onOpenChange={(open) => {
+          if (!open && !freezeMutation.isPending) setConfirmFreezeId(null)
+        }}
+        title={t('Use a freeze card?')}
+        desc={t(
+          'Freezing this subscription will use 1 freeze card. You have {{count}} remaining. The card will not be returned when you resume.',
+          { count: formatNumber(freezeCards, locale) }
+        )}
+        confirmText={t('Use 1 card and freeze')}
+        isLoading={freezeMutation.isPending}
+        disabled={busy || freezeCards <= 0}
+        handleConfirm={() => {
+          if (!busy && confirmFreezeId !== null) {
+            freezeMutation.mutate({
+              id: confirmFreezeId,
+              frozen: true,
+              useFreezeCard: true,
+            })
+          }
+        }}
+      />
       <SubscriptionHistoryDialog
         open={historyDialogOpen}
         onOpenChange={setHistoryDialogOpen}

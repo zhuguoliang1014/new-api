@@ -27,10 +27,16 @@ import { api } from '@/lib/api'
 
 import { MySubscriptionsCard } from '../my-subscriptions-card'
 
-function renderSubscription(frozen: boolean, allowed: boolean, known = true) {
+function renderSubscription(
+  frozen: boolean,
+  allowed: boolean,
+  known = true,
+  cards = 0
+) {
   const now = Math.floor(Date.now() / 1000)
   const data: SelfSubscriptionData = {
     billing_preference: 'subscription_first',
+    freeze_cards: cards,
     subscriptions: [],
     all_subscriptions: [
       {
@@ -161,4 +167,87 @@ it('retains the active state and shows the server rejection when freezing fails'
   )
   expect(screen.getByText('Active')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Freeze Pro' })).toBeEnabled()
+})
+
+it('requires explicit confirmation before using a card and allows cancel without a request', async () => {
+  renderSubscription(false, false, true, 2)
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  expect(await screen.findByText('Freeze cards: 2')).toBeVisible()
+  await userEvent.click(screen.getByRole('button', { name: 'Freeze Pro' }))
+  expect(await screen.findByRole('alertdialog')).toBeVisible()
+  expect(put).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(put).not.toHaveBeenCalled()
+  await userEvent.click(screen.getByRole('button', { name: 'Freeze Pro' }))
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Use 1 card and freeze' })
+  )
+  await waitFor(() =>
+    expect(put).toHaveBeenCalledExactlyOnceWith(
+      '/api/subscription/self/7/freeze',
+      { frozen: true, use_freeze_card: true }
+    )
+  )
+})
+
+it('uses holiday freezing without a card confirmation even when cards are available', async () => {
+  renderSubscription(false, true, true, 2)
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: true } })
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Freeze Pro' })
+  )
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(put).toHaveBeenCalledWith('/api/subscription/self/7/freeze', {
+    frozen: true,
+  })
+})
+
+it('allows confirmed card freezing when the holiday calendar is unavailable', async () => {
+  renderSubscription(false, false, false, 1)
+  const put = vi
+    .spyOn(api, 'put')
+    .mockResolvedValue({ data: { success: false, message: 'No cards left' } })
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Freeze Pro' })
+  )
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Use 1 card and freeze' })
+  )
+  await waitFor(() => expect(put).toHaveBeenCalledOnce())
+  expect(screen.getByText('Active')).toBeVisible()
+  expect(screen.getByText('Freeze cards: 1')).toBeVisible()
+})
+
+it('refreshes the card balance after confirmed freezing and blocks duplicate confirmation while pending', async () => {
+  const data = renderSubscription(false, false, true, 1)
+  let resolve: (response: unknown) => void = () => {}
+  const put = vi.spyOn(api, 'put').mockImplementation(
+    () =>
+      new Promise((done) => {
+        resolve = done
+      }) as ReturnType<typeof api.put>
+  )
+  await userEvent.click(
+    await screen.findByRole('button', { name: 'Freeze Pro' })
+  )
+  const confirm = screen.getByRole('button', { name: 'Use 1 card and freeze' })
+  await userEvent.click(confirm)
+  expect(confirm).toBeDisabled()
+  await userEvent.click(confirm)
+  expect(put).toHaveBeenCalledOnce()
+  data.freeze_cards = 0
+  data.all_subscriptions[0].subscription.status = 'frozen'
+  data.all_subscriptions[0].subscription.frozen_at =
+    data.freeze_policy?.server_time
+  data.subscriptions = []
+  resolve({
+    data: { success: true, data: data.all_subscriptions[0].subscription },
+  })
+  expect(await screen.findByText('Freeze cards: 0')).toBeVisible()
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Resume Pro' })).toBeEnabled()
 })

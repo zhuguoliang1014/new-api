@@ -30,8 +30,9 @@ import { getPromotionQuote } from '@/features/subscriptions/lib/promotion'
 import { getPlanSalesState } from '@/features/subscriptions/lib/sales'
 import type { PlanRecord } from '@/features/subscriptions/types'
 import { submitPaymentForm } from '@/features/wallet/lib'
+import { toIntlLocale } from '@/i18n/languages'
 import { formatCnyCurrencyAmount } from '@/lib/currency'
-import { formatQuota } from '@/lib/format'
+import { formatNumber, formatQuota } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 
 interface Props {
@@ -55,7 +56,8 @@ export function LocalSubscriptionPurchaseDialog({
   purchaseLimit,
   purchaseCount,
 }: Props) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
   const [paying, setPaying] = useState(false)
   const [hupijiaoPaymentOpen, setHupijiaoPaymentOpen] = useState(false)
   const [hupijiaoPayment, setHupijiaoPayment] = useState<{
@@ -191,6 +193,13 @@ export function LocalSubscriptionPurchaseDialog({
               </div>
             </div>
 
+            {(plan.freeze_cards ?? 0) > 0 && (
+              <p className='text-muted-foreground text-sm'>
+                {t('Includes {{count}} freeze cards', {
+                  count: formatNumber(plan.freeze_cards ?? 0, locale),
+                })}
+              </p>
+            )}
             <PlanSalesStatus record={planRecord} />
             {sales.unavailable && (
               <Alert>

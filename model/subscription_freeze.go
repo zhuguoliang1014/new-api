@@ -57,11 +57,11 @@ func GetSubscriptionFreezePolicy(now int64) SubscriptionFreezePolicy {
 
 // SetUserSubscriptionFrozen uses a desired state instead of toggling, so replayed
 // or duplicate requests cannot undo a freeze or extend validity twice.
-func SetUserSubscriptionFrozen(userId, subscriptionId int, frozen bool) (*UserSubscription, error) {
+func SetUserSubscriptionFrozen(userId, subscriptionId int, frozen bool, useFreezeCard ...bool) (*UserSubscription, error) {
 	var result *UserSubscription
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var err error
-		result, err = setUserSubscriptionFrozenTx(tx, userId, subscriptionId, frozen, common.GetTimestamp)
+		result, err = setUserSubscriptionFrozenTx(tx, userId, subscriptionId, frozen, common.GetTimestamp, useFreezeCard...)
 		return err
 	})
 	if err != nil {
@@ -71,14 +71,14 @@ func SetUserSubscriptionFrozen(userId, subscriptionId int, frozen bool) (*UserSu
 	return result, nil
 }
 
-func setUserSubscriptionFrozenTx(tx *gorm.DB, userId, subscriptionId int, frozen bool, clock func() int64) (*UserSubscription, error) {
+func setUserSubscriptionFrozenTx(tx *gorm.DB, userId, subscriptionId int, frozen bool, clock func() int64, useFreezeCard ...bool) (*UserSubscription, error) {
 	if userId <= 0 || subscriptionId <= 0 {
 		return nil, errors.New("参数错误")
 	}
 	// Serialize group transitions across this user's subscriptions before
 	// locking an individual subscription, including simultaneous freezes.
 	var user User
-	if err := lockForUpdate(tx).Select("id").Where("id = ?", userId).First(&user).Error; err != nil {
+	if err := lockForUpdate(tx).Select("id", "freeze_cards").Where("id = ?", userId).First(&user).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("订阅不存在")
 		}
@@ -105,11 +105,22 @@ func setUserSubscriptionFrozenTx(tx *gorm.DB, userId, subscriptionId int, frozen
 			return nil, errors.New("只能冻结有效订阅")
 		}
 		policy := GetSubscriptionFreezePolicy(now)
-		if !policy.CalendarAvailable {
-			return nil, errors.New("当前年份的节假日日历尚未配置，暂不能冻结订阅")
-		}
 		if !policy.Allowed {
-			return nil, errors.New("仅中国大陆法定节假日（含调休休息日）可冻结订阅")
+			if len(useFreezeCard) == 0 || !useFreezeCard[0] {
+				return nil, errors.New("非节假日冻结需确认使用1张冻结卡，请刷新后重试")
+			}
+			if user.FreezeCards <= 0 {
+				return nil, errors.New("冻结卡不足")
+			}
+			result := tx.Model(&User{}).Where("id = ? AND freeze_cards > 0", userId).
+				UpdateColumn("freeze_cards", gorm.Expr("freeze_cards - 1"))
+			if result.Error != nil {
+				return nil, result.Error
+			}
+			if result.RowsAffected != 1 {
+				return nil, errors.New("冻结卡不足")
+			}
+			sub.FreezeCardsUsed++
 		}
 		plan, err := getUserSubscriptionPlanTx(tx, &sub)
 		if err != nil {
@@ -185,4 +196,12 @@ func setUserSubscriptionFrozenTx(tx *gorm.DB, userId, subscriptionId int, frozen
 		return nil, err
 	}
 	return &sub, nil
+}
+
+// ValidateFreezeCards keeps plan grants within the supported integer range.
+func (p *SubscriptionPlan) ValidateFreezeCards() error {
+	if p.FreezeCards < 0 || p.FreezeCards > 1000000 {
+		return errors.New("赠送冻结卡数量必须为0到1000000之间的整数")
+	}
+	return nil
 }
