@@ -51,7 +51,7 @@ export function PlanPromotionPrice(props: {
     return (
       <div
         data-slot='plan-promotion'
-        className='mt-4 flex min-w-0 items-center justify-between gap-2 rounded-xl bg-[#fff2e8] px-3 py-2.5 text-[#b54214] dark:bg-orange-950/30 dark:text-orange-300'
+        className='mt-3 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-orange-100 bg-[#fff7f0] px-2.5 py-2 text-[#b54214] dark:border-orange-900/50 dark:bg-orange-950/20 dark:text-orange-300'
       >
         <div className='min-w-0'>
           <div className='flex flex-wrap items-center gap-x-1.5 gap-y-0.5'>
@@ -79,14 +79,14 @@ export function PlanPromotionPrice(props: {
         </div>
         <div
           aria-label={t('{{percent}}% off', { percent })}
-          className='shrink-0 border-l border-orange-200 pl-3 text-right dark:border-orange-800'
+          className='shrink-0 rounded-md bg-white/70 px-2 py-1.5 text-right dark:bg-orange-950/40'
         >
           <p
             aria-hidden='true'
-            className='text-[1.75rem] leading-none font-bold tracking-tight tabular-nums'
+            className='text-lg leading-none font-semibold tracking-tight tabular-nums'
           >
             {chineseDiscount ? formatNumber(rate * 10, locale) : percent}
-            <span className='text-sm'>
+            <span className='text-xs'>
               {chineseDiscount ? t('% off') : '%'}
             </span>
           </p>

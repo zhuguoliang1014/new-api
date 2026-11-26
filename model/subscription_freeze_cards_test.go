@@ -93,6 +93,20 @@ func testSubscriptionFreezeCards(t *testing.T, db *gorm.DB) {
 	user.DisplayName = "edited"
 	require.NoError(t, user.UpdateWithTx(db, false))
 	require.Zero(t, user.FreezeCards)
+	// Admin creation uses the same configured bonus on every supported database.
+	require.NoError(t, db.Model(&plan).UpdateColumn("freeze_cards", 3).Error)
+	_, err = AdminBindSubscription(user.Id, plan.Id, "admin bonus regression")
+	require.NoError(t, err)
+	require.NoError(t, db.First(&user, user.Id).Error)
+	require.Equal(t, 3, user.FreezeCards)
+	var granted UserSubscription
+	require.NoError(t, db.Where("user_id = ? AND source = ?", user.Id, "admin").First(&granted).Error)
+	require.Equal(t, 3, granted.FreezeCardsGranted)
+	require.NoError(t, db.Model(&plan).UpdateColumn("freeze_cards", 0).Error)
+	_, err = AdminBindSubscription(user.Id, plan.Id, "no bonus configured")
+	require.NoError(t, err)
+	require.NoError(t, db.First(&user, user.Id).Error)
+	require.Equal(t, 3, user.FreezeCards)
 }
 
 func TestFreezeCardPurchaseBonuses(t *testing.T) {
@@ -132,9 +146,6 @@ func TestFreezeCardPurchaseBonuses(t *testing.T) {
 			var saved User
 			require.NoError(t, DB.First(&saved, user.Id).Error)
 			expected := 3
-			if source == "admin" {
-				expected = 0
-			}
 			require.Equal(t, expected, saved.FreezeCards)
 			var subs []UserSubscription
 			require.NoError(t, DB.Where("user_id = ?", user.Id).Find(&subs).Error)
@@ -196,7 +207,7 @@ func TestClosedSubscriptionPaymentDoesNotGrantFreezeCards(t *testing.T) {
 }
 
 func TestBalanceTopUpAndUnconfiguredSubscriptionDoNotGrantFreezeCards(t *testing.T) {
-	for _, kind := range []string{"balance topup", "subscription without bonus"} {
+	for _, kind := range []string{"balance topup", "subscription without bonus", "admin without bonus"} {
 		t.Run(kind, func(t *testing.T) {
 			truncateTables(t)
 			user := User{Username: "no-card-bonus", AffCode: "no-card-bonus", FreezeCards: 2}
@@ -211,8 +222,13 @@ func TestBalanceTopUpAndUnconfiguredSubscriptionDoNotGrantFreezeCards(t *testing
 				plan := SubscriptionPlan{Title: "No bonus configured", Enabled: true, PriceAmount: 1, PriceCNY: 1, DurationUnit: "month", DurationValue: 1}
 				require.NoError(t, DB.Create(&plan).Error)
 				order := SubscriptionOrder{UserId: user.Id, PlanId: plan.Id, TradeNo: "subscription-no-cards", Money: 1, PaymentProvider: SubscriptionPaymentProviderHupijiao, Status: common.TopUpStatusPending}
-				require.NoError(t, order.Insert())
-				require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 1, "verified"))
+				if kind == "admin without bonus" {
+					_, err := AdminBindSubscription(user.Id, plan.Id, "test")
+					require.NoError(t, err)
+				} else {
+					require.NoError(t, order.Insert())
+					require.NoError(t, CompleteHupijiaoSubscriptionOrder(order.TradeNo, 1, "verified"))
+				}
 				var sub UserSubscription
 				require.NoError(t, DB.Where("user_id = ?", user.Id).First(&sub).Error)
 				require.Zero(t, sub.FreezeCardsGranted)

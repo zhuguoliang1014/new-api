@@ -1,5 +1,12 @@
 import OpenAI from '@lobehub/icons/es/OpenAI/components/Mono'
-import { ArrowRight, BadgeCheck, Timer } from 'lucide-react'
+import {
+  ArrowRight,
+  BadgeCheck,
+  RotateCcw,
+  ShoppingBag,
+  Snowflake,
+  Timer,
+} from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { StatusBadge } from '@/components/status-badge'
@@ -148,9 +155,10 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
       : t('Unlimited')
 
   const details = [
-    { label: t('Quota Reset'), value: resetPeriod },
+    { label: t('Quota Reset'), value: resetPeriod, icon: RotateCcw },
     {
       label: t('Purchase Count'),
+      icon: ShoppingBag,
       value:
         limit > 0
           ? t('Purchased {{count}} of {{limit}}', {
@@ -158,6 +166,14 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
               limit: formatNumber(limit, locale),
             })
           : t('Unlimited purchases'),
+    },
+    {
+      label: t('Bonus freeze cards'),
+      value: t('{{count}} cards', {
+        count: formatNumber(plan.freeze_cards ?? 0, locale),
+      }),
+      icon: Snowflake,
+      highlight: (plan.freeze_cards ?? 0) > 0,
     },
   ]
 
@@ -192,74 +208,115 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
       aria-labelledby={`subscription-plan-${plan.id}`}
       data-card-hover='false'
       className={cn(
-        'relative min-w-0 gap-0 rounded-[16px] border py-0 shadow-none ring-0 transition-colors duration-200',
+        'relative min-w-0 gap-0 rounded-2xl border py-0 shadow-none ring-0 transition-colors duration-200',
         isRecommended
-          ? 'border-foreground/25'
+          ? 'border-blue-300 dark:border-blue-700'
           : 'border-border hover:border-foreground/25'
       )}
     >
       <CardContent className='flex h-full min-w-0 flex-col p-4'>
-        <div className='flex items-start justify-between gap-2'>
-          <div className='flex min-w-0 flex-1 items-start gap-2'>
-            <span
-              data-slot='plan-provider-icon'
-              aria-hidden='true'
-              className='text-foreground flex size-8 shrink-0 items-center justify-center rounded-[10px] border'
-            >
-              <OpenAI size={20} />
-            </span>
-            <div className='min-w-0 flex-1'>
-              <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
-                <h3
-                  id={`subscription-plan-${plan.id}`}
-                  title={plan.title || t('Subscription Plans')}
-                  className='text-base leading-snug font-semibold tracking-tight break-words'
-                >
-                  {plan.title || t('Subscription Plans')}
-                </h3>
-                {isRecommended && (
-                  <StatusBadge
-                    label={t('Recommended')}
-                    variant='neutral'
-                    type='text'
-                    copyable={false}
-                    className='text-muted-foreground text-[10px]'
-                  />
-                )}
+        <div data-slot='plan-identity' className='min-h-16'>
+          <div className='flex items-start justify-between gap-3'>
+            <div className='flex min-w-0 flex-1 items-center gap-2.5'>
+              <span
+                data-slot='plan-provider-icon'
+                aria-hidden='true'
+                className='text-foreground bg-background flex size-9 shrink-0 items-center justify-center rounded-[10px] border'
+              >
+                <OpenAI size={20} />
+              </span>
+              <div className='min-w-0 flex-1'>
+                <div className='flex flex-wrap items-center gap-x-2 gap-y-1'>
+                  <h3
+                    id={`subscription-plan-${plan.id}`}
+                    title={plan.title || t('Subscription Plans')}
+                    className='text-base leading-snug font-semibold tracking-tight break-words'
+                  >
+                    {plan.title || t('Subscription Plans')}
+                  </h3>
+                  {isRecommended && (
+                    <StatusBadge
+                      label={t('Recommended')}
+                      variant='neutral'
+                      type='text'
+                      copyable={false}
+                      className='text-muted-foreground text-[10px]'
+                    />
+                  )}
+                </div>
               </div>
-              <p className='text-muted-foreground mt-1 text-xs break-words'>
-                {t('Subscription groups: {{groups}}', {
-                  groups: (
-                    plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
-                  ).join('、'),
-                })}
-              </p>
-              {getPlanSubtitle(plan.subtitle) && (
-                <p
-                  title={getPlanSubtitle(plan.subtitle)}
-                  className='text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-snug break-words'
-                >
-                  {getPlanSubtitle(plan.subtitle)}
-                </p>
+            </div>
+            <Badge
+              data-slot='plan-duration'
+              variant='secondary'
+              className='bg-muted text-muted-foreground h-auto max-w-[35%] shrink-0 rounded-[6px] px-1.5 py-1 text-[10px] whitespace-normal'
+            >
+              {duration}
+            </Badge>
+          </div>
+
+          <p className='text-muted-foreground mt-3 text-[11px] leading-relaxed break-words'>
+            {t('Subscription groups: {{groups}}', {
+              groups: (
+                plan.allowed_groups ?? [DEFAULT_SUBSCRIPTION_GROUP]
+              ).join('、'),
+            })}
+          </p>
+          {getPlanSubtitle(plan.subtitle) && (
+            <p
+              title={getPlanSubtitle(plan.subtitle)}
+              className='text-muted-foreground mt-0.5 line-clamp-2 text-xs leading-snug break-words'
+            >
+              {getPlanSubtitle(plan.subtitle)}
+            </p>
+          )}
+        </div>
+
+        <div
+          data-slot='plan-price-quota'
+          className='mt-3 grid min-h-22 grid-cols-2 gap-3'
+        >
+          <div className='min-w-0'>
+            <div className='text-muted-foreground flex flex-wrap items-baseline gap-x-1 text-[11px]'>
+              <span>{showPromotion ? t('Discounted price') : t('Price')}</span>
+              <span className='whitespace-nowrap'>/ {duration}</span>
+            </div>
+            <p
+              className={cn(
+                priceLabel.length > 8 ? 'text-lg' : 'text-[1.75rem]',
+                'mt-1.5 leading-tight font-semibold tracking-tight break-words tabular-nums'
+              )}
+            >
+              {priceLabel}
+            </p>
+            <div className='flex flex-wrap items-baseline gap-x-2'>
+              {showPromotion && (
+                <PlanPromotionPrice
+                  record={p}
+                  now={props.now}
+                  variant='original'
+                />
               )}
             </div>
           </div>
-          <Badge
-            data-slot='plan-duration'
-            variant='secondary'
-            className='bg-muted text-muted-foreground h-auto max-w-[35%] shrink-0 rounded-[6px] px-1.5 py-1 text-[10px] whitespace-normal'
+          <div
+            data-slot='plan-quota'
+            className='border-border/70 min-w-0 border-l pl-4 text-[#1762c2] dark:text-blue-300'
           >
-            {duration}
-          </Badge>
+            <p className='text-[11px] font-semibold'>{t('Available Quota')}</p>
+            <p
+              className={cn(
+                quotaLabel.length > 8 ? 'text-lg' : 'text-[1.75rem]',
+                'mt-1.5 leading-tight font-semibold tracking-tight break-words tabular-nums'
+              )}
+            >
+              {quotaLabel}
+            </p>
+            <p className='text-muted-foreground mt-2 text-[11px]'>
+              {t('Site credits')}
+            </p>
+          </div>
         </div>
-
-        {(plan.freeze_cards ?? 0) > 0 && (
-          <p className='text-muted-foreground text-xs'>
-            {t('Includes {{count}} freeze cards', {
-              count: formatNumber(plan.freeze_cards ?? 0, locale),
-            })}
-          </p>
-        )}
         {showPromotion && (
           <PlanPromotionPrice record={p} now={props.now} variant='banner' />
         )}
@@ -281,51 +338,6 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </div>
         )}
 
-        <div
-          data-slot='plan-price-quota'
-          className='mt-3 grid grid-cols-2 gap-2'
-        >
-          <div className='min-w-0'>
-            <div className='text-muted-foreground flex flex-wrap items-baseline gap-x-1 text-[11px]'>
-              <span>{showPromotion ? t('Discounted price') : t('Price')}</span>
-              <span className='whitespace-nowrap'>/ {duration}</span>
-            </div>
-            <p
-              className={cn(
-                priceLabel.length > 8 ? 'text-lg' : 'text-2xl',
-                'mt-2 leading-tight font-bold tracking-tight break-words tabular-nums'
-              )}
-            >
-              {priceLabel}
-            </p>
-            <div className='flex flex-wrap items-baseline gap-x-2'>
-              {showPromotion && (
-                <PlanPromotionPrice
-                  record={p}
-                  now={props.now}
-                  variant='original'
-                />
-              )}
-            </div>
-          </div>
-          <div
-            data-slot='plan-quota'
-            className='min-w-0 border-l pl-3 text-[#1762c2] dark:text-blue-300'
-          >
-            <p className='text-[11px] font-semibold'>{t('Available Quota')}</p>
-            <p
-              className={cn(
-                quotaLabel.length > 8 ? 'text-lg' : 'text-2xl',
-                'mt-2 leading-tight font-bold tracking-tight break-words tabular-nums'
-              )}
-            >
-              {quotaLabel}
-            </p>
-            <p className='text-muted-foreground mt-2 text-[11px]'>
-              {t('Site credits')}
-            </p>
-          </div>
-        </div>
         <div className='min-w-0'>
           {savings && (
             <div data-slot='plan-savings' className='mt-3'>
@@ -378,21 +390,40 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           )}
         </div>
 
-        <dl className='mt-3 grid grid-cols-2 gap-2 border-t pt-3'>
-          {details.map((detail) => (
-            <div key={detail.label} className='min-w-0 space-y-1 text-[11px]'>
-              <dt className='text-muted-foreground min-w-0 break-words'>
-                {detail.label}
-              </dt>
-              <dd className='font-medium break-words'>{detail.value}</dd>
-            </div>
-          ))}
-        </dl>
+        <div className='mt-auto pt-4'>
+          <dl
+            data-slot='plan-benefits'
+            className='border-border/70 space-y-2 border-t pt-3'
+          >
+            {details.map((detail) => (
+              <div
+                key={detail.label}
+                className='flex min-w-0 items-start justify-between gap-3 text-xs leading-5'
+              >
+                <dt className='text-muted-foreground flex min-w-0 items-center gap-2'>
+                  <detail.icon
+                    className='size-3.5 shrink-0 opacity-70'
+                    aria-hidden='true'
+                  />
+                  <span className='break-words'>{detail.label}</span>
+                </dt>
+                <dd
+                  className={cn(
+                    'min-w-0 text-right font-medium break-words',
+                    detail.highlight && 'text-[#1762c2] dark:text-blue-300'
+                  )}
+                >
+                  {detail.value}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
 
-        <div className='mt-auto pt-3'>
+        <div className='pt-3'>
           <div
             data-slot='plan-stock'
-            className='mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 empty:hidden'
+            className='mb-2 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-1'
           >
             <PlanSalesStatus
               record={p}

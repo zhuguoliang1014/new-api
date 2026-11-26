@@ -156,7 +156,7 @@ it('lays out cards by viewport width and keeps price cycles and action rows comp
     container.querySelector('[data-slot="subscription-plan-grid"]')
   ).toHaveClass(
     'grid-cols-1',
-    'sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]',
+    'sm:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]',
     'items-stretch',
     'auto-rows-fr'
   )
@@ -829,4 +829,48 @@ it('shows allowed groups instead of obsolete GPT-only subtitles and preserves cu
   ).toBeVisible()
   expect(screen.queryByText('仅限 GPT 模型')).not.toBeInTheDocument()
   expect(screen.getByText('Team allowance')).toBeVisible()
+})
+
+it('aligns pricing before offers and keeps freeze card counts in the shared benefits list', async () => {
+  const discounted = {
+    ...plan({
+      id: 1,
+      title: 'Discount plan',
+      freeze_cards: 2,
+      discount_rate: 0.8,
+      discount_starts_at: now - 60,
+      discount_ends_at: now + 3600,
+    }),
+    regular_price_cny: 2000,
+    regular_price_amount: 280,
+  }
+  await renderPlans([
+    discounted,
+    plan({ id: 2, title: 'Regular plan', freeze_cards: 0 }),
+  ])
+  const card = screen.getByRole('article', { name: 'Discount plan' })
+  const pricing = card.querySelector('[data-slot=plan-price-quota]')
+  const promotion = card.querySelector('[data-slot=plan-promotion]')
+  const benefits = card.querySelector('[data-slot=plan-benefits]')
+  if (!pricing || !promotion || !benefits) {
+    throw new Error('Missing plan comparison sections')
+  }
+  expect(
+    pricing.compareDocumentPosition(promotion) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(
+    promotion.compareDocumentPosition(benefits) &
+      Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy()
+  expect(within(benefits as HTMLElement).getByText('2 cards')).toBeVisible()
+  expect(card.querySelector('[data-slot=plan-identity]')).not.toHaveTextContent(
+    'Bonus freeze cards'
+  )
+  const regular = screen.getByRole('article', { name: 'Regular plan' })
+  expect(regular.querySelector('[data-slot=plan-promotion]')).toBeNull()
+  expect(within(regular).getByText('0 cards')).toBeVisible()
+  expect(
+    within(regular).getByRole('button', { name: 'Subscribe Now' })
+  ).toBeEnabled()
 })

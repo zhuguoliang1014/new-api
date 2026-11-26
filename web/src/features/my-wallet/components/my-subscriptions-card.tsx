@@ -19,7 +19,6 @@ import { CSS } from '@dnd-kit/utilities'
 import { useMutation } from '@tanstack/react-query'
 import {
   CalendarClock,
-  ChevronDown,
   ArrowUp,
   ArrowDown,
   CreditCard,
@@ -37,11 +36,6 @@ import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { StatusBadge } from '@/components/status-badge'
 import { Button } from '@/components/ui/button'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -336,7 +330,6 @@ export function MySubscriptionsCard({
     useState<BillingPreference>('subscription_first')
   const preferenceId = useId()
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
   const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000))
   const [freezeCards, setFreezeCards] = useState(0)
   const [confirmFreezeId, setConfirmFreezeId] = useState<number | null>(null)
@@ -584,7 +577,6 @@ export function MySubscriptionsCard({
   const activeCount = activeSubscriptions.length
   const inactiveCount = inactive.length
   const draggable = activeOrder.length > 1
-  const showAllSubscriptions = expanded && draggable
 
   if (loading) {
     return (
@@ -601,221 +593,144 @@ export function MySubscriptionsCard({
 
   return (
     <section aria-label={t('My Subscriptions')}>
-      <Collapsible open={showAllSubscriptions} onOpenChange={setExpanded}>
-        <TitledCard
-          title={embedded ? null : <h3>{t('My Subscriptions')}</h3>}
-          className={
-            embedded ? 'rounded-none border-0 shadow-none ring-0' : 'rounded-xl'
-          }
-          titleClassName='text-sm font-semibold sm:text-sm'
-          disableHoverEffect
-          headerClassName={cn(
-            'border-b-0 px-4 pt-4 !pb-3 sm:px-5 sm:pt-4 sm:!pb-3',
-            embedded &&
-              'px-0 pt-0 sm:px-0 sm:pt-0 [&>div]:flex-row [&>div]:flex-wrap [&>div>div:first-child]:hidden [&>div>div:last-child]:w-full',
-            !draggable &&
-              inactiveCount === 0 &&
-              '[&>div]:flex-row [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
-          )}
-          contentClassName={
-            embedded ? 'p-0 sm:p-0' : 'px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
-          }
-          action={
-            <div className='flex flex-wrap items-center gap-2'>
-              <span className='text-muted-foreground text-xs'>
-                {t('Freeze cards: {{count}}', {
-                  count: formatNumber(freezeCards, locale),
+      <TitledCard
+        title={embedded ? null : <h3>{t('My Subscriptions')}</h3>}
+        className={
+          embedded ? 'rounded-none border-0 shadow-none ring-0' : 'rounded-xl'
+        }
+        titleClassName='text-sm font-semibold sm:text-sm'
+        disableHoverEffect
+        headerClassName={cn(
+          'border-b-0 px-4 pt-4 !pb-3 sm:px-5 sm:pt-4 sm:!pb-3',
+          embedded &&
+            'px-0 pt-0 sm:px-0 sm:pt-0 [&>div]:flex-row [&>div]:flex-wrap [&>div>div:first-child]:hidden [&>div>div:last-child]:w-full',
+          !draggable &&
+            inactiveCount === 0 &&
+            '[&>div]:flex-row [&>div]:items-center [&>div]:justify-between [&>div>div:last-child]:w-auto'
+        )}
+        contentClassName={
+          embedded ? 'p-0 sm:p-0' : 'px-4 pt-0 pb-4 sm:px-5 sm:pt-0 sm:pb-5'
+        }
+        action={
+          <div className='flex flex-wrap items-center gap-2'>
+            <span className='text-muted-foreground text-xs'>
+              {t('Freeze cards: {{count}}', {
+                count: formatNumber(freezeCards, locale),
+              })}
+            </span>
+            {(activeCount > 0 || frozenSubscriptions.length === 0) && (
+              <StatusBadge
+                copyable={false}
+                type='text'
+                className='text-xs font-normal whitespace-nowrap'
+                variant={activeCount > 0 ? 'success' : 'neutral'}
+                label={
+                  activeCount > 0
+                    ? t('{{activeCount}} active', {
+                        activeCount: formatNumber(activeCount, locale),
+                      })
+                    : t('No Active')
+                }
+              />
+            )}
+            {frozenSubscriptions.length > 0 && (
+              <StatusBadge
+                copyable={false}
+                type='text'
+                className='text-xs font-normal whitespace-nowrap'
+                variant='info'
+                label={t('{{count}} frozen', {
+                  count: frozenSubscriptions.length,
                 })}
-              </span>
-              {(activeCount > 0 || frozenSubscriptions.length === 0) && (
-                <StatusBadge
-                  copyable={false}
-                  type='text'
-                  className='text-xs font-normal whitespace-nowrap'
-                  variant={activeCount > 0 ? 'success' : 'neutral'}
-                  label={
-                    activeCount > 0
-                      ? t('{{activeCount}} active', {
-                          activeCount: formatNumber(activeCount, locale),
-                        })
-                      : t('No Active')
-                  }
-                />
-              )}
-              {frozenSubscriptions.length > 0 && (
-                <StatusBadge
-                  copyable={false}
-                  type='text'
-                  className='text-xs font-normal whitespace-nowrap'
-                  variant='info'
-                  label={t('{{count}} frozen', {
-                    count: frozenSubscriptions.length,
-                  })}
-                />
-              )}
+              />
+            )}
 
-              {draggable && (
-                <CollapsibleTrigger
-                  disabled={busy}
-                  render={<Button variant='outline' className='h-9 gap-2' />}
-                >
-                  {showAllSubscriptions
-                    ? t('Collapse')
-                    : t('Manage subscriptions')}
-                  <ChevronDown
-                    className={cn(
-                      'size-4',
-                      showAllSubscriptions && 'rotate-180'
-                    )}
-                    aria-hidden='true'
-                  />
-                </CollapsibleTrigger>
-              )}
-              {inactiveCount > 0 && (
-                <Button
-                  variant='ghost'
-                  className='h-9'
-                  onClick={() => setHistoryDialogOpen(true)}
-                >
-                  <History className='size-4' aria-hidden='true' />
-                  {t('Subscription History')} ({inactiveCount})
-                </Button>
-              )}
+            {inactiveCount > 0 && (
               <Button
                 variant='ghost'
-                size='icon'
-                className='size-9'
-                aria-label={t('Refresh')}
-                onClick={handleRefresh}
-                disabled={busy}
+                className='h-9'
+                onClick={() => setHistoryDialogOpen(true)}
               >
-                <RefreshCw
-                  className={cn('size-4', refreshing && 'animate-spin')}
-                  aria-hidden='true'
-                />
+                <History className='size-4' aria-hidden='true' />
+                {t('Subscription History')} ({inactiveCount})
               </Button>
-            </div>
-          }
-        >
-          <div className='mb-4 space-y-2'>
-            <p id={preferenceId} className='text-sm font-medium'>
-              {t('Billing preference')}
-            </p>
-            <RadioGroup
-              aria-labelledby={preferenceId}
-              value={billingPreference}
+            )}
+            <Button
+              variant='ghost'
+              size='icon'
+              className='size-9'
+              aria-label={t('Refresh')}
+              onClick={handleRefresh}
               disabled={busy}
-              onValueChange={(value) => {
-                if (
-                  !busy &&
-                  (value === 'subscription_first' ||
-                    value === 'wallet_first') &&
-                  value !== billingPreference
-                ) {
-                  preferenceMutation.mutate(value)
-                }
-              }}
-              className='flex flex-wrap gap-x-6 gap-y-3'
             >
-              <Label className='flex min-h-9 items-center gap-2'>
-                <RadioGroupItem value='subscription_first' />
-                {t('Subscription first')}
-              </Label>
-              <Label className='flex min-h-9 items-center gap-2'>
-                <RadioGroupItem value='wallet_first' />
-                {t('Wallet first')}
-              </Label>
-            </RadioGroup>
-            <p className='text-muted-foreground text-xs leading-relaxed'>
-              {billingPreference === 'wallet_first'
-                ? t(
-                    'Use wallet balance first, then eligible subscriptions if the balance is insufficient.'
-                  )
-                : t(
-                    'Use eligible subscriptions first, then wallet balance if no subscription can cover the request.'
-                  )}
-            </p>
+              <RefreshCw
+                className={cn('size-4', refreshing && 'animate-spin')}
+                aria-hidden='true'
+              />
+            </Button>
           </div>
-          <DndContext
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handleDragEnd}
+        }
+      >
+        <div className='mb-4 space-y-2'>
+          <p id={preferenceId} className='text-sm font-medium'>
+            {t('Billing preference')}
+          </p>
+          <RadioGroup
+            aria-labelledby={preferenceId}
+            value={billingPreference}
+            disabled={busy}
+            onValueChange={(value) => {
+              if (
+                !busy &&
+                (value === 'subscription_first' || value === 'wallet_first') &&
+                value !== billingPreference
+              ) {
+                preferenceMutation.mutate(value)
+              }
+            }}
+            className='flex flex-wrap gap-x-6 gap-y-3'
           >
-            <SortableContext
-              items={activeOrder}
-              strategy={verticalListSortingStrategy}
-            >
-              {!showAllSubscriptions && firstSubscription && (
-                <div role='list' aria-label={t('Subscription deduction order')}>
-                  <SubscriptionRow
-                    record={firstSubscription}
-                    planTitle={
-                      firstSubscription.plan_title ||
-                      planTitleMap.get(
-                        firstSubscription.subscription.plan_id
-                      ) ||
-                      ''
-                    }
-                    draggable={false}
-                    nowSec={nowSec}
-                    freezeAllowed={
-                      freezePolicy?.allowed === true || freezeCards > 0
-                    }
-                    freezePending={busy}
-                    onFreeze={handleFreeze}
-                  />
-                </div>
-              )}
-              <CollapsibleContent>
-                <p className='text-muted-foreground mb-3 text-xs leading-relaxed'>
-                  {t(
-                    'Drag or use the arrows to change the order. Eligible subscriptions are tried from top to bottom.'
-                  )}
-                </p>
-                <div
-                  role='list'
-                  aria-label={t('Subscription deduction order')}
-                  className='space-y-2'
-                >
-                  {showAllSubscriptions &&
-                    orderedActive.map((record, index) => (
-                      <SubscriptionRow
-                        key={record.subscription.id}
-                        record={record}
-                        planTitle={
-                          record.plan_title ||
-                          planTitleMap.get(record.subscription.plan_id) ||
-                          ''
-                        }
-                        draggable={draggable}
-                        order={index + 1}
-                        onMove={(offset) =>
-                          saveOrder(
-                            arrayMove(activeOrder, index, index + offset)
-                          )
-                        }
-                        moveUpDisabled={busy || index === 0}
-                        moveDownDisabled={
-                          busy || index === activeOrder.length - 1
-                        }
-                        nowSec={nowSec}
-                        freezeAllowed={
-                          freezePolicy?.allowed === true || freezeCards > 0
-                        }
-                        freezePending={busy}
-                        onFreeze={handleFreeze}
-                      />
-                    ))}
-                </div>
-              </CollapsibleContent>
-            </SortableContext>
-          </DndContext>
-          {frozenSubscriptions.length > 0 && (
+            <Label className='flex min-h-9 items-center gap-2'>
+              <RadioGroupItem value='subscription_first' />
+              {t('Subscription first')}
+            </Label>
+            <Label className='flex min-h-9 items-center gap-2'>
+              <RadioGroupItem value='wallet_first' />
+              {t('Wallet first')}
+            </Label>
+          </RadioGroup>
+          <p className='text-muted-foreground text-xs leading-relaxed'>
+            {billingPreference === 'wallet_first'
+              ? t(
+                  'Use wallet balance first, then eligible subscriptions if the balance is insufficient.'
+                )
+              : t(
+                  'Use eligible subscriptions first, then wallet balance if no subscription can cover the request.'
+                )}
+          </p>
+        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={activeOrder}
+            strategy={verticalListSortingStrategy}
+          >
+            {draggable && (
+              <p className='text-muted-foreground mb-3 text-xs leading-relaxed'>
+                {t(
+                  'Drag or use the arrows to change the order. Eligible subscriptions are tried from top to bottom.'
+                )}
+              </p>
+            )}
             <div
               role='list'
-              className={cn('space-y-2', firstSubscription && 'mt-3')}
+              aria-label={t('Subscription deduction order')}
+              className='space-y-2'
             >
-              {frozenSubscriptions.map((record) => (
+              {orderedActive.map((record, index) => (
                 <SubscriptionRow
                   key={record.subscription.id}
                   record={record}
@@ -824,38 +739,69 @@ export function MySubscriptionsCard({
                     planTitleMap.get(record.subscription.plan_id) ||
                     ''
                   }
-                  draggable={false}
+                  draggable={draggable}
+                  order={index + 1}
+                  onMove={(offset) =>
+                    saveOrder(arrayMove(activeOrder, index, index + offset))
+                  }
+                  moveUpDisabled={busy || index === 0}
+                  moveDownDisabled={busy || index === activeOrder.length - 1}
                   nowSec={nowSec}
-                  freezeAllowed={false}
+                  freezeAllowed={
+                    freezePolicy?.allowed === true || freezeCards > 0
+                  }
                   freezePending={busy}
                   onFreeze={handleFreeze}
                 />
               ))}
             </div>
-          )}
-          {!firstSubscription && frozenSubscriptions.length === 0 && (
-            <p className='text-muted-foreground py-3 text-center text-sm'>
-              {allSubscriptions.length > 0
-                ? t('No Active')
-                : t('No subscription records')}
-            </p>
-          )}
-          {(firstSubscription || frozenSubscriptions.length > 0) && (
-            <p className='text-muted-foreground mt-3 text-xs leading-relaxed'>
-              {t(
-                'Freezing is free on mainland China public holidays (Beijing time); otherwise it costs 1 freeze card. Resume anytime; validity and quota reset dates shift by the frozen duration.'
-              )}
-              {freezePolicy && !freezePolicy.calendar_available && (
-                <span className='mt-1 block'>
-                  {t(
-                    'The holiday calendar is unavailable. Freezing requires 1 freeze card; resuming remains free.'
-                  )}
-                </span>
-              )}
-            </p>
-          )}
-        </TitledCard>
-      </Collapsible>
+          </SortableContext>
+        </DndContext>
+        {frozenSubscriptions.length > 0 && (
+          <div
+            role='list'
+            className={cn('space-y-2', firstSubscription && 'mt-3')}
+          >
+            {frozenSubscriptions.map((record) => (
+              <SubscriptionRow
+                key={record.subscription.id}
+                record={record}
+                planTitle={
+                  record.plan_title ||
+                  planTitleMap.get(record.subscription.plan_id) ||
+                  ''
+                }
+                draggable={false}
+                nowSec={nowSec}
+                freezeAllowed={false}
+                freezePending={busy}
+                onFreeze={handleFreeze}
+              />
+            ))}
+          </div>
+        )}
+        {!firstSubscription && frozenSubscriptions.length === 0 && (
+          <p className='text-muted-foreground py-3 text-center text-sm'>
+            {allSubscriptions.length > 0
+              ? t('No Active')
+              : t('No subscription records')}
+          </p>
+        )}
+        {(firstSubscription || frozenSubscriptions.length > 0) && (
+          <p className='text-muted-foreground mt-3 text-xs leading-relaxed'>
+            {t(
+              'Freezing is free on mainland China public holidays (Beijing time); otherwise it costs 1 freeze card. Resume anytime; validity and quota reset dates shift by the frozen duration.'
+            )}
+            {freezePolicy && !freezePolicy.calendar_available && (
+              <span className='mt-1 block'>
+                {t(
+                  'The holiday calendar is unavailable. Freezing requires 1 freeze card; resuming remains free.'
+                )}
+              </span>
+            )}
+          </p>
+        )}
+      </TitledCard>
       <ConfirmDialog
         open={confirmFreezeId !== null}
         onOpenChange={(open) => {

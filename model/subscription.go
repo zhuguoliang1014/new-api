@@ -680,9 +680,9 @@ func CreateUserSubscriptionFromPlanTx(tx *gorm.DB, userId int, plan *Subscriptio
 		CreatedAt:           common.GetTimestamp(),
 		UpdatedAt:           common.GetTimestamp(),
 	}
-	// All paid paths call this inside their payment transaction. Admin grants
-	// intentionally do not issue purchase bonuses.
-	if plan.FreezeCards > 0 && (source == "order" || source == "hupijiao" || source == PaymentMethodBalance) {
+	// Both purchases and admin grants issue the configured cards in the same
+	// transaction as the subscription. Wallet top-ups never use this path.
+	if plan.FreezeCards > 0 && (source == "order" || source == "hupijiao" || source == PaymentMethodBalance || source == "admin") {
 		result := tx.Model(&User{}).Where("id = ? AND freeze_cards <= ?", userId, math.MaxInt32-plan.FreezeCards).
 			UpdateColumn("freeze_cards", gorm.Expr("freeze_cards + ?", plan.FreezeCards))
 		if result.Error != nil {

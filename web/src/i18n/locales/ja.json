@@ -45,6 +45,7 @@
     "{{count}} available": "残り{{count}}枠",
     "{{count}} available channels": "利用可能なチャネル {{count}} 件",
     "{{count}} camera views": "{{count}} 方向の視点",
+    "{{count}} cards": "{{count}}枚",
     "{{count}} channel(s) deleted": "{{count}} 個のチャネルを削除しました",
     "{{count}} channel(s) disabled": "{{count}} 個のチャネルを無効にしました",
     "{{count}} channel(s) enabled": "{{count}} 個のチャネルを有効にしました",

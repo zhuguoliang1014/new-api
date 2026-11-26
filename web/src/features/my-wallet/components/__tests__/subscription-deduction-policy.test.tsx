@@ -151,9 +151,6 @@ test('saves keyboard ordering once, disables conflicting changes, and reloads th
       }) as ReturnType<typeof api.put>
   )
   const { data } = renderSubscriptions('subscription_first', 2)
-  await userEvent.click(
-    await screen.findByRole('button', { name: 'Manage subscriptions' })
-  )
   const list = await screen.findByRole('list', {
     name: 'Subscription deduction order',
   })
@@ -178,10 +175,9 @@ test('saves keyboard ordering once, disables conflicting changes, and reloads th
     expect(button).toBeDisabled()
   }
   expect(screen.getByRole('button', { name: 'Refresh' })).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Collapse' })).toHaveAttribute(
-    'aria-disabled',
-    'true'
-  )
+  expect(
+    screen.queryByRole('button', { name: 'Manage subscriptions' })
+  ).not.toBeInTheDocument()
   expect(screen.getByRole('radio', { name: 'Wallet first' })).toHaveAttribute(
     'aria-disabled',
     'true'
@@ -207,9 +203,6 @@ test('restores the persisted deduction order when saving fails and allows retry'
     .spyOn(api, 'put')
     .mockResolvedValue({ data: { success: false, message: 'Order rejected' } })
   renderSubscriptions('wallet_first', 2)
-  await userEvent.click(
-    await screen.findByRole('button', { name: 'Manage subscriptions' })
-  )
   const move = await screen.findByRole('button', { name: 'Move Plan 1 up' })
   await userEvent.click(move)
   await waitFor(() => expect(error).toHaveBeenCalledWith('Order rejected'))

@@ -45,6 +45,7 @@
     "{{count}} available": "剩餘 {{count}} 份",
     "{{count}} available channels": "{{count}} 個可用渠道",
     "{{count}} camera views": "{{count}} 個視角",
+    "{{count}} cards": "{{count}}張",
     "{{count}} channel(s) deleted": "已刪除 {{count}} 個渠道",
     "{{count}} channel(s) disabled": "已停用 {{count}} 個渠道",
     "{{count}} channel(s) enabled": "已啟用 {{count}} 個渠道",

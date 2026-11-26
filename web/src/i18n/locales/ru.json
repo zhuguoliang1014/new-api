@@ -45,6 +45,7 @@
     "{{count}} available": "Доступно: {{count}}",
     "{{count}} available channels": "Доступных каналов: {{count}}",
     "{{count}} camera views": "{{count}} ракурсов",
+    "{{count}} cards": "{{count}} карт",
     "{{count}} channel(s) deleted": "Удалено {{count}} каналов",
     "{{count}} channel(s) disabled": "Отключено {{count}} каналов",
     "{{count}} channel(s) enabled": "Включено {{count}} каналов",

@@ -149,7 +149,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         contentClassName='p-0 sm:p-0'
       >
         {loading && (
-          <div className='grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'>
+          <div className='grid grid-cols-1 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]'>
             {['first', 'second', 'third'].map((key) => (
               <Skeleton key={key} className='h-72 w-full rounded-xl' />
             ))}
@@ -163,7 +163,7 @@ export function AvailablePlansCard(props: AvailablePlansCardProps) {
         {!loading && plans.length > 0 && (
           <div
             data-slot='subscription-plan-grid'
-            className='grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))]'
+            className='grid auto-rows-fr grid-cols-1 items-stretch gap-3 sm:grid-cols-[repeat(auto-fill,minmax(18rem,1fr))]'
           >
             {plans.map((record, index) => (
               <SubscriptionPlanCard

@@ -144,24 +144,21 @@ it('opens active subscriptions from the catalog and restores keyboard focus on c
   expect(trigger).toHaveFocus()
 })
 
-it('keeps multiple subscriptions compact until keyboard expansion enables ordering', async () => {
+it('shows all active subscriptions and ordering controls immediately without a manage button', async () => {
   await renderSubscriptions([subscription(1), subscription(2), subscription(3)])
   await userEvent.click(
     screen.getByRole('button', { name: /My Subscriptions/ })
   )
   expect(await screen.findByText('Plan 1')).toBeVisible()
-  expect(screen.queryByText('Plan 2')).not.toBeInTheDocument()
-  const manage = screen.getByRole('button', { name: /Manage subscriptions/ })
-  expect(manage).toHaveAttribute('aria-expanded', 'false')
-  manage.focus()
-  await userEvent.keyboard('{Enter}')
-  expect(manage).toHaveAttribute('aria-expanded', 'true')
   expect(screen.getByText('Plan 2')).toBeVisible()
+  expect(screen.getByText('Plan 3')).toBeVisible()
+  expect(
+    screen.queryByRole('button', { name: /Manage subscriptions|Collapse/ })
+  ).not.toBeInTheDocument()
   expect(
     screen.getAllByRole('button', { name: 'Drag to reorder' })
   ).toHaveLength(3)
-  await userEvent.click(screen.getByRole('button', { name: /Collapse/ }))
-  expect(screen.queryByText('Plan 2')).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Move Plan 2 up' })).toBeEnabled()
 })
 
 it('keeps the empty subscription overview short and the catalog visible', async () => {
@@ -181,16 +178,13 @@ it('keeps the empty subscription overview short and the catalog visible', async 
   expect(await screen.findByText('No subscription records')).toBeVisible()
 })
 
-it('returns to the compact overview when a refresh leaves only one subscription', async () => {
+it('keeps the remaining subscription visible and removes ordering controls after a refresh', async () => {
   const records = [subscription(1), subscription(2)]
   await renderSubscriptions(records)
   await userEvent.click(
     screen.getByRole('button', { name: /My Subscriptions/ })
   )
   await screen.findByText('Plan 1')
-  await userEvent.click(
-    screen.getByRole('button', { name: /Manage subscriptions/ })
-  )
   expect(screen.getByText('Plan 2')).toBeVisible()
   records.splice(1)
   const overview = screen.getByRole('region', { name: 'My Subscriptions' })
