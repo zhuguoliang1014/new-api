@@ -31,7 +31,7 @@ export function PlanSavingsDetails(props: {
         <Button
           variant='ghost'
           aria-label={t('How savings are calculated')}
-          className='h-auto min-h-9 w-full justify-between gap-2 px-0 py-1 text-left text-xs font-semibold whitespace-normal text-green-700 hover:bg-transparent dark:text-green-400'
+          className='h-auto min-h-9 w-full justify-between gap-2 px-0 py-1 text-left text-xs font-semibold whitespace-normal text-green-700 transition-colors hover:bg-transparent hover:text-green-800 dark:text-green-400 dark:hover:text-green-300'
         >
           <span className='flex min-w-0 items-start gap-1.5'>
             <BadgeCheck

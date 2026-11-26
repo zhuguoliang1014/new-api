@@ -946,3 +946,24 @@ it('groups the savings trigger below the divider with subscription benefits', as
   ).toBeVisible()
   expect(card.querySelector('[data-slot=accordion-content]')).toBeNull()
 })
+
+it('keeps the benefits in normal flow while aligning only the purchase area at the bottom', async () => {
+  await renderPlans([
+    plan(),
+    plan({ id: 2, title: 'With bonus', freeze_cards: 2 }),
+  ])
+  for (const card of screen.getAllByRole('article')) {
+    const benefits = card.querySelector('[data-slot=plan-benefits-content]')
+    expect(benefits?.parentElement).not.toHaveClass('mt-auto')
+    expect(card.querySelector('[data-slot=plan-purchase-area]')).toHaveClass(
+      'mt-auto'
+    )
+  }
+})
+
+it('uses the same action styling for payment-disabled and available plans', async () => {
+  await renderPlans([plan()], { paymentEnabled: false })
+  expect(
+    screen.getByRole('button', { name: 'Online payment disabled by admin' })
+  ).toHaveClass('bg-[#216bd1]', 'min-h-11', 'rounded-[8px]', 'dark:bg-blue-600')
+})

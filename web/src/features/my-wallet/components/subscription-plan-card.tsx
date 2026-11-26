@@ -58,6 +58,9 @@ interface SubscriptionPlanCardProps {
   onPurchase: (record: PlanRecord) => void
 }
 
+const purchaseButtonClassName =
+  'h-auto min-h-11 w-full justify-center gap-3 rounded-[8px] bg-[#216bd1] px-3 py-2 text-sm font-semibold whitespace-normal text-white transition-colors hover:bg-[#1a5ab7] dark:bg-blue-600 dark:hover:bg-blue-700'
+
 type SaleStatus = 'open' | 'upcoming' | 'live' | 'ended'
 
 interface SaleWindow {
@@ -333,7 +336,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </div>
         )}
 
-        <div className='mt-auto pt-3'>
+        <div className='pt-3'>
           <div
             data-slot='plan-benefits-content'
             className='border-border/70 border-t pt-3'
@@ -374,7 +377,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </div>
         </div>
 
-        <div className='pt-3'>
+        <div data-slot='plan-purchase-area' className='mt-auto pt-3'>
           <div
             data-slot='plan-stock'
             className='mb-2 flex min-h-4 flex-wrap items-center gap-x-3 gap-y-1'
@@ -397,10 +400,17 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           !reached &&
           !sales.unavailable ? (
             <Tooltip>
-              <TooltipTrigger render={<div />}>
+              <TooltipTrigger
+                render={
+                  <div
+                    tabIndex={0}
+                    className='focus-visible:outline-ring rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2'
+                  />
+                }
+              >
                 <Button
                   variant='default'
-                  className='h-auto min-h-11 w-full px-3 py-2 text-sm whitespace-normal'
+                  className={purchaseButtonClassName}
                   disabled
                 >
                   {t('Online payment disabled by admin')}
@@ -414,7 +424,7 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
             <Button
               variant='default'
               className={cn(
-                'h-auto min-h-11 w-full justify-center gap-3 rounded-[8px] bg-[#216bd1] px-3 py-2 text-sm font-semibold whitespace-normal text-white hover:bg-[#1a5ab7] dark:bg-blue-500 dark:hover:bg-blue-600',
+                purchaseButtonClassName,
                 sale.status === 'upcoming' && 'tabular-nums'
               )}
               disabled={!purchasable}
