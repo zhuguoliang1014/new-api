@@ -333,44 +333,45 @@ export function SubscriptionPlanCard(props: SubscriptionPlanCardProps) {
           </div>
         )}
 
-        {savings && (
-          <div data-slot='plan-savings' className='mt-2'>
-            <PlanSavingsDetails
-              savings={savings}
-              planTitle={plan.title || t('Subscription')}
-              comparisonGroup={comparisonGroup}
-            />
-          </div>
-        )}
-
         <div className='mt-auto pt-3'>
-          <dl
-            data-slot='plan-benefits'
-            className='border-border/70 space-y-2 border-t pt-3'
+          <div
+            data-slot='plan-benefits-content'
+            className='border-border/70 border-t pt-3'
           >
-            {details.map((detail) => (
-              <div
-                key={detail.label}
-                className='flex min-w-0 items-start justify-between gap-3 text-xs leading-5'
-              >
-                <dt className='text-muted-foreground flex min-w-0 items-center gap-2'>
-                  <detail.icon
-                    className='size-3.5 shrink-0 opacity-70'
-                    aria-hidden='true'
-                  />
-                  <span className='break-words'>{detail.label}</span>
-                </dt>
-                <dd
-                  className={cn(
-                    'min-w-0 text-right font-medium break-words',
-                    detail.highlight && 'text-[#1762c2] dark:text-blue-300'
-                  )}
-                >
-                  {detail.value}
-                </dd>
+            {savings && (
+              <div data-slot='plan-savings' className='mb-2'>
+                <PlanSavingsDetails
+                  savings={savings}
+                  planTitle={plan.title || t('Subscription')}
+                  comparisonGroup={comparisonGroup}
+                />
               </div>
-            ))}
-          </dl>
+            )}
+            <dl data-slot='plan-benefits' className='space-y-2'>
+              {details.map((detail) => (
+                <div
+                  key={detail.label}
+                  className='flex min-w-0 items-start justify-between gap-3 text-xs leading-5'
+                >
+                  <dt className='text-muted-foreground flex min-w-0 items-center gap-2'>
+                    <detail.icon
+                      className='size-3.5 shrink-0 opacity-70'
+                      aria-hidden='true'
+                    />
+                    <span className='break-words'>{detail.label}</span>
+                  </dt>
+                  <dd
+                    className={cn(
+                      'min-w-0 text-right font-medium break-words',
+                      detail.highlight && 'text-[#1762c2] dark:text-blue-300'
+                    )}
+                  >
+                    {detail.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
 
         <div className='pt-3'>

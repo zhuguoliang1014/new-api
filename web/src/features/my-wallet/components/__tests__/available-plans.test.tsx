@@ -924,3 +924,25 @@ it.each([0, undefined])(
     expect(card.getByText('Unlimited purchases')).toBeVisible()
   }
 )
+
+it('groups the savings trigger below the divider with subscription benefits', async () => {
+  await renderPlans([plan()], {
+    planSavings: new Map([
+      [1, { planRatio: 0.27, rechargeRatio: 0.36, savings: 0.25 }],
+    ]),
+  })
+  const card = screen.getByRole('article', { name: '苍穹版' })
+  const content = card.querySelector('[data-slot=plan-benefits-content]')
+  if (!content) throw new Error('Missing benefit content area')
+  expect(content).toHaveClass('border-t')
+  const summary = within(content as HTMLElement).getByRole('button', {
+    name: 'How savings are calculated',
+  })
+  expect(summary).toBeVisible()
+  expect(within(content as HTMLElement).getByText('Quota Reset')).toBeVisible()
+  await userEvent.click(summary)
+  expect(
+    screen.getByRole('dialog', { name: 'How savings are calculated' })
+  ).toBeVisible()
+  expect(card.querySelector('[data-slot=accordion-content]')).toBeNull()
+})
