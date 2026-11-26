@@ -125,6 +125,8 @@
     "{{protocol}} auth value": "{{protocol}} 驗證值",
     "{{protocol}} authentication": "{{protocol}} 驗證",
     "{{provider}} login and registration has not been enabled by administrator": "管理員未開啟透過 {{provider}} 登入及註冊",
+    "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}}登入介面回傳異常（HTTP {{status}}），暫時無法透過該平台登入。請稍後重新登入，或使用其他登入方式。",
+    "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}}登入介面回傳無效回應，暫時無法透過該平台登入。請稍後重新登入，或使用其他登入方式。",
     "{{provider}} returned empty user info, please check settings": "{{provider}} 回傳的使用者資訊為空，請檢查設定",
     "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}": "{{provider}} 儲值成功，儲值額度：{{quota}}，支付金額：{{amount}}",
     "{{ratio}} (approx.)": "{{ratio}}（近似）",

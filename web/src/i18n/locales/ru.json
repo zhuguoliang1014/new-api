@@ -125,6 +125,8 @@
     "{{protocol}} auth value": "Значение аутентификации {{protocol}}",
     "{{protocol}} authentication": "Аутентификация {{protocol}}",
     "{{provider}} login and registration has not been enabled by administrator": "Администратор не включил вход и регистрацию через {{provider}}",
+    "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "Сервис входа {{provider}} вернул ошибку (HTTP {{status}}). Вход через этот сервис временно недоступен. Начните вход заново позже или используйте другой способ входа.",
+    "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "Сервис входа {{provider}} вернул некорректный ответ. Вход через этот сервис временно недоступен. Начните вход заново позже или используйте другой способ входа.",
     "{{provider}} returned empty user info, please check settings": "{{provider}} вернул пустые данные пользователя, проверьте настройки",
     "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}": "Пополнение через {{provider}} выполнено, зачислено: {{quota}}, сумма оплаты: {{amount}}",
     "{{ratio}} (approx.)": "{{ratio}} (прибл.)",

@@ -125,6 +125,8 @@
     "{{protocol}} auth value": "Valeur d’authentification {{protocol}}",
     "{{protocol}} authentication": "Authentification {{protocol}}",
     "{{provider}} login and registration has not been enabled by administrator": "L’administrateur n’a pas activé la connexion et l’inscription via {{provider}}",
+    "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "Le service de connexion {{provider}} a renvoyé une erreur (HTTP {{status}}). La connexion via ce fournisseur est temporairement indisponible. Réessayez plus tard ou utilisez un autre mode de connexion.",
+    "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "Le service de connexion {{provider}} a renvoyé une réponse non valide. La connexion via ce fournisseur est temporairement indisponible. Réessayez plus tard ou utilisez un autre mode de connexion.",
     "{{provider}} returned empty user info, please check settings": "{{provider}} a renvoyé des informations utilisateur vides, veuillez vérifier les paramètres",
     "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}": "Recharge {{provider}} réussie, montant ajouté : {{quota}}, montant payé : {{amount}}",
     "{{ratio}} (approx.)": "{{ratio}} (env.)",

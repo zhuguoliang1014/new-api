@@ -125,6 +125,8 @@
     "{{protocol}} auth value": "{{protocol}} auth value",
     "{{protocol}} authentication": "{{protocol}} authentication",
     "{{provider}} login and registration has not been enabled by administrator": "{{provider}} login and registration has not been enabled by administrator",
+    "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.",
+    "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.",
     "{{provider}} returned empty user info, please check settings": "{{provider}} returned empty user info, please check settings",
     "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}": "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}",
     "{{ratio}} (approx.)": "{{ratio}} (approx.)",

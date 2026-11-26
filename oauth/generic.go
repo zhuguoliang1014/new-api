@@ -139,11 +139,15 @@ func (p *GenericOAuthProvider) ExchangeToken(ctx context.Context, code string, c
 	defer res.Body.Close()
 
 	logger.LogDebug(ctx, "[OAuth-Generic-%s] ExchangeToken response status: %d", p.config.Slug, res.StatusCode)
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] ExchangeToken failed: status=%d", p.config.Slug, res.StatusCode))
+		return nil, NewOAuthError(common.NewMessage(msgProviderHTTPError, map[string]any{"provider": p.config.Name, "status": res.StatusCode}))
+	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] ExchangeToken read body error: %s", p.config.Slug, err.Error()))
-		return nil, err
+		return nil, NewOAuthError(common.NewMessage(msgProviderInvalidResponse, map[string]any{"provider": p.config.Name}))
 	}
 
 	bodyStr := string(body)
@@ -163,13 +167,15 @@ func (p *GenericOAuthProvider) ExchangeToken(ctx context.Context, code string, c
 	if err := common.Unmarshal(body, &tokenResponse); err != nil {
 		// Try to parse as URL-encoded (some OAuth servers like GitHub return this format)
 		parsedValues, parseErr := url.ParseQuery(bodyStr)
-		if parseErr != nil {
+		if parseErr != nil || (!parsedValues.Has("access_token") && !parsedValues.Has("error")) {
 			logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] ExchangeToken parse error: %s", p.config.Slug, err.Error()))
-			return nil, err
+			return nil, NewOAuthError(common.NewMessage(msgProviderInvalidResponse, map[string]any{"provider": p.config.Name}))
 		}
 		tokenResponse.AccessToken = parsedValues.Get("access_token")
 		tokenResponse.TokenType = parsedValues.Get("token_type")
 		tokenResponse.Scope = parsedValues.Get("scope")
+		tokenResponse.Error = parsedValues.Get("error")
+		tokenResponse.ErrorDesc = parsedValues.Get("error_description")
 	}
 
 	if tokenResponse.Error != "" {
@@ -222,16 +228,20 @@ func (p *GenericOAuthProvider) GetUserInfo(ctx context.Context, token *OAuthToke
 
 	if res.StatusCode != http.StatusOK {
 		logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] GetUserInfo failed: status=%d", p.config.Slug, res.StatusCode))
-		return nil, NewOAuthError(common.NewMessage(msgGetUserFailed))
+		return nil, NewOAuthError(common.NewMessage(msgProviderHTTPError, map[string]any{"provider": p.config.Name, "status": res.StatusCode}))
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] GetUserInfo read body error: %s", p.config.Slug, err.Error()))
-		return nil, err
+		return nil, NewOAuthError(common.NewMessage(msgProviderInvalidResponse, map[string]any{"provider": p.config.Name}))
 	}
 
 	bodyStr := string(body)
+	if !gjson.Valid(bodyStr) {
+		logger.LogError(ctx, common.LogText("[OAuth-Generic-%s] GetUserInfo failed: invalid JSON response", p.config.Slug))
+		return nil, NewOAuthError(common.NewMessage(msgProviderInvalidResponse, map[string]any{"provider": p.config.Name}))
+	}
 
 	// Extract fields using gjson (supports JSONPath-like syntax)
 	userId := gjson.Get(bodyStr, p.config.UserIdField).String()

@@ -29,11 +29,13 @@ type OAuthUser struct {
 
 // Texts of OAuthError that the web console translates.
 const (
-	msgInvalidCode   = "Invalid authorization code"
-	msgTokenFailed   = "Failed to get token from {{provider}}, please check settings"
-	msgUserInfoEmpty = "{{provider}} returned empty user info, please check settings"
-	msgConnectFailed = "Unable to connect to {{provider}} server, please try again later"
-	msgGetUserFailed = "Failed to get user information"
+	msgInvalidCode             = "Invalid authorization code"
+	msgTokenFailed             = "Failed to get token from {{provider}}, please check settings"
+	msgUserInfoEmpty           = "{{provider}} returned empty user info, please check settings"
+	msgConnectFailed           = "Unable to connect to {{provider}} server, please try again later"
+	msgGetUserFailed           = "Failed to get user information"
+	msgProviderHTTPError       = "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method."
+	msgProviderInvalidResponse = "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method."
 )
 
 // OAuthError represents a translatable OAuth error

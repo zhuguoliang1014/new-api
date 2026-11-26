@@ -125,6 +125,8 @@
     "{{protocol}} auth value": "{{protocol}} 认证值",
     "{{protocol}} authentication": "{{protocol}} 认证",
     "{{provider}} login and registration has not been enabled by administrator": "管理员未开启通过 {{provider}} 登录以及注册",
+    "{{provider}} login service returned an error (HTTP {{status}}). Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}}登录接口返回异常（HTTP {{status}}），暂时无法通过该平台登录。请稍后重新发起登录，或使用其他登录方式。",
+    "{{provider}} login service returned an invalid response. Sign-in through this provider is temporarily unavailable. Please restart sign-in later or use another sign-in method.": "{{provider}}登录接口返回了无效响应，暂时无法通过该平台登录。请稍后重新发起登录，或使用其他登录方式。",
     "{{provider}} returned empty user info, please check settings": "{{provider}} 获取用户信息为空，请检查设置",
     "{{provider}} top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}": "{{provider}} 充值成功，充值额度: {{quota}}，支付金额: {{amount}}",
     "{{ratio}} (approx.)": "{{ratio}}（近似）",
