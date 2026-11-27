@@ -198,6 +198,61 @@ func TestFinanceDatabaseMatrix(t *testing.T) {
 			var count int64
 			require.NoError(t, db.Model(&FinanceAudit{}).Where("entry_id = ?", expense.ID).Count(&count).Error)
 			assert.GreaterOrEqual(t, count, int64(3))
+
+			t.Run("direct Alipay income preserves actual fees and avoids duplicate receipts", func(t *testing.T) {
+				before, err := GetFinanceReport("2026-11", "2026-11")
+				require.NoError(t, err)
+				fee := int64(123)
+				input := FinanceInput{Kind: "income", Month: "2026-11", Date: "2026-11-03", AmountCents: 50000, FeeCents: &fee, Method: "alipay_offline", Note: "direct transfer", RequestID: "alipay-receipt", SourceRef: "alipay-direct-unique"}
+				receipt, err := SaveFinanceEntry(0, 1, input)
+				require.NoError(t, err)
+				assert.Equal(t, "alipay_offline", receipt.Method)
+				assert.Equal(t, "manual", receipt.Source)
+				require.NotNil(t, receipt.FeeCents)
+				assert.Equal(t, fee, *receipt.FeeCents)
+				assert.True(t, receipt.FeeConfirmed)
+				retry, err := SaveFinanceEntry(0, 1, input)
+				require.NoError(t, err)
+				assert.Equal(t, receipt.ID, retry.ID)
+				after, err := GetFinanceReport("2026-11", "2026-11")
+				require.NoError(t, err)
+				assert.Equal(t, int64(50000), after.Summary.GrossIncomeCents-before.Summary.GrossIncomeCents)
+				assert.Equal(t, fee, after.Summary.FeeCents-before.Summary.FeeCents)
+				assert.Equal(t, int64(49877), after.Summary.NetIncomeCents-before.Summary.NetIncomeCents)
+				input.RequestID = "alipay-duplicate"
+				_, err = SaveFinanceEntry(0, 1, input)
+				require.Error(t, err)
+				input.SourceRef = "mirror"
+				_, err = SaveFinanceEntry(0, 1, input)
+				require.Error(t, err)
+				input.SourceRef = receipt.SourceRef
+				input.Version, input.Reason = receipt.Version, "confirm no transfer fee"
+				input.FeeCents = &zero
+				edited, err := SaveFinanceEntry(receipt.ID, 1, input)
+				require.NoError(t, err)
+				assert.Equal(t, "alipay_offline", edited.Method)
+				require.NotNil(t, edited.FeeCents)
+				assert.Zero(t, *edited.FeeCents)
+			})
+		})
+	}
+}
+
+func TestFinanceManualIncomeRejectsInvalidMethodPeriodAndFee(t *testing.T) {
+	zero, excessive := int64(0), int64(1001)
+	for _, test := range []struct {
+		name, method, month, date string
+		fee                       *int64
+	}{
+		{"unsupported method", "bank", "2026-11", "2026-11-02", &zero},
+		{"automatic method", "alipay", "2026-11", "2026-11-02", &zero},
+		{"historical period", "alipay_offline", "2026-10", "2026-10-02", &zero},
+		{"missing fee", "alipay_offline", "2026-11", "2026-11-02", nil},
+		{"excessive fee", "alipay_offline", "2026-11", "2026-11-02", &excessive},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			input := FinanceInput{Kind: "income", Month: test.month, Date: test.date, Method: test.method, AmountCents: 1000, FeeCents: test.fee, Note: "receipt"}
+			require.Error(t, normalizeFinanceInput(&input, false))
 		})
 	}
 }

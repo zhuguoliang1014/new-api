@@ -230,16 +230,13 @@ it('records a WeChat receipt with its own zero fee rather than the Alipay rate',
     .spyOn(api, 'request')
     .mockResolvedValue({ data: { success: true, data: { id: 4 } } })
   renderFinance()
-  await user.click(await screen.findByRole('tab', { name: 'Income records' }))
-  await user.click(
-    screen.getByRole('button', { name: 'Record WeChat receipt' })
-  )
+  await user.click(await screen.findByRole('button', { name: 'Record income' }))
   const dialog = await screen.findByRole('dialog', {
     name: 'Income',
   })
   expect(
     within(dialog).getByText(
-      'Record offline WeChat payments only. This does not credit a user balance.'
+      'Record direct WeChat or Alipay payments. Enter the actual payment fee and avoid duplicating platform orders. This does not credit a user balance.'
     )
   ).toBeVisible()
   await user.type(within(dialog).getByLabelText('Amount (CNY)'), '10')
@@ -255,6 +252,101 @@ it('records a WeChat receipt with its own zero fee rather than the Alipay rate',
           amount_cents: 1000,
           fee_cents: 0,
           method: 'wechat_offline',
+        }),
+      })
+    )
+  )
+})
+
+it('records direct Alipay income with the selected method and actual fee', async () => {
+  const user = userEvent.setup()
+  const request = vi
+    .spyOn(api, 'request')
+    .mockResolvedValue({ data: { success: true, data: { id: 5 } } })
+  renderFinance()
+  await user.click(await screen.findByRole('button', { name: 'Record income' }))
+  const dialog = await screen.findByRole('dialog', { name: 'Income' })
+  await user.selectOptions(
+    within(dialog).getByLabelText('Payment Method'),
+    'alipay_offline'
+  )
+  await user.type(within(dialog).getByLabelText('Amount (CNY)'), '500')
+  const fee = within(dialog).getByLabelText('Actual payment fee (CNY)')
+  await user.clear(fee)
+  await user.type(fee, '1.23')
+  await user.type(
+    within(dialog).getByLabelText('Notes'),
+    'Direct Alipay transfer'
+  )
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/api/finance/entries',
+        data: expect.objectContaining({
+          kind: 'income',
+          amount_cents: 50000,
+          fee_cents: 123,
+          method: 'alipay_offline',
+        }),
+      })
+    )
+  )
+})
+
+it('keeps an existing Alipay receipt method when editing its note', async () => {
+  const user = userEvent.setup()
+  vi.mocked(api.get).mockImplementation(async (url) => ({
+    data: {
+      success: true,
+      data: url.endsWith('/report')
+        ? report
+        : {
+            items: [
+              {
+                id: 5,
+                kind: 'income',
+                source: 'manual',
+                method: 'alipay_offline',
+                month: '2026-11',
+                date: '2026-11-03',
+                amount_cents: 50000,
+                fee_cents: 0,
+                currency: 'CNY',
+                note: 'Direct Alipay transfer',
+                version: 1,
+              },
+            ],
+            total: 1,
+          },
+    },
+  }))
+  const request = vi.spyOn(api, 'request').mockResolvedValue({
+    data: { success: true, data: { id: 5 } },
+  })
+  renderFinance()
+  await user.click(await screen.findByRole('tab', { name: 'Income records' }))
+  await user.click(await screen.findByRole('button', { name: 'Edit' }))
+  const dialog = await screen.findByRole('dialog', {
+    name: 'Edit financial entry',
+  })
+  expect(within(dialog).getByLabelText('Payment Method')).toHaveValue(
+    'alipay_offline'
+  )
+  await user.type(within(dialog).getByLabelText('Notes'), ' confirmed')
+  await user.type(
+    within(dialog).getByLabelText('Reason for change'),
+    'Confirm receipt'
+  )
+  await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+  await waitFor(() =>
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: '/api/finance/entries/5',
+        method: 'PUT',
+        data: expect.objectContaining({
+          method: 'alipay_offline',
+          fee_cents: 0,
         }),
       })
     )
@@ -335,6 +427,9 @@ it('allows a finance reader to view data while hiding writing and export control
     screen.queryByRole('button', { name: 'Record expense' })
   ).not.toBeInTheDocument()
   expect(
+    screen.queryByRole('button', { name: 'Record income' })
+  ).not.toBeInTheDocument()
+  expect(
     screen.queryByRole('button', { name: 'Export CSV' })
   ).not.toBeInTheDocument()
 })
@@ -354,6 +449,7 @@ it('updates financial headings and actions after switching to Chinese', async ()
   renderFinance()
   await screen.findByRole('tab', { name: 'Monthly overview' })
   await act(() => i18next.changeLanguage('zh'))
+  expect(screen.getByRole('button', { name: '记一笔收入' })).toBeVisible()
   expect(screen.getByRole('button', { name: '记一笔支出' })).toBeVisible()
   expect(screen.getByRole('tab', { name: '月度总览' })).toBeVisible()
 })

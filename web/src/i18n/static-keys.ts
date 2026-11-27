@@ -64,7 +64,7 @@ export const STATIC_I18N_KEYS = [
   'Invalid reconciliation date',
   'Maintain financial records',
   'Manage financial rules and imports',
-  'Manual income must be an offline WeChat receipt after automatic income starts',
+  'Manual income must be a direct WeChat or Alipay payment after automatic income starts',
   'New fee rules cannot take effect in the past',
   'Only completed months can be closed',
   'Only receipt entries can contain a payment fee',

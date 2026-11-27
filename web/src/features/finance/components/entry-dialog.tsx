@@ -26,6 +26,7 @@ import { z } from 'zod'
 
 import { Dialog } from '@/components/dialog'
 import { Button } from '@/components/ui/button'
+import { Field, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
@@ -88,7 +89,9 @@ export function FinanceEntryDialog(props: {
       category: entry?.category ?? 'upstream_credit',
       counterparty: entry?.counterparty ?? '',
       payer: entry?.payer ?? '国良',
-      method: entry?.method ?? 'alipay',
+      method:
+        entry?.method ??
+        (props.kind === 'income' ? 'wechat_offline' : 'alipay'),
       note: entry?.note ?? '',
       source_ref: entry?.source_ref ?? '',
       reason: '',
@@ -131,7 +134,6 @@ export function FinanceEntryDialog(props: {
       month: values.date ? values.date.slice(0, 7) : values.month,
       amount_cents: amount,
       fee_cents: props.kind === 'income' ? fee : null,
-      method: props.kind === 'income' ? 'wechat_offline' : values.method,
       related_id: props.related?.id ?? entry?.related_id ?? 0,
       request_id: requestID,
       version: entry?.version ?? 0,
@@ -149,7 +151,7 @@ export function FinanceEntryDialog(props: {
       description={
         props.kind === 'income'
           ? t(
-              'Record offline WeChat payments only. This does not credit a user balance.'
+              'Record direct WeChat or Alipay payments. Enter the actual payment fee and avoid duplicating platform orders. This does not credit a user balance.'
             )
           : t('Record actual payments in CNY.')
       }
@@ -280,28 +282,40 @@ export function FinanceEntryDialog(props: {
                 required
               />
             </div>
-            <div className='grid gap-2'>
-              <Label htmlFor='finance-method'>{t('Payment Method')}</Label>
-              <NativeSelect
-                id='finance-method'
-                className='w-full'
-                {...form.register('method')}
-              >
-                <NativeSelectOption value='alipay'>
-                  {t('Alipay')}
-                </NativeSelectOption>
-                <NativeSelectOption value='wechat'>
-                  {t('WeChat')}
-                </NativeSelectOption>
-                <NativeSelectOption value='bank'>
-                  {t('Bank transfer')}
-                </NativeSelectOption>
-                <NativeSelectOption value='other'>
-                  {t('Other')}
-                </NativeSelectOption>
-              </NativeSelect>
-            </div>
           </>
+        )}
+        {(props.kind === 'income' || props.kind === 'expense') && (
+          <Field>
+            <FieldLabel htmlFor='finance-method'>
+              {t('Payment Method')}
+            </FieldLabel>
+            <NativeSelect
+              id='finance-method'
+              className='w-full'
+              {...form.register('method')}
+            >
+              <NativeSelectOption
+                value={props.kind === 'income' ? 'wechat_offline' : 'wechat'}
+              >
+                {t('WeChat')}
+              </NativeSelectOption>
+              <NativeSelectOption
+                value={props.kind === 'income' ? 'alipay_offline' : 'alipay'}
+              >
+                {t('Alipay')}
+              </NativeSelectOption>
+              {props.kind === 'expense' && (
+                <>
+                  <NativeSelectOption value='bank'>
+                    {t('Bank transfer')}
+                  </NativeSelectOption>
+                  <NativeSelectOption value='other'>
+                    {t('Other')}
+                  </NativeSelectOption>
+                </>
+              )}
+            </NativeSelect>
+          </Field>
         )}
         <div className='grid gap-2 sm:col-span-2'>
           <Label htmlFor='finance-note'>{t('Notes')}</Label>

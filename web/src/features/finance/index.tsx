@@ -153,10 +153,20 @@ export function Finance(): React.JSX.Element {
                 </Button>
               )}
               {canWrite && (
-                <Button size='sm' onClick={() => newEntry('expense')}>
-                  <Plus className='size-4' aria-hidden />
-                  {t('Record expense')}
-                </Button>
+                <>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => newEntry('income')}
+                  >
+                    <Plus className='size-4' aria-hidden />
+                    {t('Record income')}
+                  </Button>
+                  <Button size='sm' onClick={() => newEntry('expense')}>
+                    <Plus className='size-4' aria-hidden />
+                    {t('Record expense')}
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -221,21 +231,11 @@ export function Finance(): React.JSX.Element {
                 />
               </TabsContent>
               <TabsContent value='income'>
-                <div className='mb-4 flex flex-wrap items-center justify-between gap-3'>
-                  <p className='text-muted-foreground text-sm'>
-                    {t(
-                      'Platform payments are recorded once. Balance purchases and gifted credit are excluded.'
-                    )}
-                  </p>
-                  {canWrite && (
-                    <Button
-                      variant='outline'
-                      onClick={() => newEntry('income')}
-                    >
-                      {t('Record WeChat receipt')}
-                    </Button>
+                <p className='text-muted-foreground mb-4 text-sm'>
+                  {t(
+                    'Platform payments are recorded once. Balance purchases and gifted credit are excluded.'
                   )}
-                </div>
+                </p>
                 <FinanceLedger
                   canExport={canExport}
                   categories={report.data.categories}

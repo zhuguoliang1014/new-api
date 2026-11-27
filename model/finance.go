@@ -187,8 +187,8 @@ func normalizeFinanceInput(in *FinanceInput, historical bool) error {
 	if in.Kind == "historical_income" && (!historical || in.Month >= FinanceStartMonth || in.FeeCents != nil) {
 		return financeInvalid("Historical income must be a net amount before automatic income starts")
 	}
-	if in.Kind == "income" && (in.Month < FinanceStartMonth || in.Method != "wechat_offline" || in.FeeCents == nil) {
-		return financeInvalid("Manual income must be an offline WeChat receipt after automatic income starts")
+	if in.Kind == "income" && (in.Month < FinanceStartMonth || !slices.Contains([]string{"wechat_offline", "alipay_offline"}, in.Method) || in.FeeCents == nil) {
+		return financeInvalid("Manual income must be a direct WeChat or Alipay payment after automatic income starts")
 	}
 	if in.Date != "" {
 		date, err := time.Parse("2006-01-02", in.Date)
